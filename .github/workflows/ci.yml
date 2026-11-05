@@ -1,0 +1,20 @@
+# Runs the offline tests on every push and pull request. No API keys are needed.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install
+        run: pip install -r requirements-api.txt -r ui/requirements.txt pytest httpx
+      - name: Test
+        run: python -m pytest tests -q

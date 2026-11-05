@@ -4,7 +4,9 @@ from pathlib import Path
 import pytest
 from streamlit.testing.v1 import AppTest
 
-APP_FILE = str(Path(__file__).resolve().parents[2] / "ui" / "streamlit_app.py")
+UI_DIR = Path(__file__).resolve().parents[2] / "ui"
+APP_FILE = str(UI_DIR / "streamlit_app.py")
+ADMIN_FILE = str(UI_DIR / "pages" / "admin.py")
 
 
 @pytest.fixture
@@ -41,3 +43,20 @@ def test_suggestion_button_asks_its_question(chat):
     chat.button(key="suggestion_1").click().run()
     assert not chat.exception
     assert chat.chat_message[1].markdown[0].value == "What is the notice period?"
+
+
+def test_admin_screen_asks_for_the_key_first():
+    app = AppTest.from_file(ADMIN_FILE, default_timeout=30)
+    app.secrets["HELPDESK_API_URL"] = "http://127.0.0.1:9"
+    app.run()
+    assert not app.exception
+    assert app.info[0].value.startswith("Enter the admin key")
+
+
+def test_admin_screen_explains_an_unreachable_api():
+    app = AppTest.from_file(ADMIN_FILE, default_timeout=30)
+    app.secrets["HELPDESK_API_URL"] = "http://127.0.0.1:9"
+    app.run()
+    app.text_input[0].set_value("some-key").run()
+    assert not app.exception
+    assert "waking up" in app.error[0].value

@@ -3,31 +3,18 @@
 Run from the project folder (with the API running):
     venv\\Scripts\\streamlit run ui\\streamlit_app.py
 """
-import os
-import re
-import time
+import json
 import uuid
+from collections.abc import Iterable, Iterator
 from pathlib import Path
 
 import requests
 import streamlit as st
-from dotenv import load_dotenv
+
+from ui_settings import api_url, setting
 
 UI_DIR = Path(__file__).resolve().parent
-load_dotenv(UI_DIR.parent / ".env")
-
-
-def setting(name: str, default: str = "") -> str:
-    """Read a setting from Streamlit Cloud's secrets, or else from .env."""
-    try:
-        if name in st.secrets:
-            return str(st.secrets[name])
-    except Exception:  # no secrets file, as when running on your own PC
-        pass
-    return os.getenv(name, default)
-
-
-API_URL = setting("HELPDESK_API_URL", "http://127.0.0.1:8000").rstrip("/")
+API_URL = api_url()
 API_KEY = setting("HELPDESK_API_KEY")
 
 COMPANY = "Rutuja Talent Nexus"
@@ -43,6 +30,9 @@ SUGGESTIONS = [
     "When is my salary credited?",
 ]
 AVATARS = {"assistant": ":material/support_agent:", "user": ":material/person:"}
+WAKING_UP = "The helpdesk is waking up or unavailable. Please try again in a minute."
+MAX_HISTORY_MESSAGES = 6  # earlier messages sent with each question, for follow-up questions
+MAX_MESSAGE_CHARS = 2000  # the longest earlier message the API accepts
 TYPING_DOTS = '<div class="typing" role="status" aria-label="Typing"><span></span><span></span><span></span></div>'
 
 
@@ -55,33 +45,57 @@ def api_is_online() -> bool:
         return False
 
 
-def ask_api(question: str) -> tuple[str, list[dict]]:
-    """Return (answer, sources), or a friendly message if the API call fails."""
+def chat_history() -> list[dict]:
+    """Return the recent messages, without the welcome and the question being asked now."""
+    messages = st.session_state.messages[1:-1]
+    return [{"role": message["role"], "content": message["content"][:MAX_MESSAGE_CHARS]}
+            for message in messages[-MAX_HISTORY_MESSAGES:]]
+
+
+def error_message(response: requests.Response) -> str:
+    if response.status_code == 422:
+        return "Please type a question of 2 to 500 characters."
+    try:
+        return response.json()["detail"]
+    except (ValueError, KeyError):
+        return f"Something went wrong (error {response.status_code}). Please try again."
+
+
+def read_events(lines: Iterable[str]) -> Iterator[tuple[str, dict]]:
+    """Turn the lines of a server-sent event stream into (event name, data) pairs."""
+    event = ""
+    for line in lines:
+        if line.startswith("event: "):
+            event = line.removeprefix("event: ")
+        elif line.startswith("data: "):
+            yield event, json.loads(line.removeprefix("data: "))
+
+
+def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[str]:
+    """Yield the answer as the API writes it, or a friendly message if the call fails.
+
+    The sources arrive after the answer, so they're put in result.
+    """
     try:
         response = requests.post(
-            f"{API_URL}/ask", json={"question": question},
+            f"{API_URL}/ask/stream", json={"question": question, "history": history},
             headers={"X-API-Key": API_KEY, "X-Client-Id": st.session_state.client_id},
-            timeout=150,  # long enough for a free hosted API and database to wake up
+            timeout=150, stream=True,  # long enough for a free hosted API and database to wake up
         )
-    except requests.RequestException:
-        return "The helpdesk is waking up or unavailable. Please try again in a minute.", []
-    if response.ok:
+        if not response.ok:
+            yield error_message(response)
+            return
         api_is_online.clear()
-        data = response.json()
-        return data["answer"], data["sources"]
-    if response.status_code == 422:
-        return "Please type a question of 2 to 500 characters.", []
-    try:
-        return response.json()["detail"], []
-    except (ValueError, KeyError):
-        return f"Something went wrong (error {response.status_code}). Please try again.", []
-
-
-def type_out(text: str):
-    """Reveal the answer word by word."""
-    for word in re.findall(r"\S+\s*", text):
-        yield word
-        time.sleep(0.018)
+        response.encoding = "utf-8"
+        for event, data in read_events(response.iter_lines(decode_unicode=True)):
+            if event == "token":
+                yield data["text"]
+            elif event == "done":
+                result["sources"] = data["sources"]
+            elif event == "error":
+                yield data["detail"]
+    except requests.RequestException:
+        yield WAKING_UP
 
 
 def show_sources(sources: list[dict]) -> None:
@@ -137,14 +151,24 @@ if question:
         st.markdown(question)
 
     with st.chat_message("assistant", avatar=AVATARS["assistant"]):
+        history = chat_history()
         typing = st.empty()
         with typing.container():
             st.markdown(TYPING_DOTS, unsafe_allow_html=True)
             if not online:
                 st.caption("The helpdesk is waking up. The first question can take a minute or two.")
-        answer, sources = ask_api(question)
-        typing.empty()
-        st.write_stream(type_out(answer))
+
+
+        def clear_typing_then_stream(tokens: Iterator[str]) -> Iterator[str]:
+            for number, token in enumerate(tokens):
+                if number == 0:
+                    typing.empty()
+                yield token
+
+
+        result = {"sources": []}
+        answer = st.write_stream(clear_typing_then_stream(stream_answer(question, history, result)))
+        sources = result["sources"]
         show_sources(sources)
     st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
     st.rerun()  # shows the "New chat" button straight away

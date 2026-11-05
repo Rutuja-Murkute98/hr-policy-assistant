@@ -20,6 +20,15 @@ def verify_api_key(x_api_key: str = Header(default="")) -> str:
     return x_api_key
 
 
+def verify_admin_key(x_admin_key: str = Header(default="")) -> str:
+    """Reject requests without the right X-Admin-Key header. Admin is off until a key is set."""
+    if not config.ADMIN_KEY:
+        raise HTTPException(503, "Admin is switched off. Set HELPDESK_ADMIN_KEY to use it.")
+    if not secrets.compare_digest(x_admin_key.encode(), config.ADMIN_KEY.encode()):
+        raise HTTPException(401, "Invalid or missing admin key")
+    return x_admin_key
+
+
 def _drop_old(window: deque[float], now: float) -> None:
     while window and now - window[0] > WINDOW_SECONDS:
         window.popleft()

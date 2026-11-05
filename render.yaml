@@ -17,3 +17,5 @@ services:
         sync: false
       - key: DATABASE_URL
         sync: false
+      - key: HELPDESK_ADMIN_KEY
+        sync: false

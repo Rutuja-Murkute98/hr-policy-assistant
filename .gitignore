@@ -5,6 +5,9 @@
 # Local database files
 pgdata/
 
+# Downloaded reranker model and saved question embeddings
+.cache/
+
 # Browser test output
 .playwright-mcp/
 

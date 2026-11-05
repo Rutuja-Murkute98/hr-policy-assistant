@@ -73,6 +73,33 @@ flowchart LR
 - **Sample data only:** Gemini's free tier may use submitted data to improve Google's products, so don't use real HR documents.
 - **Limits change:** check each service's current free limits when you sign up.
 
+## Optional: the policy admin screen
+
+The admin screen lets HR add, replace or remove policies. It's off until you set a key.
+
+1. In Render's **Environment** settings, add `HELPDESK_ADMIN_KEY` with a long random value that's different from your other keys. If you're creating the service for the first time, Render asks for it in step 2.
+2. Open your chat screen's address with `/admin` on the end, and enter that key. It isn't linked from the chat screen.
+
+Uploads stay in the database, so they survive restarts. The next `python -m pipeline.embed_and_store` run against that database keeps any policy with no local file and tells you about it. Use `--prune` only if you want those removed.
+
+## Optional: the Slack bot
+
+The bot runs as its own small program and calls your API. It uses Socket Mode, so it doesn't need a public address, but it does have to be running somewhere for as long as you want it to answer.
+
+1. Create an app at [api.slack.com/apps](https://api.slack.com/apps), then turn on **Socket Mode** and create an app-level token with the `connections:write` scope. This is your `SLACK_APP_TOKEN`.
+2. Under **OAuth & Permissions**, add these bot scopes: `app_mentions:read`, `chat:write`, `channels:history`, `groups:history` and `im:history`.
+3. Under **Event Subscriptions**, subscribe to the bot events `app_mention` and `message.im`.
+4. Under **App Home**, allow people to send messages to the app.
+5. Install the app to your workspace and copy the bot token. This is your `SLACK_BOT_TOKEN`.
+6. Add both tokens to `.env`, plus `HELPDESK_API_KEY` and `HELPDESK_API_URL` for your API, then run:
+   ```bash
+   venv\Scripts\pip install -r integrations\requirements.txt
+   ```
+   ```bash
+   venv\Scripts\python -m integrations.slack_bot
+   ```
+7. Invite the bot to a channel and mention it with a question, or send it a direct message. It replies in a thread, and replies in that thread count as follow-up questions.
+
 ## If something goes wrong
 
 | What you see | Likely cause | What to do |
@@ -80,6 +107,7 @@ flowchart LR
 | `That isn't a connection string` | The paste didn't work, or copied something else | Repeat step 1.3 and paste again |
 | `/health` says "No policies indexed" | The chunks weren't copied, or `DATABASE_URL` points to another database | Repeat step 1.3 and compare the connection strings |
 | `/health` says "Database unavailable" | Wrong `DATABASE_URL` | Paste it again in Render's **Environment** settings |
+| Admin screen says "Admin is switched off" | `HELPDESK_ADMIN_KEY` isn't set on Render | Add it in Render's **Environment** settings |
 | Chat says "Invalid or missing API key" | The keys on Render and Streamlit differ | Make `HELPDESK_API_KEY` identical in both |
 | Chat says "The AI service is unavailable" | Gemini quota or key problem | Check Render's logs for the request ID, and try later |
 | Stays on **Connecting** | Wrong URL, or the API is asleep | Check `HELPDESK_API_URL`, including `https://`, then wait a minute and ask a question |

@@ -3,8 +3,8 @@
 -r ui/requirements.txt
 langchain
 langchain-community
-langchain-text-splitters
 pixeltable-pgserver
+flashrank
 ragas
 pytest
 httpx

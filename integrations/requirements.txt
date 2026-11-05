@@ -1,0 +1,4 @@
+# What the Slack bot needs. It runs separately from the API and the chat screen.
+slack-bolt==1.30.0
+requests==2.34.2
+python-dotenv==1.2.4

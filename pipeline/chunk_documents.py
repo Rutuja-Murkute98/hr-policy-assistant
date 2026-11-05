@@ -41,8 +41,14 @@ def split_into_sections(text: str) -> Iterator[tuple[list[str], str]]:
 
 def chunk_document(file: Path) -> list[Document]:
     """Turn one policy file into chunks with metadata."""
+    return chunk_text(file.read_text(encoding="utf-8"), file.name)
+
+
+def chunk_text(text: str, file_name: str) -> list[Document]:
+    """Turn the text of one policy into chunks with metadata."""
+    stem = Path(file_name).stem
     chunks = []
-    for headings, body in split_into_sections(file.read_text(encoding="utf-8")):
+    for headings, body in split_into_sections(text):
         if len(headings) == 1:
             # Under the title: keep the summary, skip the company and version lines
             glance = AT_A_GLANCE.search(body)
@@ -54,13 +60,13 @@ def chunk_document(file: Path) -> list[Document]:
         parts = [body] if len(body) <= MAX_SECTION_CHARS else long_section_splitter.split_text(body)
         heading_path = " > ".join(headings)
         for part_number, part in enumerate(parts):
-            chunk_id = f"{file.stem} > {' > '.join(headings[1:])} > {part_number}"
+            chunk_id = f"{stem} > {' > '.join(headings[1:])} > {part_number}"
             chunks.append(Document(
                 id=chunk_id,
                 # Including the headings tells the search and the LLM what this text is about
                 page_content=f"{heading_path}\n\n{part.strip()}",
                 metadata={
-                    "source": file.name,
+                    "source": file_name,
                     "policy": headings[0],
                     "section": " > ".join(headings[1:]),
                     "chunk_id": chunk_id,

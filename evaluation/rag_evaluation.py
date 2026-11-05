@@ -75,13 +75,12 @@ def run_ragas() -> None:
     stand_in.ChatVertexAI = type("ChatVertexAI", (), {})
     sys.modules.setdefault(stand_in.__name__, stand_in)
 
-    from langchain_google_genai import ChatGoogleGenerativeAI
     from ragas import EvaluationDataset, evaluate
     from ragas.llms import LangchainLLMWrapper
     from ragas.metrics import Faithfulness, LLMContextPrecisionWithReference, LLMContextRecall
     from ragas.run_config import RunConfig
 
-    from app import config
+    from app.rag.providers import get_chat_model
 
     rows = json.loads(ANSWERS_FILE.read_text(encoding="utf-8"))["answers"]
     dataset = EvaluationDataset.from_list([
@@ -89,7 +88,7 @@ def run_ragas() -> None:
          "retrieved_contexts": r["contexts"], "reference": r["ground_truth"]}
         for r in rows
     ])
-    judge = LangchainLLMWrapper(ChatGoogleGenerativeAI(model=config.CHAT_MODEL))
+    judge = LangchainLLMWrapper(get_chat_model())
     result = evaluate(dataset,
                       metrics=[Faithfulness(), LLMContextRecall(), LLMContextPrecisionWithReference()],
                       llm=judge,

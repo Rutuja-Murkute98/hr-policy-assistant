@@ -5,7 +5,6 @@ The admin key is typed in each session and is never stored by this app.
 """
 import requests
 import streamlit as st
-
 from ui_settings import api_url
 
 API_URL = api_url()

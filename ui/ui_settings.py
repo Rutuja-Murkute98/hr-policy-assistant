@@ -1,11 +1,13 @@
 """Settings shared by the chat screen and the admin screen."""
 import os
+import tomllib
 from pathlib import Path
 
 import streamlit as st
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 def setting(name: str, default: str = "") -> str:
@@ -16,6 +18,13 @@ def setting(name: str, default: str = "") -> str:
     except Exception:  # no secrets file, as when running on your own PC
         pass
     return os.getenv(name, default)
+
+
+def tenant() -> dict:
+    """Read the company details. The chat screen doesn't install the API's packages, so it reads the file itself."""
+    path = setting("TENANT_CONFIG_FILE") or PROJECT_ROOT / "config" / "tenant.toml"
+    with Path(path).open("rb") as file:
+        return tomllib.load(file)
 
 
 def api_url() -> str:

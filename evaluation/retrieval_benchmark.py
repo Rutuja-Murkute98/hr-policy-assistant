@@ -20,7 +20,7 @@ def embed_all(index: PolicyIndex, questions: list[str]) -> dict[str, list[float]
     saved = json.loads(CACHE_FILE.read_text(encoding="utf-8")) if CACHE_FILE.exists() else {}
     missing = [question for question in questions if question not in saved]
     if missing:
-        saved.update(zip(missing, index.embeddings.embed_documents(missing)))
+        saved.update(zip(missing, index.embeddings.embed_documents(missing), strict=True))
         CACHE_FILE.parent.mkdir(exist_ok=True)
         CACHE_FILE.write_text(json.dumps(saved), encoding="utf-8")
     return saved

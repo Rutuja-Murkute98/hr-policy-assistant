@@ -14,6 +14,7 @@ import sys
 import time
 import types
 from pathlib import Path
+from typing import Any
 
 from app.rag.prompt import FALLBACK_ANSWER
 from app.rag.service import create_service
@@ -29,14 +30,16 @@ OLD_COLLECTION = "hr_policies"  # the fixed-size chunks from mini_rag.py's first
 def run_simple_checks() -> dict:
     service = create_service()
     old_store = get_store(OLD_COLLECTION)
-    rows, old_hits = [], 0
+    rows: list[dict[str, Any]] = []
+    old_hits = 0
 
     for item in ANSWERABLE:
         old_chunks = old_store.similarity_search_by_vector(
             service.store.embeddings.embed_query(item["question"]), k=4)
         old_hits += any(Path(c.metadata["source"]).name == item["file"] for c in old_chunks)
 
-        result = service.ask(item["question"])
+        question = str(item["question"])
+        result = service.ask(question)
         found = [c.metadata["source"] for c in result.chunks]
         answer = result.answer.lower()
         missing = [text for text in item["must_contain"] if text.lower() not in answer]
@@ -47,7 +50,7 @@ def run_simple_checks() -> dict:
         print(f"[{status}] {item['question']}\n    {result.answer}", flush=True)
         time.sleep(PAUSE_SECONDS)
 
-    refusals = []
+    refusals: list[dict[str, Any]] = []
     for question in UNANSWERABLE:
         answer = service.ask(question).answer
         refusals.append({"question": question, "answer": answer, "refused": answer == FALLBACK_ANSWER})
@@ -72,7 +75,7 @@ def run_ragas() -> None:
     # ragas 0.4.3 imports a module that newer langchain-community removed. It's only used
     # for Google Vertex AI, which this project doesn't use, so an empty stand-in is safe.
     stand_in = types.ModuleType("langchain_community.chat_models.vertexai")
-    stand_in.ChatVertexAI = type("ChatVertexAI", (), {})
+    setattr(stand_in, "ChatVertexAI", type("ChatVertexAI", (), {}))  # noqa: B010
     sys.modules.setdefault(stand_in.__name__, stand_in)
 
     from ragas import EvaluationDataset, evaluate
@@ -93,7 +96,7 @@ def run_ragas() -> None:
                       metrics=[Faithfulness(), LLMContextRecall(), LLMContextPrecisionWithReference()],
                       llm=judge,
                       run_config=RunConfig(max_workers=2, timeout=180, max_retries=6, max_wait=70))
-    table = result.to_pandas()
+    table = result.to_pandas()  # type: ignore[union-attr]
     table.to_csv(RESULTS_DIR / "ragas_scores.csv", index=False)
     means = table.mean(numeric_only=True).round(3).to_dict()
     unscored = int(table.select_dtypes("number").isna().sum().sum())

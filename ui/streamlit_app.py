@@ -10,14 +10,14 @@ from pathlib import Path
 
 import requests
 import streamlit as st
-
-from ui_settings import api_url, setting
+from ui_settings import api_url, setting, tenant
 
 UI_DIR = Path(__file__).resolve().parent
 API_URL = api_url()
 API_KEY = setting("HELPDESK_API_KEY")
 
-COMPANY = "Rutuja Talent Nexus"
+TENANT = tenant()
+COMPANY = TENANT["company_name"]
 WELCOME = (
     f"Hello! 👋 Welcome to the **{COMPANY} HR Helpdesk**.\n\n"
     "I can answer questions about our HR policies, including leave, payroll, "
@@ -119,10 +119,10 @@ st.markdown(f"<style>{(UI_DIR / 'style.css').read_text(encoding='utf-8')}</style
 online = api_is_online()
 st.markdown(
     f"""<div class="brand-bar">
-      <div class="brand-logo" aria-hidden="true">RT</div>
+      <div class="brand-logo" aria-hidden="true">{TENANT['logo_initials']}</div>
       <div class="brand-text">
         <div class="brand-company">{COMPANY}</div>
-        <div class="brand-product">HR Helpdesk Assistant</div>
+        <div class="brand-product">{TENANT['product_name']}</div>
       </div>
       <div class="brand-status {'online' if online else ''}">
         <span class="status-dot"></span>{'Online' if online else 'Connecting'}
@@ -184,6 +184,6 @@ else:
 
 st.markdown(
     '<div class="footer-note">Answers come from company HR policies. For important decisions, '
-    "please confirm with HR at hr@rutujatalentnexus.in.</div>",
+    f"please confirm with HR at {TENANT['hr_email']}.</div>",
     unsafe_allow_html=True,
 )

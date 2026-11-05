@@ -1,55 +1,148 @@
-"""All project settings in one place."""
-import os
-import re
-from pathlib import Path
+"""All project settings in one place, checked when the app starts.
 
-from dotenv import load_dotenv
+Secrets and deployment choices come from environment variables or .env. Details about the
+company, such as its name and HR email, come from the tenant file in config/.
+
+The rest of the code reads the plain names at the bottom of this file.
+"""
+import re
+import tomllib
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-load_dotenv(PROJECT_ROOT / ".env")
-
-# Models and database
-DATABASE_URL = os.getenv("DATABASE_URL", "")  # empty = run PostgreSQL locally, in PGDATA_DIR
-PGDATA_DIR = PROJECT_ROOT / "pgdata"
-
-# Which models to use. See app/rag/providers.py for the supported providers.
 DEFAULT_CHAT_MODELS = {"google": "gemini-3.5-flash-lite", "anthropic": "claude-sonnet-5-5"}
 DEFAULT_EMBEDDING_MODELS = {"google": "gemini-embedding-2"}
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "google")
-CHAT_MODEL = os.getenv("LLM_MODEL") or DEFAULT_CHAT_MODELS.get(LLM_PROVIDER, "")
-EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "google")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL") or DEFAULT_EMBEDDING_MODELS.get(EMBEDDING_PROVIDER, "")
+ORIGINAL_COLLECTION = "hr_policies_by_section"  # the name for the default embedding model
+
+
+class Settings(BaseSettings):
+    """Settings from the environment. Each field reads the variable with the same name in capitals."""
+
+    model_config = SettingsConfigDict(env_file=PROJECT_ROOT / ".env", extra="ignore")
+
+    # Tenant and database
+    tenant_config_file: Path = PROJECT_ROOT / "config" / "tenant.toml"
+    policy_dir: Path = PROJECT_ROOT / "policies" / "policies"
+    database_url: str = ""  # empty = run PostgreSQL locally, in pgdata
+
+    # Models. An empty model name means the provider's default, where it has one.
+    llm_provider: Literal["google", "anthropic", "openai", "ollama"] = "google"
+    llm_model: str = ""
+    llm_temperature: float | None = Field(default=None, ge=0, le=2)  # None = the model's default
+    embedding_provider: Literal["google", "openai", "ollama"] = "google"
+    embedding_model: str = ""
+
+    # Search. See docs/DECISIONS.md for how these were chosen.
+    hybrid_search: bool = True
+    fusion_method: Literal["rrf", "weighted"] = "weighted"
+    use_mmr: bool = True
+    fetch_k: int = Field(default=20, ge=1, le=200)
+    retrieve_k: int = Field(default=5, ge=1, le=20)
+    mmr_lambda: float = Field(default=0.85, ge=0, le=1)
+    rrf_k: int = Field(default=60, ge=1)
+    keyword_weight: float = Field(default=0.05, ge=0)
+    reranker_weight: float = Field(default=0.02, ge=0)
+    min_body_chars: int = Field(default=100, ge=0)
+
+    # Deciding whether there's enough evidence to answer
+    abstention_mode: Literal["confidence", "distance"] = "distance"
+    max_distance: float = Field(default=0.42, gt=0, le=2)
+    min_confidence: float = 0.0
+
+    # Reranking
+    reranker: Literal["", "flashrank", "cohere"] = ""
+    reranker_model: str = ""
+    cohere_api_key: str = ""
+
+    # API
+    helpdesk_api_key: str = ""
+    helpdesk_admin_key: str = ""  # empty = the admin endpoints are switched off
+    helpdesk_api_url: str = "http://127.0.0.1:8000"
+    rate_limit_per_minute: int = Field(default=10, ge=1)
+    rate_limit_total_per_minute: int = Field(default=30, ge=1)  # protects the model quota
+    max_question_chars: int = Field(default=500, ge=2)
+    max_history_messages: int = Field(default=6, ge=0)
+    max_message_chars: int = Field(default=2000, ge=1)
+    max_upload_chars: int = Field(default=60_000, ge=1)
+
+    @model_validator(mode="after")
+    def check_combinations(self) -> "Settings":
+        if self.retrieve_k > self.fetch_k:
+            raise ValueError("RETRIEVE_K can't be larger than FETCH_K")
+        if self.rate_limit_per_minute > self.rate_limit_total_per_minute:
+            raise ValueError("RATE_LIMIT_PER_MINUTE can't be larger than RATE_LIMIT_TOTAL_PER_MINUTE")
+        if self.reranker == "cohere" and not self.cohere_api_key:
+            raise ValueError("RERANKER=cohere needs COHERE_API_KEY")
+        return self
+
+
+class Tenant(BaseModel):
+    """The company this deployment is for, from the tenant file."""
+
+    id: str = Field(pattern=r"^[a-z0-9_-]+$")
+    company_name: str = Field(min_length=1)
+    legal_name: str = Field(min_length=1)
+    hr_email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    product_name: str = Field(min_length=1)
+    logo_initials: str = Field(min_length=1, max_length=3)
+    default_category: str = "general"
+    document_categories: dict[str, str] = Field(default_factory=dict)  # file name -> category
+
+
+def load_tenant(path: Path) -> Tenant:
+    with path.open("rb") as file:
+        return Tenant(**tomllib.load(file))
+
+
+settings = Settings()
+tenant = load_tenant(settings.tenant_config_file)
+
+TENANT_ID = tenant.id
+POLICY_DIR = settings.policy_dir
+DATABASE_URL = settings.database_url
+PGDATA_DIR = PROJECT_ROOT / "pgdata"
+
+LLM_PROVIDER: str = settings.llm_provider
+CHAT_MODEL = settings.llm_model or DEFAULT_CHAT_MODELS.get(LLM_PROVIDER, "")
+LLM_TEMPERATURE = settings.llm_temperature
+EMBEDDING_PROVIDER: str = settings.embedding_provider
+EMBEDDING_MODEL = settings.embedding_model or DEFAULT_EMBEDDING_MODELS.get(EMBEDDING_PROVIDER, "")
 
 # Vectors from different embedding models can't be compared, so each model has its own collection
 COLLECTION_NAME = (
-    "hr_policies_by_section" if (EMBEDDING_PROVIDER, EMBEDDING_MODEL) == ("google", "gemini-embedding-2")
+    ORIGINAL_COLLECTION if (EMBEDDING_PROVIDER, EMBEDDING_MODEL) == ("google", "gemini-embedding-2")
     else re.sub(r"\W+", "_", f"hr_policies_{EMBEDDING_PROVIDER}_{EMBEDDING_MODEL}")
 )
 
-# Retrieval
-HYBRID_SEARCH = os.getenv("HYBRID_SEARCH", "true").lower() == "true"  # add keyword search to vector search
-FETCH_K = 20            # MMR looks at this many of the closest chunks from each search...
-RETRIEVE_K = 5          # ...and keeps this many that are relevant and different
-MMR_LAMBDA = 0.85       # 1.0 = only relevance, 0.0 = only variety. At 0.7, the WFH Scope
-                        # section (the probation exception) was dropped for being too similar
-MAX_DISTANCE = float(os.getenv("MAX_DISTANCE", "0.42"))
-                        # chunks further away are ignored (0 = identical meaning). Measured on
-                        # 13 questions: on-topic chunks were 0.40 or closer, unrelated
-                        # questions 0.46 or further. Measure again for another embedding model.
-MIN_BODY_CHARS = 100    # ignore chunks that are only a one-line lead-in
-RERANKER = os.getenv("RERANKER", "")  # empty = off. "flashrank" also needs: pip install flashrank
-RERANKER_MODEL = "ms-marco-TinyBERT-L-2-v2"
-KEYWORD_WEIGHT = 0.05   # small on purpose. evaluation/retrieval_benchmark.py lost the WFH Scope
-RERANKER_WEIGHT = 0.02  # section at a keyword weight of 0.12
+HYBRID_SEARCH = settings.hybrid_search
+FUSION_METHOD = settings.fusion_method
+USE_MMR = settings.use_mmr
+FETCH_K = settings.fetch_k
+RETRIEVE_K = settings.retrieve_k
+MMR_LAMBDA = settings.mmr_lambda  # 1.0 = only relevance, 0.0 = only variety
+RRF_K = settings.rrf_k
+KEYWORD_WEIGHT = settings.keyword_weight
+RERANKER_WEIGHT = settings.reranker_weight
+MIN_BODY_CHARS = settings.min_body_chars  # ignore chunks that are only a one-line lead-in
+ABSTENTION_MODE = settings.abstention_mode
+MAX_DISTANCE = settings.max_distance  # tied to one embedding model, so it's only for "distance" mode
+MIN_CONFIDENCE = settings.min_confidence
+
+RERANKER: str = settings.reranker
+RERANKER_MODEL = settings.reranker_model
+COHERE_API_KEY = settings.cohere_api_key
 RERANKER_CACHE_DIR = PROJECT_ROOT / ".cache" / "flashrank"
 
-# API
-API_KEY = os.getenv("HELPDESK_API_KEY", "")
-RATE_LIMIT_PER_MINUTE = 10        # for each person
-RATE_LIMIT_TOTAL_PER_MINUTE = 30  # for everyone together, to protect the Gemini quota
-MAX_QUESTION_CHARS = 500
-MAX_HISTORY_MESSAGES = 6    # earlier chat messages used to understand a follow-up question
-MAX_MESSAGE_CHARS = 2000    # the longest earlier message the API accepts
-ADMIN_KEY = os.getenv("HELPDESK_ADMIN_KEY", "")  # empty = the admin endpoints are switched off
-MAX_UPLOAD_CHARS = 60_000
-API_URL = os.getenv("HELPDESK_API_URL", "http://127.0.0.1:8000")
+API_KEY = settings.helpdesk_api_key
+ADMIN_KEY = settings.helpdesk_admin_key
+API_URL = settings.helpdesk_api_url
+RATE_LIMIT_PER_MINUTE = settings.rate_limit_per_minute
+RATE_LIMIT_TOTAL_PER_MINUTE = settings.rate_limit_total_per_minute
+MAX_QUESTION_CHARS = settings.max_question_chars
+MAX_HISTORY_MESSAGES = settings.max_history_messages
+MAX_MESSAGE_CHARS = settings.max_message_chars
+MAX_UPLOAD_CHARS = settings.max_upload_chars

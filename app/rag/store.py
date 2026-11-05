@@ -65,7 +65,7 @@ def count_chunks(collection_name: str = config.COLLECTION_NAME, database_uri: st
             "JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = %s",
             (collection_name,),
         ).fetchone()
-    return row[0]
+    return row[0] if row else 0
 
 
 class PolicyIndex:

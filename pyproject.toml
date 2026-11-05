@@ -1,0 +1,24 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = ["integration: needs a real PostgreSQL with pgvector, but no model API"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+extend-exclude = ["venv", "pgdata"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"evaluation/test_set.py" = ["E501"]
+"tests/**" = ["E501"]
+
+[tool.mypy]
+python_version = "3.13"
+packages = ["app", "pipeline", "evaluation", "integrations"]
+explicit_package_bases = true
+namespace_packages = true
+ignore_missing_imports = true
+check_untyped_defs = true

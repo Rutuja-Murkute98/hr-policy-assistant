@@ -2,17 +2,19 @@
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
+from app.config import tenant
+
 FALLBACK_ANSWER = (
     "I couldn't find this in the HR policies. "
-    "Please contact the HR helpdesk at hr@rutujatalentnexus.in."
+    f"Please contact the HR helpdesk at {tenant.hr_email}."
 )
 
 GREETING_ANSWER = (
-    "Hello! I can answer questions about Rutuja Talent Nexus HR policies, "
+    f"Hello! I can answer questions about {tenant.company_name} HR policies, "
     "such as leave, payroll, work from home and insurance. What would you like to know?"
 )
 
-SYSTEM_PROMPT = f"""You are the HR helpdesk assistant for employees of Rutuja Talent Nexus Pvt. Ltd.
+SYSTEM_PROMPT = f"""You are the HR helpdesk assistant for employees of {tenant.legal_name}.
 
 Rules:
 1. Answer ONLY from the policy excerpts provided. Never use outside knowledge or guess.

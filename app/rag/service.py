@@ -7,8 +7,7 @@ from dataclasses import dataclass, field
 from langchain_core.documents import Document
 
 from app import config
-from app.rag.prompt import (FALLBACK_ANSWER, GREETING_ANSWER, build_messages,
-                            build_rewrite_messages)
+from app.rag.prompt import FALLBACK_ANSWER, GREETING_ANSWER, build_messages, build_rewrite_messages
 from app.rag.providers import get_chat_model
 from app.rag.rerank import get_reranker
 from app.rag.retrieval import Candidate, keep_usable, select_chunks
@@ -79,11 +78,11 @@ class RagService:
         return rewritten
 
     def ask(self, question: str, history: list[dict] | None = None) -> RagAnswer:
-        answer = None
         for kind, value in self.stream(question, history, stream_tokens=False):
             if kind == "done":
-                answer = value
-        return answer
+                assert isinstance(value, RagAnswer)
+                return value
+        raise RuntimeError("The answer stream ended without a final answer")
 
     def stream(self, question: str, history: list[dict] | None = None,
                stream_tokens: bool = True) -> Iterator[tuple[str, object]]:

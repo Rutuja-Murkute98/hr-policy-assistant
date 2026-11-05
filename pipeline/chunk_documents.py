@@ -14,7 +14,9 @@ from pathlib import Path
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-POLICY_DIR = Path(__file__).resolve().parent.parent / "policies" / "policies"
+from app import config
+
+POLICY_DIR = config.POLICY_DIR
 MAX_SECTION_CHARS = 1200  # a longer section is cut into smaller pieces
 
 HEADING = re.compile(r"^(#{1,3}) +(.+?) *$", re.MULTILINE)

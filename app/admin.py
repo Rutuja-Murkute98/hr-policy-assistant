@@ -48,8 +48,8 @@ def list_documents(request: Request):
     """List the policies in the database and how many chunks each has."""
     documents: dict[str, dict] = {}
     for chunk in policy_index(request).stored_chunks().values():
-        entry = documents.setdefault(chunk.metadata["source"],
-                                     {"file": chunk.metadata["source"], "policy": chunk.metadata["policy"], "chunks": 0})
+        file = chunk.metadata["source"]
+        entry = documents.setdefault(file, {"file": file, "policy": chunk.metadata["policy"], "chunks": 0})
         entry["chunks"] += 1
     return sorted(documents.values(), key=lambda entry: entry["file"])
 
@@ -72,7 +72,7 @@ def upload_document(body: Upload, request: Request):
         run_sync(index, plan)
     except Exception:
         logger.exception("request_id=%s failed to index %s", request.state.request_id, body.filename)
-        raise HTTPException(503, "The AI service is unavailable right now, so nothing was changed.")
+        raise HTTPException(503, "The AI service is unavailable right now, so nothing was changed.") from None
 
     try:
         (POLICY_DIR / body.filename).write_text(body.content, encoding="utf-8")

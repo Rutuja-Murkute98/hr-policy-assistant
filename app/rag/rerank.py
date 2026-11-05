@@ -7,7 +7,7 @@ from app import config
 
 
 class FlashrankReranker:
-    def __init__(self, model_name: str = config.RERANKER_MODEL):
+    def __init__(self, model_name: str = config.RERANKER_MODEL or "ms-marco-TinyBERT-L-2-v2"):
         from flashrank import Ranker
 
         config.RERANKER_CACHE_DIR.mkdir(parents=True, exist_ok=True)

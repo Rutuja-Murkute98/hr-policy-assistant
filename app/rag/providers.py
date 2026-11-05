@@ -20,7 +20,7 @@ EMBEDDING_MODELS = {
 }
 
 
-def _create(kind: str, setting: str, classes: dict, provider: str, model: str):
+def _create(kind: str, setting: str, classes: dict, provider: str, model: str, **options):
     if provider not in classes:
         raise ValueError(f"{setting}={provider!r} isn't supported for {kind}. "
                          f"Choose one of: {', '.join(sorted(classes))}")
@@ -32,11 +32,12 @@ def _create(kind: str, setting: str, classes: dict, provider: str, model: str):
     except ImportError as error:
         raise ValueError(f"{setting}={provider} needs this package: "
                          f"pip install {package.replace('_', '-')}") from error
-    return model_class(model=model)
+    return model_class(model=model, **options)
 
 
 def get_chat_model():
-    return _create("chat", "LLM_PROVIDER", CHAT_MODELS, config.LLM_PROVIDER, config.CHAT_MODEL)
+    options = {} if config.LLM_TEMPERATURE is None else {"temperature": config.LLM_TEMPERATURE}
+    return _create("chat", "LLM_PROVIDER", CHAT_MODELS, config.LLM_PROVIDER, config.CHAT_MODEL, **options)
 
 
 def get_embeddings():

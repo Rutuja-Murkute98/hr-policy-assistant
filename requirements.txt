@@ -1,10 +1,9 @@
-# Everything for running, indexing and testing on your own PC
+# Everything for running, indexing and evaluating on your own PC
 -r requirements-api.txt
 -r ui/requirements.txt
-langchain
-langchain-community
-pixeltable-pgserver
-flashrank
-ragas
-pytest
-httpx
+-r requirements-dev.txt
+langchain==1.4.9
+langchain-community==0.4.2
+pixeltable-pgserver==0.7.2
+flashrank==0.2.10
+ragas==0.4.3

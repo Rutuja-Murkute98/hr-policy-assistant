@@ -18,7 +18,7 @@ def fake_packages(monkeypatch):
     for package, class_name in [("langchain_anthropic", "ChatAnthropic"), ("langchain_openai", "ChatOpenAI")]:
         module = ModuleType(package)
         setattr(module, class_name, FakeModel)
-        setattr(module, "OpenAIEmbeddings", FakeModel)
+        module.OpenAIEmbeddings = FakeModel
         monkeypatch.setitem(sys.modules, package, module)
 
 

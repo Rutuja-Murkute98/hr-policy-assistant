@@ -88,7 +88,7 @@ def health(request: Request):
         chunks = request.app.state.count_chunks()
     except Exception:
         logger.exception("request_id=%s health check failed", request.state.request_id)
-        raise HTTPException(503, "Database unavailable")
+        raise HTTPException(503, "Database unavailable") from None
     if chunks == 0:
         raise HTTPException(503, "No policies indexed. Run: python -m pipeline.embed_and_store")
     return {"status": "ok", "chunks_indexed": chunks}
@@ -110,7 +110,7 @@ def ask(body: AskRequest, request: Request):
     except Exception:
         # Usually a Gemini quota or network problem. The details stay in the log.
         logger.exception("request_id=%s failed to answer", request.state.request_id)
-        raise HTTPException(503, UNAVAILABLE)
+        raise HTTPException(503, UNAVAILABLE) from None
     return AskResponse(answer=result.answer, sources=result.sources,
                        request_id=request.state.request_id)
 

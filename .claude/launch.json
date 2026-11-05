@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "hr-api",
+      "runtimeExecutable": "venv\\Scripts\\uvicorn.exe",
+      "runtimeArgs": ["app.main:app", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "hr-ui",
+      "runtimeExecutable": "venv\\Scripts\\streamlit.exe",
+      "runtimeArgs": ["run", "ui\\streamlit_app.py", "--server.port", "8501", "--server.headless", "true", "--browser.gatherUsageStats", "false"],
+      "port": 8501
+    }
+  ]
+}

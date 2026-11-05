@@ -1,0 +1,16 @@
+# Secrets: never commit your API key
+.env
+
+# Local database files
+pgdata/
+
+# Browser test output
+.playwright-mcp/
+
+# Python
+venv/
+__pycache__/
+*.pyc
+
+# Test cache
+.pytest_cache/

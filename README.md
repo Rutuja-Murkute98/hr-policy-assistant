@@ -81,7 +81,7 @@ Measured on the 25 hand-checked questions in [`evaluation/test_set.py`](evaluati
 | **Correct refusals** | **5 / 5** | Off-topic, unknown and "ignore your rules" questions |
 | **Right policy retrieved** | **20 / 20** | Whether search found the correct document |
 
-> **How to read these scores:** this is a small test set of mostly single-fact questions, and the RAGAS scores were judged by the same Gemini model that writes the answers. They show the system works on these cases, not that it's perfect. See [Known limitations](#-known-limitations).
+> **How to read these scores:** this is a small test set of mostly single-fact questions, and the RAGAS scores were judged by the same Gemini model that writes the answers. They show the system works on these cases, not that it's perfect.
 
 ## 🚀 Quick start
 
@@ -206,24 +206,6 @@ hr-policy-assistant/
 | Frontend | Streamlit with custom CSS |
 | Evaluation | RAGAS + custom checks |
 | Testing | pytest |
-
-## ⚠️ Known limitations
-
-- **Occasional wrong refusals:** one sick-leave question was wrongly refused once in 13 tries. The cause wasn't found, so the same may happen with other questions.
-- **"Policies checked" can overstate:** it lists every section retrieved, including any the answer didn't use.
-- **Long answers:** the strict prompt asks for conditions and exceptions, which can make replies longer than needed.
-- **Distance limit:** the cut-off for ignoring irrelevant chunks was tuned on only 13 questions.
-- **Free-tier limits:** Gemini's free tier allows 100 embeddings a minute and 1,000 a day per project, and a full re-index uses 539. It may also use submitted data to improve Google's products, so don't use it with real HR documents.
-- **Not production-ready:** the rate limiter is in memory, there's one shared API key, and there's no per-user login. A real deployment would need those addressed, plus a privacy review.
-- **After editing a policy:** run the indexing script with `--rebuild`, because existing sections aren't re-embedded otherwise.
-
-## 🔮 Possible next steps
-
-- [ ] Grow the test set with harder questions, such as ones that span several policies
-- [ ] Cite only the sections an answer actually used
-- [ ] Remember earlier messages, so people can ask follow-up questions
-- [ ] Add employee login and per-user rate limits
-- [ ] Add a Slack or Microsoft Teams interface using the same API
 
 ## 👩‍💻 Author
 

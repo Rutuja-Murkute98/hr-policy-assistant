@@ -47,7 +47,8 @@ class FakeStore:
         self.searched_for.append(question)
         self.filters = filters
         size = max(len(self.pairs), 1)
-        return [Candidate(chunk, distance, list(np.eye(size)[index]), index + 1, self.keyword_ranks.get(index), 3.0)
+        return [Candidate(chunk, distance, list(np.eye(size)[index]), index + 1, self.keyword_ranks.get(index),
+                          5.0 if distance <= config.MAX_DISTANCE else 0.5)
                 for index, (chunk, distance) in enumerate(self.pairs)]
 
 
@@ -148,6 +149,13 @@ def test_invalid_citation_is_removed_and_a_valid_one_kept():
         StructuredAnswer(answered=True, answer="One [1] and two [7].", cited_chunk_ids=["1", "7"]), chunks)
     assert text == "One [1] and two."
     assert [source["ref"] for source in sources] == [1]
+
+
+def test_several_numbers_in_one_citation_are_understood():
+    chunks = [make_chunk("a"), make_chunk("b")]
+    text, sources = check_citations(StructuredAnswer(answered=True, answer="Both [1, 2] and bad [2, 8] and [9]."), chunks)
+    assert text == "Both [1, 2] and bad [2] and."
+    assert [source["ref"] for source in sources] == [1, 2]
 
 
 def test_citation_in_the_text_counts_even_if_the_list_misses_it():
@@ -313,10 +321,25 @@ def test_keyword_match_cannot_get_past_the_evidence_check():
 
 def test_confidence_mode_uses_the_score_and_ignores_the_distance_limit(monkeypatch):
     monkeypatch.setattr(config, "ABSTENTION_MODE", "confidence")
-    monkeypatch.setattr(config, "MIN_CONFIDENCE", 2.0)
-    strong = Candidate(make_chunk("strong"), 0.9, confidence=2.5)
+    monkeypatch.setattr(config, "MIN_CONFIDENCE", 3.0)
+    monkeypatch.setattr(config, "MIN_CHUNK_CONFIDENCE", 2.0)
+    strong = Candidate(make_chunk("strong"), 0.9, confidence=3.5)
+    usable = Candidate(make_chunk("usable"), 0.9, confidence=2.5)
     weak = Candidate(make_chunk("weak"), 0.1, confidence=1.0)
-    assert [c.chunk.metadata["section"] for c in keep_usable([strong, weak])] == ["strong"]
+    assert {c.chunk.metadata["section"] for c in keep_usable([strong, usable, weak])} == {"strong", "usable"}
+
+
+def test_confidence_mode_abstains_if_no_chunk_stands_out_enough(monkeypatch):
+    monkeypatch.setattr(config, "ABSTENTION_MODE", "confidence")
+    monkeypatch.setattr(config, "MIN_CONFIDENCE", 3.0)
+    assert keep_usable([Candidate(make_chunk(), 0.1, confidence=2.9)]) == []
+
+
+def test_distance_mode_is_still_available(monkeypatch):
+    monkeypatch.setattr(config, "ABSTENTION_MODE", "distance")
+    near = Candidate(make_chunk("near"), config.MAX_DISTANCE, confidence=0.0)
+    far = Candidate(make_chunk("far"), config.MAX_DISTANCE + 0.01, confidence=9.0)
+    assert [c.chunk.metadata["section"] for c in keep_usable([near, far])] == ["near"]
 
 
 def test_evidence_score_measures_how_far_a_chunk_stands_out():

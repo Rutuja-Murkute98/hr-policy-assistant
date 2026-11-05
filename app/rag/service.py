@@ -23,7 +23,7 @@ logger = logging.getLogger("hr_helpdesk")
 
 GREETING = re.compile(r"(hi+|hel+o+|hey+|namaste|good (morning|afternoon|evening))[\s!.,]*",
                       re.IGNORECASE)
-CITATION = re.compile(r"\[(\d+)\]")
+CITATION = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")  # such as [1] or [2, 4]
 
 
 @dataclass
@@ -47,14 +47,17 @@ def check_citations(result: StructuredAnswer, chunks: list[Document]) -> tuple[s
     in the text and in cited_chunk_ids both count, and invalid ones are removed from the text.
     """
     valid = {str(number): chunk for number, chunk in enumerate(chunks, start=1)}
-    cited_in_text = CITATION.findall(result.answer)
-    cited = {str(label).strip("[] ") for label in result.cited_chunk_ids} | set(cited_in_text)
+    cited_in_text = {label.strip() for group in CITATION.findall(result.answer) for label in group.split(",")}
+    cited = {str(label).strip("[] ") for label in result.cited_chunk_ids} | cited_in_text
     usable = sorted((label for label in cited if label in valid), key=int)
     if not usable:
         return None
 
-    text = CITATION.sub(lambda match: match[0] if match[1] in valid else "", result.answer)
-    text = re.sub(r" +([.,;:])", r"\1", text).strip()
+    def keep_valid(match: re.Match) -> str:
+        labels = [label.strip() for label in match[1].split(",") if label.strip() in valid]
+        return f"[{', '.join(labels)}]" if labels else ""
+
+    text = re.sub(r" +([.,;:])", r"\1", CITATION.sub(keep_valid, result.answer)).strip()
     return text, [{"ref": int(label), "policy": valid[label].metadata["policy"],
                    "section": valid[label].metadata["section"], "file": valid[label].metadata["source"],
                    "chunk_id": valid[label].id or valid[label].metadata.get("chunk_id", "")}

@@ -1,7 +1,11 @@
 """Settings are checked at startup, and company details come from the tenant file."""
+import importlib
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
+from app import config as config_module
 from app.config import Settings, Tenant, load_tenant, settings, tenant
 
 
@@ -34,6 +38,14 @@ def test_settings_read_the_environment(monkeypatch):
     loaded = make()
     assert loaded.fetch_k == 33
     assert loaded.llm_provider == "anthropic"
+
+
+def test_api_keys_in_the_env_file_reach_the_model_providers(monkeypatch):
+    """Providers read keys from the environment, so loading settings alone isn't enough."""
+    loaded = []
+    monkeypatch.setattr("dotenv.load_dotenv", lambda path: loaded.append(Path(path)))
+    importlib.reload(config_module)
+    assert loaded == [config_module.PROJECT_ROOT / ".env"]
 
 
 def test_tenant_file_is_valid_and_lists_every_policy():

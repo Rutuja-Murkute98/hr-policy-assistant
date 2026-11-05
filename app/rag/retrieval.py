@@ -48,12 +48,21 @@ def body_of(chunk: Document) -> str:
 
 def has_evidence(candidate: Candidate) -> bool:
     if config.ABSTENTION_MODE == "confidence":
-        return candidate.confidence >= config.MIN_CONFIDENCE
+        return candidate.confidence >= config.MIN_CHUNK_CONFIDENCE
     return candidate.distance <= config.MAX_DISTANCE
+
+
+def enough_evidence_overall(candidates: list[Candidate]) -> bool:
+    """Decide whether the question is worth answering at all, from its strongest chunk."""
+    if config.ABSTENTION_MODE != "confidence":
+        return True  # "distance" mode only judges each chunk
+    return any(candidate.confidence >= config.MIN_CONFIDENCE for candidate in candidates)
 
 
 def keep_usable(candidates: list[Candidate]) -> list[Candidate]:
     """Drop chunks without enough evidence, and ones that are only a lead-in or repeated text."""
+    if not enough_evidence_overall(candidates):
+        return []
     kept, seen = [], set()
     for candidate in sorted(candidates, key=lambda c: c.distance):
         if not has_evidence(candidate):

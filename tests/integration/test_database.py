@@ -158,6 +158,7 @@ def test_confidence_is_higher_for_the_best_match(index):
 
 
 def test_results_work_with_filtering_and_selection(index, monkeypatch):
+    monkeypatch.setattr(config, "ABSTENTION_MODE", "distance")
     monkeypatch.setattr(config, "MAX_DISTANCE", 1.0)
     monkeypatch.setattr(config, "MIN_BODY_CHARS", 10)
     chunks = select_chunks(keep_usable(search(index, "file an FIR with the police")))

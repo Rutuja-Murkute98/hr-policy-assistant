@@ -10,6 +10,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -17,6 +18,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CHAT_MODELS = {"google": "gemini-3.5-flash-lite", "anthropic": "claude-sonnet-5-5"}
 DEFAULT_EMBEDDING_MODELS = {"google": "gemini-embedding-2"}
 ORIGINAL_COLLECTION = "hr_policies_by_section"  # the name for the default embedding model
+
+# Model providers read their API keys, such as GOOGLE_API_KEY, straight from the environment
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 class Settings(BaseSettings):
@@ -49,9 +53,10 @@ class Settings(BaseSettings):
     min_body_chars: int = Field(default=100, ge=0)
 
     # Deciding whether there's enough evidence to answer
-    abstention_mode: Literal["confidence", "distance"] = "distance"
-    max_distance: float = Field(default=0.42, gt=0, le=2)
-    min_confidence: float = 0.0
+    abstention_mode: Literal["confidence", "distance"] = "confidence"
+    max_distance: float = Field(default=0.42, gt=0, le=2)  # only for "distance" mode
+    min_confidence: float = 3.0        # the best chunk must stand out this much, or the bot abstains
+    min_chunk_confidence: float = 2.5  # each chunk sent to the LLM must stand out this much
 
     # Reranking
     reranker: Literal["", "flashrank", "cohere"] = ""
@@ -131,6 +136,7 @@ MIN_BODY_CHARS = settings.min_body_chars  # ignore chunks that are only a one-li
 ABSTENTION_MODE = settings.abstention_mode
 MAX_DISTANCE = settings.max_distance  # tied to one embedding model, so it's only for "distance" mode
 MIN_CONFIDENCE = settings.min_confidence
+MIN_CHUNK_CONFIDENCE = settings.min_chunk_confidence
 
 RERANKER: str = settings.reranker
 RERANKER_MODEL = settings.reranker_model

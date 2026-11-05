@@ -1,0 +1,9 @@
+.env
+.git
+.cache
+pgdata
+venv
+docs
+evaluation
+tests
+__pycache__

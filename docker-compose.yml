@@ -1,0 +1,46 @@
+# Local development: API, chat screen and PostgreSQL with pgvector.
+#   docker compose up --build
+#   docker compose run --rm api python -m pipeline.embed_and_store
+# Keys come from your .env file. The database password here is only for this local container.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_PASSWORD: local_only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      DATABASE_URL: postgresql://postgres:local_only@db:5432/postgres
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
+      HELPDESK_API_KEY: ${HELPDESK_API_KEY:-}
+      HELPDESK_ADMIN_KEY: ${HELPDESK_ADMIN_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  ui:
+    build:
+      context: .
+      dockerfile: Dockerfile.ui
+    environment:
+      HELPDESK_API_URL: http://api:8000
+      HELPDESK_API_KEY: ${HELPDESK_API_KEY:-}
+    ports:
+      - "8501:8501"
+    depends_on:
+      - api
+
+volumes:
+  pgdata:

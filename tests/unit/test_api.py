@@ -9,21 +9,23 @@ from app.main import app
 from app.rag.service import RagAnswer
 
 KEY = {"X-API-Key": "test-key"}
-SOURCES = [{"policy": "Leave Policy", "section": "4.1", "file": "Leave_Policy.md"}]
+SOURCES = [{"ref": 1, "policy": "Leave Policy", "section": "4.1", "file": "Leave_Policy.md", "chunk_id": "Leave_Policy > 4.1 > 0"}]
 
 
 class FakeService:
     def __init__(self, error=None):
         self.error = error
 
-    def ask(self, question, history=None):
+    def ask(self, question, history=None, filters=None):
         self.history = history
+        self.filters = filters
         if self.error:
             raise self.error
         return RagAnswer("18 days.", SOURCES)
 
-    def stream(self, question, history=None):
+    def stream(self, question, history=None, filters=None):
         self.history = history
+        self.filters = filters
         yield "token", "18 "
         if self.error:
             raise self.error
@@ -177,3 +179,20 @@ def test_history_reaches_the_service(client):
 ])
 def test_bad_history_is_rejected(client, history):
     assert client.post("/ask", json={"question": "How much leave?", "history": history}, headers=KEY).status_code == 422
+
+
+def test_filters_reach_the_service_with_the_servers_tenant(client):
+    body = {"question": "How much leave?", "filters": {"category": "leave", "policy": "Leave Policy", "effective_on": "2026-05-01"}}
+    client.post("/ask", json=body, headers=KEY)
+    filters = app.state.service.filters
+    assert (filters.tenant_id, filters.category, filters.policy, filters.effective_on) == (config.TENANT_ID, "leave", "Leave Policy", "2026-05-01")
+
+
+def test_caller_cannot_choose_the_tenant(client):
+    body = {"question": "How much leave?", "filters": {"tenant_id": "someone-else"}}
+    assert client.post("/ask", json=body, headers=KEY).status_code == 422
+
+
+def test_bad_filter_date_is_rejected(client):
+    body = {"question": "How much leave?", "filters": {"effective_on": "soon"}}
+    assert client.post("/ask", json=body, headers=KEY).status_code == 422

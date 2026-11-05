@@ -1,9 +1,8 @@
 """Choose which chunks to send to the LLM from the search candidates.
 
-Vector search finds chunks with similar meaning, and keyword search finds exact terms
-such as "FIR" or "UAN". A chunk's score is its similarity to the question, plus small
-bonuses from keyword search and the optional reranker. MMR then picks chunks that are
-relevant and different from each other.
+Vector search finds chunks with similar meaning, and keyword search finds exact terms such
+as "FIR" or "UAN". Their rankings are combined, an optional reranker can add its own opinion,
+and chunks without enough evidence are dropped. If nothing is left, the bot abstains.
 """
 from dataclasses import dataclass, field
 
@@ -14,11 +13,32 @@ from app import config
 
 
 @dataclass
+class SearchFilters:
+    """Limits on what a search can find. The tenant isn't optional."""
+
+    tenant_id: str
+    policy: str | None = None
+    category: str | None = None
+    effective_on: str | None = None  # an ISO date: only policies in effect on this date
+
+
+@dataclass
 class Candidate:
     chunk: Document
     distance: float                  # cosine distance from the question (0 = identical meaning)
     embedding: list[float] = field(default_factory=list)
+    vector_rank: int | None = None   # position in the vector results, if it was found there
     keyword_rank: int | None = None  # position in the keyword results, if it was found there
+    confidence: float = 0.0          # how much it stands out: see evidence_scores
+
+
+def evidence_scores(similarities: np.ndarray, mean: float, spread: float) -> np.ndarray:
+    """Measure how far each chunk stands out from all chunks for this question, in standard deviations.
+
+    Raw distances depend on the embedding model. This compares each chunk with the whole
+    collection, so the scale carries over better between models.
+    """
+    return (similarities - mean) / (spread or 1.0)
 
 
 def body_of(chunk: Document) -> str:
@@ -26,11 +46,17 @@ def body_of(chunk: Document) -> str:
     return chunk.page_content.partition("\n\n")[2]
 
 
+def has_evidence(candidate: Candidate) -> bool:
+    if config.ABSTENTION_MODE == "confidence":
+        return candidate.confidence >= config.MIN_CONFIDENCE
+    return candidate.distance <= config.MAX_DISTANCE
+
+
 def keep_usable(candidates: list[Candidate]) -> list[Candidate]:
-    """Drop chunks that are too far in meaning, only a lead-in, or repeated text."""
+    """Drop chunks without enough evidence, and ones that are only a lead-in or repeated text."""
     kept, seen = [], set()
     for candidate in sorted(candidates, key=lambda c: c.distance):
-        if candidate.distance > config.MAX_DISTANCE:
+        if not has_evidence(candidate):
             continue  # also applies to keyword matches, so off-topic questions are still refused
         if len(body_of(candidate.chunk)) < config.MIN_BODY_CHARS:
             continue
@@ -41,11 +67,20 @@ def keep_usable(candidates: list[Candidate]) -> list[Candidate]:
     return kept
 
 
-def relevance_scores(candidates: list[Candidate], rerank_order: list[int] | None = None) -> np.ndarray:
-    """Score each candidate: similarity to the question, plus a bonus for ranking well elsewhere.
+def rrf_scores(candidates: list[Candidate], rerank_order: list[int] | None = None) -> np.ndarray:
+    """Reciprocal rank fusion: add 1 / (RRF_K + rank) from each ranking the chunk appears in."""
+    scores = np.zeros(len(candidates))
+    for index, candidate in enumerate(candidates):
+        for rank in (candidate.vector_rank, candidate.keyword_rank):
+            if rank is not None:
+                scores[index] += 1 / (config.RRF_K + rank)
+    for rank, index in enumerate(rerank_order or [], start=1):
+        scores[index] += 1 / (config.RRF_K + rank)
+    return scores / scores.max() if scores.max() > 0 else scores
 
-    The bonuses halve, then third, and so on down each ranking, so only the top places matter.
-    """
+
+def weighted_scores(candidates: list[Candidate], rerank_order: list[int] | None = None) -> np.ndarray:
+    """Similarity to the question, plus small bonuses for ranking well elsewhere."""
     scores = np.array([1 - candidate.distance for candidate in candidates])
     for index, candidate in enumerate(candidates):
         if candidate.keyword_rank is not None:
@@ -53,6 +88,11 @@ def relevance_scores(candidates: list[Candidate], rerank_order: list[int] | None
     for rank, index in enumerate(rerank_order or [], start=1):
         scores[index] += config.RERANKER_WEIGHT / rank
     return scores
+
+
+def relevance_scores(candidates: list[Candidate], rerank_order: list[int] | None = None) -> np.ndarray:
+    fuse = rrf_scores if config.FUSION_METHOD == "rrf" else weighted_scores
+    return fuse(candidates, rerank_order)
 
 
 def mmr(relevance: np.ndarray, embeddings: np.ndarray, k: int, lambda_mult: float) -> list[int]:
@@ -79,6 +119,10 @@ def select_chunks(candidates: list[Candidate], rerank_order: list[int] | None = 
     if not candidates:
         return []
     relevance = relevance_scores(candidates, rerank_order)
-    embeddings = np.array([candidate.embedding for candidate in candidates], dtype=float)
-    picked = mmr(relevance, embeddings, config.RETRIEVE_K, config.MMR_LAMBDA)
-    return [candidates[i].chunk for i in sorted(picked, key=lambda i: -relevance[i])]
+    if config.USE_MMR:
+        embeddings = np.array([candidate.embedding for candidate in candidates], dtype=float)
+        picked = mmr(relevance, embeddings, config.RETRIEVE_K, config.MMR_LAMBDA)
+    else:
+        picked = list(range(len(candidates)))
+    best_first = sorted(picked, key=lambda i: -relevance[i])
+    return [candidates[i].chunk for i in best_first[:config.RETRIEVE_K]]

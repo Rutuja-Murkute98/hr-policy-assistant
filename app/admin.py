@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from app import config
 from app.security import verify_admin_key
 from pipeline.chunk_documents import HEADING, POLICY_DIR, chunk_text
-from pipeline.embed_and_store import BATCH_SIZE, plan_sync, run_sync
+from pipeline.embed_and_store import BATCH_SIZE, DocumentChange, apply_documents, plan_documents, plan_sync, run_sync
 
 logger = logging.getLogger("hr_helpdesk")
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(verify_admin_key)])
@@ -64,12 +64,12 @@ def upload_document(body: Upload, request: Request):
         raise HTTPException(422, "No sections were found under the headings in this file")
 
     index = policy_index(request)
-    plan = plan_sync(index.stored_chunks(), chunks, {body.filename})
+    plan, changed = plan_documents(index, [DocumentChange(body.filename, body.content, chunks)])
     if len(plan.to_embed) > BATCH_SIZE:
         raise HTTPException(413, f"This needs {len(plan.to_embed)} sections embedded, and the limit for "
                                  f"one upload is {BATCH_SIZE}. Use: python -m pipeline.embed_and_store")
     try:
-        run_sync(index, plan)
+        apply_documents(index, plan, changed)
     except Exception:
         logger.exception("request_id=%s failed to index %s", request.state.request_id, body.filename)
         raise HTTPException(503, "The AI service is unavailable right now, so nothing was changed.") from None
@@ -90,5 +90,6 @@ def delete_document(filename: str, request: Request):
     if not plan.stale_ids:
         raise HTTPException(404, f"{filename} isn't in the knowledge base")
     run_sync(index, plan)
+    index.delete_document(filename)
     (POLICY_DIR / filename).unlink(missing_ok=True)
     return {"file": filename, **plan.summary()}

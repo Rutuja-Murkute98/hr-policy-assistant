@@ -9,6 +9,7 @@ Run it to see the chunks without any API calls:
 """
 import re
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 from langchain_core.documents import Document
@@ -21,6 +22,8 @@ MAX_SECTION_CHARS = 1200  # a longer section is cut into smaller pieces
 
 HEADING = re.compile(r"^(#{1,3}) +(.+?) *$", re.MULTILINE)
 AT_A_GLANCE = re.compile(r"^\*\*At a Glance:\*\* *(.+)$", re.MULTILINE)
+VERSION = re.compile(r"\*\*Version:\*\* *([^|\n]+?) *(?:\||$)", re.MULTILINE)
+EFFECTIVE_DATE = re.compile(r"\*\*Effective Date:\*\* *([^|\n]+?) *(?:\||$)", re.MULTILINE)
 
 long_section_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
@@ -41,6 +44,23 @@ def split_into_sections(text: str) -> Iterator[tuple[list[str], str]]:
         yield path, text[match.end():end].strip()
 
 
+def document_details(text: str, file_name: str) -> dict[str, str | None]:
+    """Read the details that apply to every chunk of a document."""
+    version, effective = VERSION.search(text), EFFECTIVE_DATE.search(text)
+    effective_date = None
+    if effective:
+        try:
+            effective_date = datetime.strptime(effective[1], "%d %B %Y").date().isoformat()
+        except ValueError:
+            pass  # a date in another format is left out, not guessed
+    return {
+        "tenant_id": config.TENANT_ID,
+        "category": config.tenant.document_categories.get(file_name, config.tenant.default_category),
+        "version": version[1] if version else None,
+        "effective_date": effective_date,
+    }
+
+
 def chunk_document(file: Path) -> list[Document]:
     """Turn one policy file into chunks with metadata."""
     return chunk_text(file.read_text(encoding="utf-8"), file.name)
@@ -49,6 +69,7 @@ def chunk_document(file: Path) -> list[Document]:
 def chunk_text(text: str, file_name: str) -> list[Document]:
     """Turn the text of one policy into chunks with metadata."""
     stem = Path(file_name).stem
+    details = document_details(text, file_name)
     chunks = []
     for headings, body in split_into_sections(text):
         if len(headings) == 1:
@@ -72,6 +93,7 @@ def chunk_text(text: str, file_name: str) -> list[Document]:
                     "policy": headings[0],
                     "section": " > ".join(headings[1:]),
                     "chunk_id": chunk_id,
+                    **details,
                 },
             ))
     return chunks

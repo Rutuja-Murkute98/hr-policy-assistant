@@ -92,6 +92,7 @@ def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[
                 yield data["text"]
             elif event == "done":
                 result["sources"] = data["sources"]
+                result["answer"] = data.get("answer")
             elif event == "error":
                 yield data["detail"]
     except requests.RequestException:
@@ -100,9 +101,9 @@ def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[
 
 def show_sources(sources: list[dict]) -> None:
     if sources:
-        with st.expander(f"Policies checked ({len(sources)})", icon=":material/menu_book:"):
+        with st.expander(f"Sources ({len(sources)})", icon=":material/menu_book:"):
             for source in sources:
-                st.markdown(f"- **{source['policy']}**: {source['section']}")
+                st.markdown(f"[{source['ref']}] **{source['policy']}**: {source['section']}")
 
 
 def queue_question(question: str) -> None:
@@ -167,7 +168,8 @@ if question:
 
 
         result = {"sources": []}
-        answer = st.write_stream(clear_typing_then_stream(stream_answer(question, history, result)))
+        streamed = st.write_stream(clear_typing_then_stream(stream_answer(question, history, result)))
+        answer = result.get("answer") or streamed  # the API's final, checked text wins
         sources = result["sources"]
         show_sources(sources)
     st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})

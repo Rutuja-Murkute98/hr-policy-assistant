@@ -8,16 +8,18 @@ import logging
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import date
 from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app import config
 from app.admin import router as admin_router
+from app.rag.retrieval import SearchFilters
 from app.rag.service import create_service
-from app.rag.store import count_chunks
+from app.rag.store import count_chunks, run_migrations
 from app.security import rate_limit, verify_api_key
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -30,6 +32,7 @@ UNAVAILABLE = "The AI service is unavailable right now. Please try again later."
 async def lifespan(app: FastAPI):
     # Connect once at startup. Indexing is a separate script, so this is fast.
     if not hasattr(app.state, "service"):
+        run_migrations()
         app.state.service = create_service()
         app.state.count_chunks = count_chunks
     yield
@@ -44,16 +47,28 @@ class ChatMessage(BaseModel):
     content: str = Field(max_length=config.MAX_MESSAGE_CHARS)
 
 
+class Filters(BaseModel):
+    """Optionally limit the search. The tenant always comes from the server, never from the caller."""
+
+    model_config = ConfigDict(extra="forbid")
+    policy: str | None = None
+    category: str | None = None
+    effective_on: date | None = None  # only policies in effect on this date
+
+
 class AskRequest(BaseModel):
     question: str = Field(min_length=2, max_length=config.MAX_QUESTION_CHARS)
     # Earlier messages in this chat, oldest first. The server keeps no chat history itself.
     history: list[ChatMessage] = Field(default_factory=list, max_length=config.MAX_HISTORY_MESSAGES)
+    filters: Filters = Field(default_factory=Filters)
 
 
 class Source(BaseModel):
+    ref: int  # the number used in the answer text, such as [1]
     policy: str
     section: str
     file: str
+    chunk_id: str
 
 
 class AskResponse(BaseModel):
@@ -94,19 +109,22 @@ def health(request: Request):
     return {"status": "ok", "chunks_indexed": chunks}
 
 
-def question_and_history(body: AskRequest) -> tuple[str, list[dict]]:
+def parse_request(body: AskRequest) -> tuple[str, list[dict], SearchFilters]:
     question = body.question.strip()
     if len(question) < 2:
         raise HTTPException(422, "Please type a question")
-    return question, [message.model_dump() for message in body.history]
+    effective_on = body.filters.effective_on
+    filters = SearchFilters(tenant_id=config.TENANT_ID, policy=body.filters.policy, category=body.filters.category,
+                            effective_on=effective_on.isoformat() if effective_on else None)
+    return question, [message.model_dump() for message in body.history], filters
 
 
 @app.post("/ask", response_model=AskResponse,
           dependencies=[Depends(verify_api_key), Depends(rate_limit)])
 def ask(body: AskRequest, request: Request):
-    question, history = question_and_history(body)
+    question, history, filters = parse_request(body)
     try:
-        result = request.app.state.service.ask(question, history)
+        result = request.app.state.service.ask(question, history, filters)
     except Exception:
         # Usually a Gemini quota or network problem. The details stay in the log.
         logger.exception("request_id=%s failed to answer", request.state.request_id)
@@ -122,17 +140,19 @@ def server_sent_event(event: str, data: dict) -> str:
 @app.post("/ask/stream", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
 def ask_stream(body: AskRequest, request: Request):
     """Send the answer as it's written, as server-sent events: token, then done or error."""
-    question, history = question_and_history(body)
+    question, history, filters = parse_request(body)
     service = request.app.state.service
     request_id = request.state.request_id
 
     def events():
         try:
-            for kind, value in service.stream(question, history):
+            for kind, value in service.stream(question, history, filters):
                 if kind == "token":
                     yield server_sent_event("token", {"text": value})
                 else:
-                    yield server_sent_event("done", {"sources": value.sources, "request_id": request_id})
+                    # The final text can differ from the tokens if a citation check failed, so it's sent too
+                    yield server_sent_event("done", {"answer": value.answer, "sources": value.sources,
+                                                     "request_id": request_id})
         except Exception:
             # The response has already started, so the error has to be sent as an event
             logger.exception("request_id=%s failed to answer", request_id)

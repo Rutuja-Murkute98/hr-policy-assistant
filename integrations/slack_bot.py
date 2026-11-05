@@ -60,8 +60,8 @@ def ask_api(question: str, history: list[dict], client_id: str) -> str:
 def format_reply(answer: str, sources: list[dict]) -> str:
     if not sources:
         return answer
-    checked = "\n".join(f"• {source['policy']}: {source['section']}" for source in sources)
-    return f"{answer}\n\n*Policies checked*\n{checked}"
+    cited = "\n".join(f"[{source['ref']}] {source['policy']}: {source['section']}" for source in sources)
+    return f"{answer}\n\n*Sources*\n{cited}"
 
 
 def handle_message(event: dict, say, client, bot_user_id: str, ask=ask_api) -> None:

@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from pipeline.chunk_documents import MAX_SECTION_CHARS, POLICY_DIR, chunk_document, load_chunks
+from pipeline.chunk_documents import MAX_SECTION_CHARS, POLICY_DIR, chunk_document, document_details, load_chunks
 
 SAMPLE = """# Sample Policy
 
@@ -68,7 +68,30 @@ def test_metadata(sample_chunks):
         "policy": "Sample Policy",
         "section": "2. Types of Leave > 2.1. Earned Leave",
         "chunk_id": "Sample_Policy > 2. Types of Leave > 2.1. Earned Leave > 0",
+        "tenant_id": "default",
+        "category": "general",
+        "version": "2.0",
+        "effective_date": None,
     }
+
+
+def test_version_and_effective_date_are_read_from_the_header():
+    text = "# A\n\n**Version:** 3.1 | **Effective Date:** 1 April 2026 | **Next Review:** 1 April 2027\n\n## 1. B\n\nText."
+    assert document_details(text, "Leave_Policy.md") == {
+        "tenant_id": "default", "category": "leave", "version": "3.1", "effective_date": "2026-04-01",
+    }
+
+
+def test_a_date_in_another_format_is_left_out():
+    assert document_details("**Effective Date:** soon", "x.md")["effective_date"] is None
+
+
+def test_every_real_chunk_has_a_category_and_effective_date(real_chunks):
+    for chunk in real_chunks:
+        assert chunk.metadata["tenant_id"] == "default"
+        assert chunk.metadata["category"] != "general" or chunk.metadata["source"] in {
+            "About_Rutuja_Talent_Nexus.md", "Employee_FAQ.md", "HR_Glossary.md"}
+        assert chunk.metadata["effective_date"] == "2026-04-01"
 
 
 def test_long_section_is_cut_and_every_piece_keeps_its_heading(tmp_path):

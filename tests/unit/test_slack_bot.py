@@ -68,9 +68,9 @@ def test_history_is_limited_and_long_messages_are_cut():
 
 def test_reply_lists_sources_only_when_there_are_some():
     assert slack_bot.format_reply("No.", []) == "No."
-    reply = slack_bot.format_reply("18 days.", [{"policy": "Leave Policy", "section": "4.1", "file": "x"}])
-    assert "*Policies checked*" in reply
-    assert "Leave Policy: 4.1" in reply
+    reply = slack_bot.format_reply("18 days.", [{"ref": 1, "policy": "Leave Policy", "section": "4.1", "file": "x"}])
+    assert "*Sources*" in reply
+    assert "[1] Leave Policy: 4.1" in reply
 
 
 class FakeResponse:

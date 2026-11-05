@@ -22,7 +22,7 @@ One short entry per technology or design choice. A technology is added here befo
 
 - **Problem:** the brief needs metadata filters and full-text search, which could suggest new tables.
 - **Options:** a custom chunks table, or keep `langchain_pg_embedding` and query it directly.
-- **Choice:** keep them, with filters on JSONB metadata and a full-text index added by migration.
+- **Choice:** keep them, with filters on JSONB metadata. The full-text index is added when the app connects, because LangChain creates this table itself and it may not exist when migrations run.
 - **Reason:** moving would risk working code with no measured gain.
 - **Trade-off:** `tenant_id` for chunks lives in metadata, not a column. Phase 4 must revisit this for Row-Level Security.
 
@@ -58,8 +58,8 @@ Filled in from measured results. See the end of [ROADMAP_AND_STATUS.md](ROADMAP_
 
 - **Problem:** exact-string refusal is brittle, and sources don't show what was used.
 - **Options:** parse inline markers from plain text, or structured output.
-- **Choice:** structured output with `answered`, `answer` and `cited_chunk_ids`. Excerpts carry short labels such as `S1`, which the service maps back to chunk IDs.
-- **Reason:** short labels are harder to mistype than long IDs, and every provider supports structured output.
+- **Choice:** structured output with `answered`, `answer` and `cited_chunk_ids`. Excerpts are numbered, such as `[1]`, and the service maps those numbers back to chunk IDs.
+- **Reason:** short numbers are harder to mistype than long IDs, and every provider supports structured output.
 - **Trade-off:** the answer has to be read from partial JSON while streaming, and a final check can replace streamed text.
 
 ## D9. Full-text search through PostgreSQL

@@ -2,13 +2,15 @@
 
 This copies the stored embeddings, so it uses none of your Gemini quota.
 
-1. Add your database's direct connection string to .env:
-       CLOUD_DATABASE_URL=postgresql://user:password@host/dbname?sslmode=require
-2. Run:
-       venv\\Scripts\\python -m pipeline.copy_to_cloud
+Run this, then paste your database's direct connection string when asked:
+    venv\\Scripts\\python -m pipeline.copy_to_cloud
+
+The string stays hidden and isn't saved. To skip the question, you can set
+CLOUD_DATABASE_URL in .env instead.
 
 It's safe to run again: chunks with the same id are updated, not duplicated.
 """
+import getpass
 import json
 import os
 import sys
@@ -43,11 +45,20 @@ def copy_chunks(rows: list[tuple], target_uri: str) -> None:
         print(f"Copied {start + len(batch)}/{len(rows)}", flush=True)
 
 
-if __name__ == "__main__":
-    target = os.getenv("CLOUD_DATABASE_URL", "")
-    if not target:
-        sys.exit("Add CLOUD_DATABASE_URL to your .env file first.")
+def get_target_uri() -> str:
+    """Use CLOUD_DATABASE_URL if it's set. Otherwise ask, keeping the answer hidden."""
+    uri = os.getenv("CLOUD_DATABASE_URL", "").strip()
+    if not uri:
+        if not sys.stdin.isatty():
+            sys.exit("Set CLOUD_DATABASE_URL, or run this in a terminal to paste it.")
+        uri = getpass.getpass("Paste your Neon connection string (it stays hidden), then press Enter: ").strip()
+    if not uri.startswith(("postgresql://", "postgres://")):
+        sys.exit("That isn't a connection string. It should start with postgresql://")
+    return uri
 
+
+if __name__ == "__main__":
+    target = get_target_uri()
     chunks = read_local_chunks()
     if not chunks:
         sys.exit("No local chunks found. Run: python -m pipeline.embed_and_store")

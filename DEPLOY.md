@@ -21,14 +21,11 @@ flowchart LR
    ```
    postgresql://user:password@ep-example-123456.region.aws.neon.tech/neondb?sslmode=require
    ```
-3. Add it to your local `.env` file on a new line, then save:
-   ```
-   CLOUD_DATABASE_URL=paste_your_connection_string_here
-   ```
-4. Copy your indexed chunks to Neon. This uses none of your Gemini quota, and it's safe to run again:
+3. Copy your indexed chunks to Neon. This uses none of your Gemini quota, and it's safe to run again:
    ```bash
    venv\Scripts\python -m pipeline.copy_to_cloud
    ```
+   When asked, paste the connection string and press Enter. It stays hidden and isn't saved.
    You should see `Done: the hosted database has all 539 chunks.`
 
 ## Step 2: Deploy the API on Render
@@ -80,8 +77,8 @@ flowchart LR
 
 | What you see | Likely cause | What to do |
 |---|---|---|
-| `Add CLOUD_DATABASE_URL to your .env file first` | The line is missing or the file isn't saved | Check step 1.3 |
-| `/health` says "No policies indexed" | The chunks weren't copied, or `DATABASE_URL` points to another database | Repeat step 1.4 and compare the connection strings |
+| `That isn't a connection string` | The paste didn't work, or copied something else | Repeat step 1.3 and paste again |
+| `/health` says "No policies indexed" | The chunks weren't copied, or `DATABASE_URL` points to another database | Repeat step 1.3 and compare the connection strings |
 | `/health` says "Database unavailable" | Wrong `DATABASE_URL` | Paste it again in Render's **Environment** settings |
 | Chat says "Invalid or missing API key" | The keys on Render and Streamlit differ | Make `HELPDESK_API_KEY` identical in both |
 | Chat says "The AI service is unavailable" | Gemini quota or key problem | Check Render's logs for the request ID, and try later |

@@ -1,69 +1,238 @@
-# HR Helpdesk RAG
+<div align="center">
 
-A chatbot that answers employee questions from the 33 Rutuja Talent Nexus HR policy documents, and refuses when the answer isn't in them.
+# 💬 HR Policy Assistant
 
-> This is a starting README. The guide's Week 4 milestone asks you to rewrite it in your own words.
+**An AI helpdesk that answers employee questions from company HR policies, cites where it looked, and says so when it doesn't know.**
 
-## How it works
+![Python](https://img.shields.io/badge/Python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![LangChain](https://img.shields.io/badge/LangChain-RAG-1C3C3C?style=for-the-badge&logo=langchain&logoColor=white)
+![Gemini](https://img.shields.io/badge/Google-Gemini-4285F4?style=for-the-badge&logo=googlegemini&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?style=for-the-badge&logo=fastapi&logoColor=white)
+![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
 
-```
-Offline, once:  policies -> chunk by heading -> embed with Gemini -> store in pgvector
-Each question:  embed question -> find relevant chunks -> strict prompt -> Gemini -> answer + sources
-```
+[Features](#-features) • [How it works](#-how-it-works) • [Results](#-evaluation-results) • [Quick start](#-quick-start) • [Project structure](#-project-structure)
 
-| Stage | What it does | File |
+<br>
+
+<img src="docs/chatbot-ui.png" alt="HR Helpdesk chat screen answering a question about working from home on probation" width="850">
+
+</div>
+
+---
+
+## 🎯 The problem
+
+Employees ask HR the same questions every day: *"What is my notice period?"*, *"Can I work from home?"*, *"How do I claim insurance?"*. The answers already exist, but they're spread across dozens of policy documents.
+
+A general AI chatbot can't help on its own, because it has never seen the company's policies and may invent an answer. For HR, a made-up leave rule is worse than no answer.
+
+**This project uses RAG (Retrieval-Augmented Generation):** it finds the policy sections relevant to the question, then tells the AI model to answer only from those sections.
+
+The knowledge base is a set of 33 sample HR policy documents for a company called Rutuja Talent Nexus, covering leave, payroll, work from home, insurance, exits and more.
+
+## ✨ Features
+
+| | Feature | Details |
 |---|---|---|
-| A | Heading-based chunking with metadata | `pipeline/chunk_documents.py` |
-| B | Offline indexing, resumes if interrupted | `pipeline/embed_and_store.py` |
-| C | Retrieval: MMR, distance limit, deduplication | `app/rag/service.py` |
-| D | Strict prompt with a fixed refusal sentence | `app/rag/prompt.py` |
-| E | API: key check, rate limit, request logging | `app/main.py`, `app/security.py` |
-| F | Chat screen that calls the API | `ui/streamlit_app.py` |
-| G | Evaluation on 25 questions | `evaluation/rag_evaluation.py` |
+| 🧩 | **Smart chunking** | Splits documents by heading, so each chunk is one coherent section labelled with its full heading path |
+| 🔍 | **Careful retrieval** | Uses MMR for relevant but varied results, ignores chunks too far in meaning, and removes duplicates |
+| 🛡️ | **Grounded answers** | A strict prompt limits answers to the retrieved policy text and includes conditions and exceptions |
+| 🙅 | **Honest refusals** | Off-topic and unknown questions get a fixed reply pointing to the HR helpdesk |
+| 📚 | **Policy references** | Each answer lists the policy sections that were checked |
+| ⚡ | **Web API** | FastAPI backend with API key check, rate limiting, request IDs and a health check |
+| 🎨 | **Branded chat screen** | Welcome message, popular questions, typing animation and live online status, on desktop or phone |
+| 📊 | **Measured quality** | A 25-question evaluation with RAGAS scores, plus 35 automated tests |
+| 🔁 | **Resumable indexing** | Stays within free-tier limits and carries on where it stopped if interrupted |
 
-`mini_rag.py` is the original one-file version from Week 1.
+## 🧠 How it works
 
-## Setup
+The system has two separate parts: indexing runs once, offline, and answering runs for each question.
+
+```mermaid
+flowchart TB
+    subgraph OFF["📥 Indexing: run once"]
+        direction LR
+        A["33 policy<br>documents"] --> B["Chunk by<br>heading"] --> C["Embed with<br>Gemini"] --> D[("PostgreSQL<br>+ pgvector<br>539 chunks")]
+    end
+
+    subgraph ON["💬 Answering: every question"]
+        direction LR
+        E["Streamlit<br>chat screen"] --> F["FastAPI<br>key + rate limit"] --> G["Embed<br>question"] --> H["Retrieve<br>MMR + distance limit"] --> I{"Anything<br>relevant?"}
+        I -- Yes --> J["Strict prompt<br>+ Gemini"] --> K["Answer +<br>sections checked"]
+        I -- No --> L["Refuse and point<br>to HR helpdesk"]
+    end
+
+    D -.-> H
+```
+
+**Why the screen and the API are separate:** the chat screen contains no AI logic and only calls the API, so another interface, such as a Slack bot, could reuse the same backend.
+
+## 📊 Evaluation results
+
+Measured on the 25 hand-checked questions in [`evaluation/test_set.py`](evaluation/test_set.py): 20 with known answers and 5 the bot must refuse.
+
+| Check | Score | What it measures |
+|---|---:|---|
+| **Faithfulness** (RAGAS) | **0.995** | Whether answers stick to the retrieved text |
+| **Context recall** (RAGAS) | **1.000** | Whether retrieval found what the answer needs |
+| **Context precision** (RAGAS) | **0.930** | Whether the most useful chunks ranked highest |
+| **Expected facts in answers** | **20 / 20** | Keyword check against known correct answers |
+| **Correct refusals** | **5 / 5** | Off-topic, unknown and "ignore your rules" questions |
+| **Right policy retrieved** | **20 / 20** | Whether search found the correct document |
+
+> **How to read these scores:** this is a small test set of mostly single-fact questions, and the RAGAS scores were judged by the same Gemini model that writes the answers. They show the system works on these cases, not that it's perfect. See [Known limitations](#-known-limitations).
+
+## 🚀 Quick start
+
+**You'll need:** Python 3.13 and a free [Gemini API key](https://aistudio.google.com). Docker isn't needed, because PostgreSQL and pgvector run inside Python through `pixeltable-pgserver`.
+
+**1. Get the code and install it** (Windows commands shown)
 
 ```bash
+git clone https://github.com/Rutuja-Murkute98/hr-policy-assistant.git
+cd hr-policy-assistant
 python -m venv venv
 venv\Scripts\pip install -r requirements.txt
 ```
 
-Copy `.env.example` to `.env` and fill in your Gemini key and any long random text for `HELPDESK_API_KEY`.
+**2. Add your keys.** Copy `.env.example` to `.env`, then fill it in:
 
-PostgreSQL and pgvector run inside Python through `pixeltable-pgserver`, so Docker isn't needed. The data is kept in `pgdata/`.
+```ini
+GOOGLE_API_KEY=your_gemini_key_here
+HELPDESK_API_KEY=any_long_random_text
+```
 
-## Run it
-
-Run each command from the project folder. Indexing is only needed once.
+**3. Index the policies.** Run this once. It takes about 7 minutes because it stays within the free-tier rate limit.
 
 ```bash
 venv\Scripts\python -m pipeline.embed_and_store
 ```
 
+**4. Start the API**
+
 ```bash
 venv\Scripts\uvicorn app.main:app --port 8000
 ```
 
-In a second terminal:
+**5. Start the chat screen** in a second terminal
 
 ```bash
 venv\Scripts\streamlit run ui\streamlit_app.py
 ```
 
-The chat screen opens at http://localhost:8501, and the API's test page is at http://127.0.0.1:8000/docs.
+Open **http://localhost:8501** to chat, or **http://127.0.0.1:8000/docs** to try the API directly.
 
-## Test it
+### Try these questions
+
+| Ask | Expected result |
+|---|---|
+| How many leaves do I get in a year? | Leave entitlements from the policy |
+| Can I work from home on probation? | Not eligible, with HR's exception |
+| Does the company pay for a gym membership? | Refuses, as this isn't in the policies |
+| What is the capital of France? | Refuses, as this is off-topic |
+
+## 🔌 API
+
+| Method | Endpoint | Purpose | API key |
+|---|---|---|---|
+| `GET` | `/health` | Checks the database and counts indexed chunks | Not needed |
+| `POST` | `/ask` | Answers a question | `X-API-Key` header |
+
+```bash
+curl -X POST http://127.0.0.1:8000/ask -H "Content-Type: application/json" -H "X-API-Key: YOUR_KEY" -d "{\"question\": \"What is the notice period?\"}"
+```
+
+```json
+{
+  "answer": "...",
+  "sources": [
+    { "policy": "Resignation and Exit Policy", "section": "4. Notice Period", "file": "Resignation_and_Exit_Policy.md" }
+  ],
+  "request_id": "f89ef361787a"
+}
+```
+
+## 🧪 Testing
 
 ```bash
 venv\Scripts\python -m pytest tests -q
 ```
 
 ```bash
-venv\Scripts\python -m evaluation.rag_evaluation
+venv\Scripts\python -m evaluation.rag_evaluation --ragas
 ```
 
-## Free-tier limits
+The first command runs 35 offline tests that make no API calls. The second calls Gemini many times, so it uses your quota.
 
-Gemini's free tier allows 100 embeddings a minute and 1,000 a day per project. A full re-index uses 539, so settle chunking changes before re-indexing. After editing a policy, run the indexing script with `--rebuild`, because existing sections aren't re-embedded otherwise.
+## 📁 Project structure
+
+```text
+hr-policy-assistant/
+├── app/
+│   ├── main.py               # FastAPI: /ask, /health, request logging
+│   ├── security.py           # API key check and rate limiter
+│   ├── config.py             # All settings in one place
+│   └── rag/
+│       ├── service.py        # Retrieval and answer generation
+│       ├── prompt.py         # Strict prompt and refusal message
+│       └── store.py          # Vector database connection
+├── pipeline/
+│   ├── chunk_documents.py    # Heading-based chunking
+│   └── embed_and_store.py    # Offline, resumable indexing
+├── ui/
+│   ├── streamlit_app.py      # Chat screen
+│   └── style.css             # Branding and animations
+├── evaluation/
+│   ├── test_set.py           # 25 hand-checked questions
+│   ├── rag_evaluation.py     # Simple checks and RAGAS
+│   └── results/              # Saved answers and scores
+├── tests/unit/               # Automated tests
+├── policies/policies/        # 33 HR policy documents
+├── mini_rag.py               # The first one-file version
+└── INTERN_RAG_BUILD_GUIDE.md # The guide this project follows
+```
+
+## 🛠️ Tech stack
+
+| Layer | Technology |
+|---|---|
+| Language | Python 3.13 |
+| RAG framework | LangChain |
+| Chat model | Gemini (`gemini-3.5-flash-lite`) |
+| Embeddings | Gemini (`gemini-embedding-2`) |
+| Vector database | PostgreSQL 16 + pgvector, embedded with `pixeltable-pgserver` |
+| Backend | FastAPI + Uvicorn |
+| Frontend | Streamlit with custom CSS |
+| Evaluation | RAGAS + custom checks |
+| Testing | pytest |
+
+## ⚠️ Known limitations
+
+- **Occasional wrong refusals:** one sick-leave question was wrongly refused once in 13 tries. The cause wasn't found, so the same may happen with other questions.
+- **"Policies checked" can overstate:** it lists every section retrieved, including any the answer didn't use.
+- **Long answers:** the strict prompt asks for conditions and exceptions, which can make replies longer than needed.
+- **Distance limit:** the cut-off for ignoring irrelevant chunks was tuned on only 13 questions.
+- **Free-tier limits:** Gemini's free tier allows 100 embeddings a minute and 1,000 a day per project, and a full re-index uses 539. It may also use submitted data to improve Google's products, so don't use it with real HR documents.
+- **Not production-ready:** the rate limiter is in memory, there's one shared API key, and there's no per-user login. A real deployment would need those addressed, plus a privacy review.
+- **After editing a policy:** run the indexing script with `--rebuild`, because existing sections aren't re-embedded otherwise.
+
+## 🔮 Possible next steps
+
+- [ ] Grow the test set with harder questions, such as ones that span several policies
+- [ ] Cite only the sections an answer actually used
+- [ ] Remember earlier messages, so people can ask follow-up questions
+- [ ] Add employee login and per-user rate limits
+- [ ] Add a Slack or Microsoft Teams interface using the same API
+
+## 👩‍💻 Author
+
+**Rutuja Sudam Murkute** · [@Rutuja-Murkute98](https://github.com/Rutuja-Murkute98)
+
+<div align="center">
+
+<br>
+
+⭐ *If you find this project useful, please give it a star!*
+
+</div>

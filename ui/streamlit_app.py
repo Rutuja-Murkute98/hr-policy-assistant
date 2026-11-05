@@ -74,7 +74,7 @@ def ask_api(question: str) -> tuple[str, list[dict]]:
     try:
         return response.json()["detail"], []
     except (ValueError, KeyError):
-        return "Something went wrong. Please try again.", []
+        return f"Something went wrong (error {response.status_code}). Please try again.", []
 
 
 def type_out(text: str):

@@ -1,0 +1,8 @@
+# What the hosted API needs. Kept small to use less memory.
+fastapi==0.162.0
+uvicorn==0.54.0
+langchain-core==1.7.6
+langchain-google-genai==4.4.3
+langchain-postgres==0.0.19
+psycopg[binary]==3.3.8
+python-dotenv==1.2.4

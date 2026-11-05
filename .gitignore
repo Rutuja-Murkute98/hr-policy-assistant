@@ -1,5 +1,6 @@
 # Secrets: never commit your API key
 .env
+.streamlit/secrets.toml
 
 # Local database files
 pgdata/

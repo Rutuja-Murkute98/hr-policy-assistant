@@ -1,0 +1,19 @@
+# Sets up the API on Render. The chat screen goes on Streamlit Community Cloud,
+# and the database on Neon. See DEPLOY.md.
+services:
+  - type: web
+    name: hr-policy-assistant-api
+    runtime: python
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /live
+    autoDeployTrigger: commit
+    envVars:
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: HELPDESK_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false

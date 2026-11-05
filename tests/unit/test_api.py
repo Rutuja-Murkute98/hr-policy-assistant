@@ -22,8 +22,7 @@ class FakeService:
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setattr(config, "API_KEY", "test-key")
-    monkeypatch.setattr(security.rate_limit, "requests", {})
-    security.rate_limit.requests = security.defaultdict(security.deque)
+    security.rate_limit.reset()
     app.state.service = FakeService()
     app.state.count_chunks = lambda: 539
     with TestClient(app, raise_server_exceptions=False) as test_client:
@@ -71,6 +70,41 @@ def test_rate_limit_blocks_after_the_limit(client):
     response = client.post("/ask", json={"question": "How much leave?"}, headers=KEY)
     assert response.status_code == 429
     assert response.headers["Retry-After"] == "60"
+
+
+def test_each_chat_session_has_its_own_limit(client):
+    first = {**KEY, "X-Client-Id": "session-1"}
+    second = {**KEY, "X-Client-Id": "session-2"}
+    for _ in range(config.RATE_LIMIT_PER_MINUTE):
+        assert client.post("/ask", json={"question": "How much leave?"}, headers=first).status_code == 200
+    assert client.post("/ask", json={"question": "How much leave?"}, headers=first).status_code == 429
+    assert client.post("/ask", json={"question": "How much leave?"}, headers=second).status_code == 200
+
+
+def test_total_limit_applies_across_all_sessions(client):
+    for number in range(config.RATE_LIMIT_TOTAL_PER_MINUTE):
+        headers = {**KEY, "X-Client-Id": f"session-{number}"}
+        assert client.post("/ask", json={"question": "How much leave?"}, headers=headers).status_code == 200
+    headers = {**KEY, "X-Client-Id": "one-more"}
+    response = client.post("/ask", json={"question": "How much leave?"}, headers=headers)
+    assert response.status_code == 429
+    assert "busy" in response.text
+
+
+def test_rejected_key_does_not_use_up_the_limit(client):
+    bad = {"X-API-Key": "wrong", "X-Client-Id": "session-1"}
+    for _ in range(config.RATE_LIMIT_PER_MINUTE + 1):
+        assert client.post("/ask", json={"question": "How much leave?"}, headers=bad).status_code == 401
+    good = {**KEY, "X-Client-Id": "session-1"}
+    assert client.post("/ask", json={"question": "How much leave?"}, headers=good).status_code == 200
+
+
+def test_live_needs_no_database(client):
+    def database_must_not_be_used():
+        raise AssertionError("/live used the database")
+
+    app.state.count_chunks = database_must_not_be_used
+    assert client.get("/live").json() == {"status": "ok"}
 
 
 def test_gemini_failure_gives_a_clean_error(client):

@@ -1,14 +1,10 @@
+# Everything for running, indexing and testing on your own PC
+-r requirements-api.txt
+-r ui/requirements.txt
 langchain
-langchain-google-genai
-langchain-postgres
 langchain-community
 langchain-text-splitters
 pixeltable-pgserver
-python-dotenv
-fastapi
-uvicorn
-streamlit
-requests
 ragas
 pytest
 httpx

@@ -11,7 +11,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-API-009688?style=for-the-badge&logo=fastapi&logoColor=white)
 ![Streamlit](https://img.shields.io/badge/Streamlit-UI-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)
 
-[Features](#-features) • [How it works](#-how-it-works) • [Results](#-evaluation-results) • [Quick start](#-quick-start) • [Project structure](#-project-structure)
+[Features](#-features) • [How it works](#-how-it-works) • [Results](#-evaluation-results) • [Quick start](#-quick-start) • [Deploy](#-deploy-it-online) • [Project structure](#-project-structure)
 
 <br>
 
@@ -42,7 +42,7 @@ The knowledge base is a set of 33 sample HR policy documents for a company calle
 | 📚 | **Policy references** | Each answer lists the policy sections that were checked |
 | ⚡ | **Web API** | FastAPI backend with API key check, rate limiting, request IDs and a health check |
 | 🎨 | **Branded chat screen** | Welcome message, popular questions, typing animation and live online status, on desktop or phone |
-| 📊 | **Measured quality** | A 25-question evaluation with RAGAS scores, plus 35 automated tests |
+| 📊 | **Measured quality** | A 25-question evaluation with RAGAS scores, plus 43 automated tests |
 | 🔁 | **Resumable indexing** | Stays within free-tier limits and carries on where it stopped if interrupted |
 
 ## 🧠 How it works
@@ -132,10 +132,21 @@ Open **http://localhost:8501** to chat, or **http://127.0.0.1:8000/docs** to try
 | Does the company pay for a gym membership? | Refuses, as this isn't in the policies |
 | What is the capital of France? | Refuses, as this is off-topic |
 
+## ☁️ Deploy it online
+
+The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) has the step-by-step guide.
+
+| Part | Service |
+|---|---|
+| Chat screen | Streamlit Community Cloud |
+| API | Render |
+| Database | Neon (PostgreSQL + pgvector) |
+
 ## 🔌 API
 
 | Method | Endpoint | Purpose | API key |
 |---|---|---|---|
+| `GET` | `/live` | Checks that the server is running | Not needed |
 | `GET` | `/health` | Checks the database and counts indexed chunks | Not needed |
 | `POST` | `/ask` | Answers a question | `X-API-Key` header |
 
@@ -163,7 +174,7 @@ venv\Scripts\python -m pytest tests -q
 venv\Scripts\python -m evaluation.rag_evaluation --ragas
 ```
 
-The first command runs 35 offline tests that make no API calls. The second calls Gemini many times, so it uses your quota.
+The first command runs 43 offline tests that make no API calls. The second calls Gemini many times, so it uses your quota.
 
 ## 📁 Project structure
 
@@ -179,7 +190,8 @@ hr-policy-assistant/
 │       └── store.py          # Vector database connection
 ├── pipeline/
 │   ├── chunk_documents.py    # Heading-based chunking
-│   └── embed_and_store.py    # Offline, resumable indexing
+│   ├── embed_and_store.py    # Offline, resumable indexing
+│   └── copy_to_cloud.py      # Copy chunks to a hosted database
 ├── ui/
 │   ├── streamlit_app.py      # Chat screen
 │   └── style.css             # Branding and animations
@@ -189,6 +201,8 @@ hr-policy-assistant/
 │   └── results/              # Saved answers and scores
 ├── tests/unit/               # Automated tests
 ├── policies/policies/        # 33 HR policy documents
+├── render.yaml               # API settings for Render
+├── DEPLOY.md                 # Step-by-step deploy guide
 ├── mini_rag.py               # The first one-file version
 └── INTERN_RAG_BUILD_GUIDE.md # The guide this project follows
 ```
@@ -201,7 +215,7 @@ hr-policy-assistant/
 | RAG framework | LangChain |
 | Chat model | Gemini (`gemini-3.5-flash-lite`) |
 | Embeddings | Gemini (`gemini-embedding-2`) |
-| Vector database | PostgreSQL 16 + pgvector, embedded with `pixeltable-pgserver` |
+| Vector database | PostgreSQL + pgvector: embedded with `pixeltable-pgserver` on your PC, Neon when hosted |
 | Backend | FastAPI + Uvicorn |
 | Frontend | Streamlit with custom CSS |
 | Evaluation | RAGAS + custom checks |

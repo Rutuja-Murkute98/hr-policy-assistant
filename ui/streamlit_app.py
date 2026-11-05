@@ -6,6 +6,7 @@ Run from the project folder (with the API running):
 import os
 import re
 import time
+import uuid
 from pathlib import Path
 
 import requests
@@ -14,8 +15,20 @@ from dotenv import load_dotenv
 
 UI_DIR = Path(__file__).resolve().parent
 load_dotenv(UI_DIR.parent / ".env")
-API_URL = os.getenv("HELPDESK_API_URL", "http://127.0.0.1:8000")
-API_KEY = os.getenv("HELPDESK_API_KEY", "")
+
+
+def setting(name: str, default: str = "") -> str:
+    """Read a setting from Streamlit Cloud's secrets, or else from .env."""
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name])
+    except Exception:  # no secrets file, as when running on your own PC
+        pass
+    return os.getenv(name, default)
+
+
+API_URL = setting("HELPDESK_API_URL", "http://127.0.0.1:8000").rstrip("/")
+API_KEY = setting("HELPDESK_API_KEY")
 
 COMPANY = "Rutuja Talent Nexus"
 WELCOME = (
@@ -35,9 +48,9 @@ TYPING_DOTS = '<div class="typing" role="status" aria-label="Typing"><span></spa
 
 @st.cache_data(ttl=30, show_spinner=False)
 def api_is_online() -> bool:
-    """Check the API's health at most once every 30 seconds."""
+    """Check the API at most once every 30 seconds. A sleeping API wakes up from this."""
     try:
-        return requests.get(f"{API_URL}/health", timeout=3).ok
+        return requests.get(f"{API_URL}/health", timeout=2).ok
     except requests.RequestException:
         return False
 
@@ -45,11 +58,15 @@ def api_is_online() -> bool:
 def ask_api(question: str) -> tuple[str, list[dict]]:
     """Return (answer, sources), or a friendly message if the API call fails."""
     try:
-        response = requests.post(f"{API_URL}/ask", json={"question": question},
-                                 headers={"X-API-Key": API_KEY}, timeout=90)
+        response = requests.post(
+            f"{API_URL}/ask", json={"question": question},
+            headers={"X-API-Key": API_KEY, "X-Client-Id": st.session_state.client_id},
+            timeout=150,  # long enough for a free hosted API and database to wake up
+        )
     except requests.RequestException:
-        return "I can't reach the helpdesk right now. Please try again in a moment.", []
+        return "The helpdesk is waking up or unavailable. Please try again in a minute.", []
     if response.ok:
+        api_is_online.clear()
         data = response.json()
         return data["answer"], data["sources"]
     if response.status_code == 422:
@@ -94,7 +111,7 @@ st.markdown(
         <div class="brand-product">HR Helpdesk Assistant</div>
       </div>
       <div class="brand-status {'online' if online else ''}">
-        <span class="status-dot"></span>{'Online' if online else 'Offline'}
+        <span class="status-dot"></span>{'Online' if online else 'Connecting'}
       </div>
     </div>""",
     unsafe_allow_html=True,
@@ -102,6 +119,8 @@ st.markdown(
 
 if "messages" not in st.session_state:
     start_new_chat()
+if "client_id" not in st.session_state:
+    st.session_state.client_id = uuid.uuid4().hex  # gives each chat its own rate limit
 
 # A question comes from the box or from a suggested-question button
 question = st.chat_input("Ask about leave, payroll, work from home...", max_chars=500)
@@ -119,7 +138,10 @@ if question:
 
     with st.chat_message("assistant", avatar=AVATARS["assistant"]):
         typing = st.empty()
-        typing.markdown(TYPING_DOTS, unsafe_allow_html=True)
+        with typing.container():
+            st.markdown(TYPING_DOTS, unsafe_allow_html=True)
+            if not online:
+                st.caption("The helpdesk is waking up. The first question can take a minute or two.")
         answer, sources = ask_api(question)
         typing.empty()
         st.write_stream(type_out(answer))

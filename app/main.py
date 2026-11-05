@@ -61,6 +61,12 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+@app.get("/live")
+def live():
+    """Say the server is running. Render checks this often, so it must not wake the database."""
+    return {"status": "ok"}
+
+
 @app.get("/health")
 def health(request: Request):
     """Check the database without using any Gemini quota."""

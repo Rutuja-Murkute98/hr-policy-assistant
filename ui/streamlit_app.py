@@ -11,13 +11,15 @@ from pathlib import Path
 import requests
 import streamlit as st
 from chat_format import error_html, link_citations, sources_html, usable_history
+from sign_in import bearer_headers, require_sign_in
 from ui_settings import api_url, demo_employees, setting, tenant
 
 UI_DIR = Path(__file__).resolve().parent
 API_URL = api_url()
 API_KEY = setting("HELPDESK_API_KEY")
 
-TENANT = tenant()
+SESSION = require_sign_in(API_URL)  # None in demo mode, where the tenant file says which company this is
+TENANT = SESSION["organisation"] if SESSION else tenant()
 COMPANY = TENANT["company_name"]
 WELCOME = (
     f"Hello! 👋 Welcome to the **{COMPANY} HR Helpdesk**.\n\n"
@@ -118,6 +120,8 @@ def read_events(lines: Iterable[str]) -> Iterator[tuple[str, dict]]:
 
 
 def api_headers() -> dict[str, str]:
+    if SESSION:  # the API works out who this is from the token, so nothing else is sent
+        return {**bearer_headers(st.user.tokens["id"]), "X-Client-Id": st.session_state.client_id}
     headers = {"X-API-Key": API_KEY, "X-Client-Id": st.session_state.client_id}
     if st.session_state.get("employee_id"):
         headers["X-User-Id"] = st.session_state.employee_id
@@ -231,7 +235,9 @@ if "messages" not in st.session_state:
 if "client_id" not in st.session_state:
     st.session_state.client_id = uuid.uuid4().hex  # gives each chat its own rate limit
 
-employees = demo_employees()
+employees = {} if SESSION else demo_employees()
+if SESSION:
+    st.button(f"Sign out ({SESSION['email']})", icon=":material/logout:", on_click=st.logout)
 if employees:
     st.selectbox("Demo employee (fake data, until real sign-in)", list(employees), format_func=employees.get,
                  key="employee_id", on_change=change_employee)

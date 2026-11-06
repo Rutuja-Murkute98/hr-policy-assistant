@@ -1,25 +1,35 @@
 """The admin screen: HR can manage policies, watch indexing and see where the bot falls short.
 
 It isn't linked from the chat screen. Open it by adding /admin to the chat screen's address.
-The admin key is typed in each session and is never stored by this app. Roles come in Phase 4.
+With sign-in, it needs an HR admin account. In demo mode, the shared admin key is typed in each
+session and is never stored by this app.
 """
 from datetime import date
 
 import requests
 import streamlit as st
+from sign_in import bearer_headers, require_sign_in
 from ui_settings import api_url, tenant
 
 API_URL = api_url()
+SESSION = require_sign_in(API_URL)  # None in demo mode
+ORGANISATION = SESSION["organisation"] if SESSION else tenant()
 TIMEOUT_SECONDS = 150  # long enough for a free hosted API and database to wake up
 FILE_TYPES = ["pdf", "docx", "txt", "html", "htm", "md", "markdown"]
 JOB_LABELS = {"queued": "Waiting", "running": "Indexing", "succeeded": "Done", "failed": "Failed"}
+
+
+def request_headers() -> dict[str, str]:
+    if SESSION:
+        return bearer_headers(st.user.tokens["id"])
+    return {"X-Admin-Key": st.session_state.get("admin_key", "")}
 
 
 def call_api(method: str, path: str, **kwargs) -> tuple[object | None, str]:
     """Return (data, ""), or (None, a message explaining what went wrong)."""
     try:
         response = requests.request(method, f"{API_URL}{path}", timeout=TIMEOUT_SECONDS,
-                                    headers={"X-Admin-Key": st.session_state.get("admin_key", "")}, **kwargs)
+                                    headers=request_headers(), **kwargs)
     except requests.RequestException:
         return None, "The helpdesk API is waking up or unavailable. Please try again in a minute."
     if response.ok:
@@ -38,11 +48,11 @@ def show_upload() -> None:
     with st.form("upload_form", clear_on_submit=True):
         upload = st.file_uploader("Policy file", type=FILE_TYPES, max_upload_size=5)
         title = st.text_input("Title (optional)", placeholder="Taken from the file if left empty")
-        categories = sorted({*tenant()["document_categories"].values(), tenant()["default_category"]})
+        categories = sorted({*ORGANISATION["document_categories"].values(), ORGANISATION["default_category"]})
         category = st.selectbox("Category (optional)", categories, index=None)
         version_label = st.text_input("Version label (optional)", placeholder="Such as 3.0")
         effective = st.date_input("Effective date (optional)", value=None, min_value=date(2000, 1, 1))
-        uploaded_by = st.text_input("Your name", max_chars=100)
+        uploaded_by = SESSION["email"] if SESSION else st.text_input("Your name", max_chars=100)
         if not st.form_submit_button("Upload", type="primary"):
             return
     if not upload or not uploaded_by.strip():
@@ -62,6 +72,10 @@ def show_upload() -> None:
         message = f"Version {result['version']} of {result['file']} is being indexed."
         if result.get("too_short"):
             message += f" These sections are too short to be searched: {', '.join(result['too_short'])}."
+        if result.get("warnings"):
+            message += (" Please check this file: some of its text looks like instructions to an AI "
+                        f"({', '.join(result['warnings'])}). The helpdesk won't follow them, but someone may "
+                        "have added them on purpose.")
         st.session_state.admin_message = message
         st.rerun()
 
@@ -141,13 +155,79 @@ def show_feedback() -> None:
         st.dataframe(summary["recent_negative"], hide_index=True, use_container_width=True)
 
 
+def show_users() -> None:
+    users, problem = call_api("GET", "/admin/users")
+    if problem:
+        st.error(problem)
+        return
+    st.dataframe(users, hide_index=True, use_container_width=True, column_order=(
+        "email", "employee_id", "display_name", "role", "active"))
+    with st.form("add_user", clear_on_submit=True):
+        email = st.text_input("Work email")
+        employee_id = st.text_input("Employee ID (optional)", help="Links this person to their HR records")
+        role = st.selectbox("Role", ["employee", "hr_admin"])
+        if st.form_submit_button("Add person", type="primary"):
+            _, problem = call_api("POST", "/admin/users", json={"email": email.strip(), "role": role,
+                                                                "employee_id": employee_id.strip() or None})
+            if problem:
+                st.error(problem)
+            else:
+                st.session_state.admin_message = f"{email.strip()} can now sign in."
+                st.rerun()
+
+
+def show_api_keys() -> None:
+    keys, problem = call_api("GET", "/admin/api-keys")
+    if problem:
+        st.error(problem)
+        return
+    st.caption("A key lets an integration, such as a Slack bot, use the helpdesk for this organisation.")
+    st.dataframe(keys, hide_index=True, use_container_width=True, column_order=(
+        "name", "key_prefix", "created_at", "last_used_at", "revoked"))
+    with st.form("add_key", clear_on_submit=True):
+        name = st.text_input("Name", placeholder="Such as Slack bot", max_chars=100)
+        if st.form_submit_button("Create key", type="primary") and name.strip():
+            created, problem = call_api("POST", "/admin/api-keys", json={"name": name.strip()})
+            if problem:
+                st.error(problem)
+            else:
+                st.code(created["key"], language=None)
+                st.warning("Copy this key now. It won't be shown again.")
+    active = {key["name"]: key["id"] for key in keys if not key["revoked"]}
+    chosen = st.selectbox("Key to revoke", list(active), index=None) if active else None
+    if chosen and st.button(f"Revoke {chosen}", key="revoke_key"):
+        _, problem = call_api("DELETE", f"/admin/api-keys/{active[chosen]}")
+        if problem:
+            st.error(problem)
+        else:
+            st.session_state.admin_message = f"{chosen} no longer works."
+            st.rerun()
+
+
+def show_audit() -> None:
+    events, problem = call_api("GET", "/admin/audit")
+    if problem:
+        st.error(problem)
+    elif not events:
+        st.caption("Nothing yet.")
+    else:
+        st.dataframe(events, hide_index=True, use_container_width=True, column_order=(
+            "created_at", "actor", "action", "target", "details"))
+
+
 st.set_page_config(page_title="HR Helpdesk admin", page_icon=":material/admin_panel_settings:")
 st.title("Policy admin")
 
-st.text_input("Admin key", type="password", key="admin_key")
-if not st.session_state.get("admin_key"):
-    st.info("Enter the admin key to manage the policies.")
-    st.stop()
+if SESSION:
+    st.button(f"Sign out ({SESSION['email']})", icon=":material/logout:", on_click=st.logout)
+    if SESSION["role"] == "employee":
+        st.error("This page is for HR admins. Please ask your HR team if you need access.")
+        st.stop()
+else:
+    st.text_input("Admin key", type="password", key="admin_key")
+    if not st.session_state.get("admin_key"):
+        st.info("Enter the admin key to manage the policies.")
+        st.stop()
 
 current, problem = call_api("GET", "/admin/documents")
 if problem:
@@ -157,8 +237,9 @@ if problem:
 if "admin_message" in st.session_state:
     st.success(st.session_state.pop("admin_message"))
 
-documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab = st.tabs(
-    [f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback"])
+documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab, users_tab, keys_tab, audit_tab = st.tabs(
+    [f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback", "People",
+     "API keys", "Audit log"])
 with documents_tab:
     show_documents(current)
 with upload_tab:
@@ -169,3 +250,9 @@ with unanswered_tab:
     show_unanswered()
 with feedback_tab:
     show_feedback()
+with users_tab:
+    show_users()
+with keys_tab:
+    show_api_keys()
+with audit_tab:
+    show_audit()

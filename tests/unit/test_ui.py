@@ -1,7 +1,10 @@
 """The chat screen, with the API deliberately unreachable. No API quota is used."""
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import requests
+import streamlit as st
 from streamlit.testing.v1 import AppTest
 
 UI_DIR = Path(__file__).resolve().parents[2] / "ui"
@@ -122,3 +125,101 @@ def test_admin_page_explains_each_problem_without_crashing():
     assert not app.exception
     assert len(app.tabs) == 0  # stops at the error, before showing tabs with no data
 
+
+
+# Sign-in
+
+class FakeResponse:
+    def __init__(self, status_code=200, body=None):
+        self.status_code, self.ok, self.body = status_code, status_code < 400, body or {}
+
+    def json(self):
+        return self.body
+
+
+SESSION = {"user_id": "E1", "email": "asha@globex.example", "role": "employee", "tenant_id": "globex",
+           "organisation": {"company_name": "Globex <b>Ltd</b>", "product_name": "Globex HR", "logo_initials": "G",
+                            "hr_email": "hr@globex.example", "legal_name": "Globex", "default_category": "general",
+                            "document_categories": {}, "id": "globex"}}
+
+
+@pytest.fixture
+def signed_in(monkeypatch):
+    """Pretend the provider has signed someone in, and the API accepts them."""
+    calls = []
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setattr(st, "user", SimpleNamespace(is_logged_in=True, tokens={"id": "a-token"}))
+
+    def post(url, headers=None, **kwargs):
+        calls.append((url, headers))
+        return FakeResponse(body=SESSION)
+
+    monkeypatch.setattr(requests, "post", post)
+    return calls
+
+
+def test_nothing_shows_until_someone_signs_in(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setattr(st, "user", SimpleNamespace(is_logged_in=False))
+    for file in (APP_FILE, ADMIN_FILE):
+        app = AppTest.from_file(file, default_timeout=30).run()
+        assert not app.exception
+        assert [button.label for button in app.button] == ["Sign in"]
+        assert not app.chat_input
+        assert not app.text_input
+
+
+def test_a_signed_in_person_gets_their_own_company_and_no_employee_picker(signed_in):
+    app = AppTest.from_file(APP_FILE, default_timeout=30)
+    app.secrets["HELPDESK_API_URL"] = "http://127.0.0.1:9"
+    app.run()
+    assert not app.exception
+    assert "Globex &lt;b&gt;Ltd&lt;/b&gt;" in page_text(app)  # an organisation's details can't add HTML to the page
+    assert "Rutuja Talent Nexus" not in page_text(app)
+    assert not app.selectbox
+    assert "Sign out (asha@globex.example)" in [button.label for button in app.button]
+    assert signed_in[0] == ("http://127.0.0.1:9/auth/session", {"Authorization": "Bearer a-token"})
+
+
+def test_the_sign_in_is_only_recorded_once(signed_in):
+    app = AppTest.from_file(APP_FILE, default_timeout=30)
+    app.secrets["HELPDESK_API_URL"] = "http://127.0.0.1:9"
+    app.run()
+    first = len([call for call in signed_in if call[0].endswith("/auth/session")])
+    app.run()
+    assert first == 1
+    assert len([call for call in signed_in if call[0].endswith("/auth/session")]) == 1
+
+
+def test_a_refused_account_sees_why_and_can_sign_out(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "oidc")
+    monkeypatch.setattr(st, "user", SimpleNamespace(is_logged_in=True, tokens={"id": "a-token"}))
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: FakeResponse(401, {"detail": "This account isn't set up"}))
+    app = AppTest.from_file(APP_FILE, default_timeout=30).run()
+    assert "This account isn't set up" in app.error[0].value
+    assert [button.label for button in app.button] == ["Sign out"]
+    assert not app.chat_input
+
+
+def test_an_employee_cannot_open_the_admin_screen(signed_in):
+    app = AppTest.from_file(ADMIN_FILE, default_timeout=30).run()
+    assert not app.exception
+    assert "This page is for HR admins" in app.error[0].value
+    assert not app.tabs
+
+
+def test_an_hr_admin_does_not_need_the_shared_key(signed_in, monkeypatch):
+    SESSION_FOR_ADMIN = {**SESSION, "role": "hr_admin"}
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: FakeResponse(body=SESSION_FOR_ADMIN))
+    seen = []
+
+    def request(method, url, headers=None, **kwargs):
+        seen.append(headers)
+        return FakeResponse(body={"thumbs_up": 0, "thumbs_down": 0, "recent_negative": []} if "feedback" in url else [])
+
+    monkeypatch.setattr(requests, "request", request)
+    app = AppTest.from_file(ADMIN_FILE, default_timeout=30).run()
+    assert not app.exception
+    assert not [box for box in app.text_input if box.label == "Admin key"]
+    assert [tab.label for tab in app.tabs][-3:] == ["People", "API keys", "Audit log"]
+    assert all(headers == {"Authorization": "Bearer a-token"} for headers in seen)

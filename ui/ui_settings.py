@@ -29,7 +29,7 @@ def tenant() -> dict:
 
 
 def demo_employees() -> dict[str, str]:
-    """List the mock HR system's fake employees, by id. Real sign-in replaces this in Phase 4."""
+    """List the mock HR system's fake employees, by id, for demo mode. With sign-in, this isn't used."""
     path = PROJECT_ROOT / "config" / "mock_hrms.json"
     if not path.exists():
         return {}

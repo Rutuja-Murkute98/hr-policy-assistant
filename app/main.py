@@ -95,6 +95,7 @@ class Source(BaseModel):
     file: str
     chunk_id: str
     text: str = ""  # the policy wording this citation points to
+    superseded: bool = False  # from an old version of the policy
 
 
 class AskResponse(BaseModel):

@@ -62,7 +62,8 @@ def check_citations(result: StructuredAnswer, chunks: list[Document]) -> tuple[s
                    "section": valid[label].metadata["section"], "file": valid[label].metadata["source"],
                    "chunk_id": valid[label].id or valid[label].metadata.get("chunk_id", ""),
                    # The policy wording itself, without the heading path on the chunk's first line
-                   "text": valid[label].page_content.partition("\n\n")[2].strip()}
+                   "text": valid[label].page_content.partition("\n\n")[2].strip(),
+                   "superseded": valid[label].metadata.get("is_current") == "false"}
                   for label in usable]
 
 

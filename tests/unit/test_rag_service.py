@@ -119,7 +119,7 @@ def test_answer_cites_only_the_chunks_it_used():
     result = RagService(FakeStore([(first, 0.2), (second, 0.3)]), FakeLLM()).ask("Leave?")
     assert result.answer == "18 days [1]."
     assert result.sources == [{"ref": 1, "policy": "Leave Policy", "section": "4.1. Earned Leave",
-                               "file": "Leave_Policy.md", "chunk_id": first.id,
+                               "file": "Leave_Policy.md", "chunk_id": first.id, "superseded": False,
                                "text": first.page_content.partition("\n\n")[2].strip()}]
     assert result.sources[0]["text"].startswith("Confirmed employees")
     assert result.chunks == [first, second]

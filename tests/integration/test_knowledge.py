@@ -124,6 +124,11 @@ def test_upload_returns_a_job_and_indexes_the_policy(setup):
     assert (setup.folder / "Leave_Policy.md").exists()
 
 
+def test_upload_warns_about_sections_too_short_to_search(setup):
+    short = b"# Short\n\n## 1. Tiny\n\nToo little to search.\n\n## 2. Fine\n\n" + b"Long enough to be searched. " * 6
+    assert upload(setup, short, "Short.md").json()["too_short"] == ["1. Tiny"]
+
+
 def test_upload_details_reach_the_chunks_and_the_version_list(setup):
     upload(setup, title="Time Off", category="leave", version_label="9.9", effective_date="2027-01-15")
     chunk = next(iter(setup.index.stored_chunks().values()))

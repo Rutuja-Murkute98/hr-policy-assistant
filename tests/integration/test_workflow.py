@@ -425,10 +425,18 @@ def test_tool_arguments_cant_name_another_employee(shared):
     assert "132,600" not in result.answer
 
 
-def test_payslip_figures_come_from_the_tool_not_the_model(shared):
+def test_a_figure_from_the_model_is_never_shown_as_a_record(shared):
     llm = ScriptedLLM(intent="personal_data_request", tool_text="Your net pay is Rs. 999,999.")
-    result = make(shared, llm).ask("Show my payslip", user_id="E1001")
-    assert "999,999" not in result.answer  # only a clarifying question is passed through
+    result = make(shared, llm).ask("How many earned leave days do confirmed employees get?", user_id="E1001")
+    assert "999,999" not in result.answer
+
+
+def test_a_question_no_tool_fits_goes_to_the_policy_search(shared):
+    llm = ScriptedLLM(intent="personal_data_request", tool_text="Which details do you want?")
+    result = make(shared, llm).ask("How many earned leave days do confirmed employees get?", user_id="E1001")
+    assert result.intent == "policy_question"
+    assert result.answer == "Eighteen days [1]."
+    assert result.sources
 
 
 def test_a_clarifying_question_is_passed_on(shared):

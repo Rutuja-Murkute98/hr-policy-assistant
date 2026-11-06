@@ -3,7 +3,7 @@
     understand -> greet | needs_identity
     understand -> confirm_out_of_scope -> refuse | retrieve
     understand -> retrieve -> (weak evidence? rewrite -> retrieve, once) -> generate | abstain
-    understand -> select_tool -> clarify | execute_tool
+    understand -> select_tool -> clarify | execute_tool | retrieve (no tool fits a question)
                   select_tool -> prepare_approval -> wait_for_approval -> execute_tool
 """
 import logging
@@ -194,6 +194,9 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         reply = llm.bind_tools(known_tools).invoke(
             build_tool_messages(state["question"], state.get("summary", ""), state.get("history", []), today))
         calls = getattr(reply, "tool_calls", None) or []
+        if not calls and state["intent"] != "action_request":
+            # No tool fits a question about the employee, so it may really be about the rules
+            return {"tool": "", "intent": "policy_question"}
         if not calls:
             # Only a question is passed on, so the model can't state a figure of its own
             text = reply.text.strip()
@@ -201,13 +204,13 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         spec = TOOLS.get(calls[0]["name"])
         if spec and spec.changes_records and state["intent"] != "action_request":
             # Asking for information must never change anything, whatever tool the model picks
-            return {"tool": "", "answer": CLARIFY_ANSWER}
+            return {"tool": "", "intent": "policy_question"}
         return {"tool": calls[0]["name"], "tool_args": calls[0]["args"] or {}}
 
     def route_tool(state: WorkflowState) -> str:
         tool = state.get("tool")
         if not tool:
-            return "clarify"
+            return "clarify" if state["intent"] == "action_request" else "retrieve"
         spec = TOOLS.get(tool)
         return "prepare_approval" if spec and spec.requires_approval else "execute_tool"
 
@@ -259,7 +262,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
     graph.add_conditional_edges("confirm_out_of_scope", route_out_of_scope, ["refuse", "retrieve"])
     graph.add_conditional_edges("retrieve", grade_evidence, ["rewrite_query", "generate", "abstain"])
     graph.add_edge("rewrite_query", "retrieve")
-    graph.add_conditional_edges("select_tool", route_tool, ["clarify", "prepare_approval", "execute_tool"])
+    graph.add_conditional_edges("select_tool", route_tool, ["clarify", "retrieve", "prepare_approval", "execute_tool"])
     graph.add_conditional_edges("prepare_approval", route_after_prepare, ["wait_for_approval", END])
     graph.add_conditional_edges("wait_for_approval", route_after_approval, ["execute_tool", "declined"])
     for last in ("greet", "refuse", "needs_identity", "abstain", "generate", "clarify", "declined", "execute_tool"):

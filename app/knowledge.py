@@ -17,6 +17,7 @@ from langchain_core.documents import Document
 from sqlalchemy import Engine, text
 
 from app import config
+from app.rag.retrieval import body_of
 from pipeline.chunk_documents import chunk_text
 from pipeline.embed_and_store import SyncPlan, content_hash, plan_sync, run_sync
 from pipeline.extract import extract_document
@@ -174,7 +175,9 @@ class KnowledgeBase:
                 "INSERT INTO indexing_jobs (id, tenant_id, collection_name, source_file, version_id, status, created_by) "
                 "VALUES (:id, :tenant_id, :collection, :file, :version_id, 'queued', :by)"
             ), {**self._scope, "id": job_id, "file": source_file, "version_id": version_id, "by": details.uploaded_by})
-        return {"file": source_file, "status": "queued", "job_id": job_id, "version": number}
+        # Search skips very short sections as lead-ins, so say so rather than let them vanish quietly
+        too_short = [c.metadata["section"] for c in chunks if len(body_of(c)) < config.MIN_BODY_CHARS]
+        return {"file": source_file, "status": "queued", "job_id": job_id, "version": number, "too_short": too_short}
 
     @staticmethod
     def _version_hash(content: str, metadata: dict) -> str:

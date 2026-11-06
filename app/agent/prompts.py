@@ -45,6 +45,7 @@ Examples:
 "How much professional tax is deducted in February?" is a policy_question: it doesn't ask about their own record.
 "Who is the CEO?" is a policy_question: it's about the company.
 "What does the ICC do?" is a policy_question: abbreviations may be HR terms.
+"When is my salary credited?" and "When do I get paid?" are policy_questions: they ask about the schedule.
 "How many earned leaves do I have left?" is a personal_data_request.
 "Show my payslip" is a personal_data_request.
 "Apply for sick leave tomorrow" is an action_request.

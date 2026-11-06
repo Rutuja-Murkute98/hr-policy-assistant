@@ -59,7 +59,10 @@ def show_upload() -> None:
     elif result["status"] == "unchanged":
         st.info(f"{result['file']} hasn't changed, so nothing was indexed.")
     else:
-        st.session_state.admin_message = f"Version {result['version']} of {result['file']} is being indexed."
+        message = f"Version {result['version']} of {result['file']} is being indexed."
+        if result.get("too_short"):
+            message += f" These sections are too short to be searched: {', '.join(result['too_short'])}."
+        st.session_state.admin_message = message
         st.rerun()
 
 

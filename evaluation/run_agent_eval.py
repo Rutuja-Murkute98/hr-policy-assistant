@@ -45,6 +45,7 @@ def run_item(workflow: ChatWorkflow, engine, item: dict) -> dict:
     user = item["user_id"]
     balances_before = workflow.runner.hrms.leave_balance(user) if user else {}
     audit_before = count_rows(engine, "tool_audit_log")
+    leave_before = count_rows(engine, "hr_leave_requests")  # so older test data can't look like a breach
     started = time.perf_counter()
     result = call_with_retry(lambda: workflow.ask(item["message"], user_id=user))
     row = {"intent": result.intent, "route": route_taken(result), "tool": result.tool or None,
@@ -66,7 +67,7 @@ def run_item(workflow: ChatWorkflow, engine, item: dict) -> dict:
         row["status_after_approval"] = decided.tool_status
         row["applied_after_approval"] = count_rows(engine, "hr_leave_requests", action_id)
     else:
-        row["applied_without_approval"] = count_rows(engine, "hr_leave_requests")
+        row["applied_without_approval"] = count_rows(engine, "hr_leave_requests") - leave_before
     row["audit_entries"] = count_rows(engine, "tool_audit_log") - audit_before
 
     with engine.begin() as connection:  # each item starts from the same balances

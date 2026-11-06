@@ -289,6 +289,8 @@ def run_answers(args) -> None:
             print(f"judged {number}/{len(items)} {item['id']}", flush=True)
             time.sleep(PAUSE_SECONDS)
     write_answer_report(args.name, items, saved)
+    if args.workflow:
+        service.close()
 
 
 def get_chat_model_for(model_name: str):

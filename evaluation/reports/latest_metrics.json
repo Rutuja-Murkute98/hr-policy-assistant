@@ -1,0 +1,19 @@
+{
+ "fingerprint": "3cadc04a27c2ae97186b8bb53fba48771d9d5ceea4445f25a47948761ec3ccd6",
+ "metrics": {
+  "recall_at_5": 0.947,
+  "facts_correct": 0.966,
+  "facts_checked": 87,
+  "refused_when_it_should": 0.962,
+  "refusal_checked": 26,
+  "false_refusals": 0.01,
+  "citations_valid": 1.0,
+  "citations_on_target": 0.969,
+  "citations_checked": 96,
+  "seconds_p50": 5.21,
+  "seconds_p95": 19.52,
+  "judge_faithful": 1.0,
+  "judge_correct": 1.0,
+  "judged": 97
+ }
+}

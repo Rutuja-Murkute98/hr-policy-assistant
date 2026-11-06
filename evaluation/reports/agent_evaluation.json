@@ -13,8 +13,8 @@
  "approval_compliance": 1.0,
  "approval_actions": 9,
  "leave_argument_accuracy": 1.0,
- "median_seconds": 2.58,
- "mean_seconds": 3.0,
+ "median_seconds": 3.34,
+ "mean_seconds": 3.68,
  "failures": {
   "intent": [],
   "route": [],

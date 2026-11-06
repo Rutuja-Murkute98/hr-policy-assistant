@@ -10,7 +10,7 @@ A feature is only marked as implemented after checking the code and running it.
 | Audit | Baseline, findings, these documents | Done |
 | 1 | Foundation, advanced retrieval, evaluation upgrade | Built, waiting for owner review of the golden set |
 | 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Built, waiting for owner review |
-| 3 | Document management, admin page, model settings, UI improvements | Waiting for approval |
+| 3 | Document management, admin page, model settings, UI improvements | Built, waiting for owner review |
 | 4 | Multi-tenancy, login, Row-Level Security, security hardening | Waiting for approval |
 | 5 | Observability, load test, deployment guides, backups | Waiting for approval |
 | 6 | Optional advanced features | Only after Phases 1 to 5 |
@@ -64,6 +64,34 @@ A feature is only marked as implemented after checking the code and running it.
 | Agent evaluation | Implemented and tested | Draft labels, 100% on a small test |
 | Real sign-in | Planned | Phase 4. Until then, anyone with the API key can name any user, so this must stay on fake data |
 
+## Phase 3 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Upload PDF, DOCX, TXT, Markdown, HTML through the API | Implemented and tested | PDF and DOCX uploaded for real, others in tests |
+| Upload through the admin screen | Implemented, not tested | The form opens, but a browser tool can't drive the file picker. The API route it calls was tested for real |
+| Validate file type and size | Implemented and tested | Includes fake files and a DOCX that unpacks to something huge |
+| Extract text, headings and tables | Implemented and tested | PDF headings are guessed, and PDF tables come out as plain lines |
+| OCR | Planned | Scanned PDFs are refused with a clear message. Off by design because of memory |
+| Title, category, version, effective date, uploaded by | Implemented and tested | "Uploaded by" is typed in until roles arrive in Phase 4 |
+| Only re-embed changed chunks | Implemented and tested | Measured live: 1 of 2 sections |
+| Respect the embedding rate limit | Implemented and tested | Batches and waits, tested with fakes |
+| Resume after failure | Implemented and tested | Fake embeddings failing mid-job, not a real quota failure |
+| Versions, keeping old ones | Implemented and tested | Real PostgreSQL |
+| Answer "what was the policy before?" | Implemented and tested | Real model, on one made-up policy |
+| Duplicate detection by content hash | Implemented and tested | Live and in tests |
+| Job status in a table, shown on the admin page | Implemented and tested | The table of jobs on the admin page was only seen empty |
+| Admin page: documents, versions, jobs, retry, unanswered, feedback | Partial | Tabs opened in a browser. The retry and remove buttons weren't clicked |
+| Admin role only | Partial | One shared admin key until Phase 4 |
+| Chat, embedding and rerank providers by setting | Partial | Only Gemini and FlashRank have run live |
+| Temperature, max tokens, timeouts and retries | Implemented, not tested | Mapped per provider with fakes. Not exercised live |
+| Store embedding model and dimension, refuse to mix | Implemented and tested | Real PostgreSQL |
+| Fallback provider only if enabled | Implemented, not tested | Fakes only, with no second provider set up |
+| Real streaming over SSE | Implemented and tested | Short answers arrive in few pieces |
+| Clickable citations showing the source section | Implemented and tested | Built by the UI session, with tests |
+| Thumbs up/down per answer | Partial | Shown in a browser and saved through the API, but not clicked |
+| Workflow status messages | Implemented and tested | Fixed wording, so no reasoning or prompts are shown |
+
 ## Earlier work
 
 | Feature | Status | Evidence or gap |
@@ -77,9 +105,9 @@ A feature is only marked as implemented after checking the code and running it.
 
 ## Success targets
 
-See [the Phase 2 report](../evaluation/reports/phase2_report.md). In short: recall and citations meet their targets on draft labels, while refusals are at 88.5% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
+See [the Phase 3 report](../evaluation/reports/phase3_report.md). In short: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
 
-**The CI quality gate currently fails** on refusals, at 0.885 against a floor of 0.90. Its floor hasn't been lowered, and two of the three failures look like wrong labels awaiting review.
+**The CI quality gate passes locally**, but partly because one likely wrong label now counts in its favour, so the owner's review may change that.
 
 ## What the owner must set up or decide
 

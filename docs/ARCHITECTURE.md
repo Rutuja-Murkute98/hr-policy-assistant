@@ -135,4 +135,20 @@ flowchart TB
 
 The server decides who the employee is, not the model, and a request for information can never use a tool that changes records. A finished run leaves no checkpoint, so chats live only in the conversation tables.
 
-Later phases add richer document management (Phase 3), organisations, login and Row-Level Security (Phase 4), and observability (Phase 5).
+## Phase 3 document flow
+
+```mermaid
+flowchart LR
+    F["PDF, DOCX, TXT,<br>HTML or Markdown"] --> E["Validate and<br>extract to Markdown"]
+    E --> D{"Same text<br>elsewhere?"}
+    D -->|yes| R["Refuse"]
+    D -->|no| V["New pending version<br>+ indexing job"]
+    V --> A["Keep changed chunks<br>as superseded copies"]
+    A --> B["Embed only what changed,<br>in rate-limited batches"]
+    B -->|failure| J["Job failed: retry<br>carries on"]
+    B -->|success| C["Version becomes current"]
+```
+
+Normal searches only see current chunks. A question about the past also searches superseded copies, and each is marked as old in the prompt.
+
+Later phases add organisations, login and Row-Level Security (Phase 4), and observability (Phase 5).

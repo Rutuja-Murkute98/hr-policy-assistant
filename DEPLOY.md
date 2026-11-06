@@ -93,12 +93,14 @@ Each policy question now uses two model calls, or three if the search is weak, s
 
 ## Optional: the policy admin screen
 
-The admin screen lets HR add, replace or remove policies. It's off until you set a key.
+The admin screen lets HR upload policies as PDF, DOCX, TXT, HTML or Markdown, see versions and indexing jobs, retry failures, and read the unanswered-question and feedback reports. It's off until you set a key.
 
 1. In Render's **Environment** settings, add `HELPDESK_ADMIN_KEY` with a long random value that's different from your other keys. If you're creating the service for the first time, Render asks for it in step 2.
 2. Open your chat screen's address with `/admin` on the end, and enter that key. It isn't linked from the chat screen.
 
 Uploads stay in the database, so they survive restarts. The next `python -m pipeline.embed_and_store` run against that database keeps any policy with no local file and tells you about it. Use `--prune` only if you want those removed.
+
+**Render's free tier sleeps and restarts,** which stops any running indexing job. The job is marked as failed when the API starts again, and **Retry** on the admin screen carries on from what's already stored. Large uploads may need a retry, because waiting for the rate limit can take minutes.
 
 ## Optional: the Slack bot
 

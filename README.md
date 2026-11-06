@@ -44,11 +44,12 @@ The knowledge base is a set of 33 sample HR policy documents for a company calle
 | 🧭 | **Agent workflow** | A LangGraph workflow sorts each message and sends it to the policy search, a tool or a polite refusal, and retries a weak search once |
 | 🧾 | **HR self-service** | Check leave balance and payslip, apply for leave with human approval, and raise tickets, on a mock HR system with fake employees. Every tool call is logged |
 | ⚡ | **Web API** | FastAPI backend with streaming answers, API key check, rate limiting, request IDs and a health check |
-| 🗂️ | **Policy admin screen** | HR can add, replace or remove a policy, and only the sections that changed use embedding quota |
+| 🗂️ | **Knowledge management** | HR can upload PDF, DOCX, TXT, HTML or Markdown. Old versions are kept and can be asked about, duplicates are refused, and indexing runs as jobs that can be watched and retried. Only changed sections use embedding quota |
+| 📈 | **Admin reports** | Unanswered questions and thumbs up/down show where the bot and policies fall short |
 | 🔀 | **Swappable models** | Choose Gemini, Claude, OpenAI or local Ollama models with settings instead of code changes |
 | 💬 | **Slack bot** | Employees can ask in Slack, using the same API as the chat screen |
 | 🎨 | **Branded chat screen** | Welcome message, popular questions, typing animation and live online status, on desktop or phone |
-| 📊 | **Measured quality** | A draft 123-question evaluation with chunk-level labels and a separate judge model, plus 314 automated tests |
+| 📊 | **Measured quality** | A draft 123-question evaluation with chunk-level labels and a separate judge model, plus 397 automated tests |
 | 🔁 | **Smart indexing** | Embeds only what changed, stays within free-tier limits and carries on where it stopped if interrupted |
 
 ## 🧠 How it works
@@ -78,20 +79,19 @@ flowchart TB
 
 Measured on 123 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels, and 58 agent questions in [`evaluation/data/agent_set.json`](evaluation/data/agent_set.json).
 
-> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what got worse and which targets aren't met, are in the [Phase 2 report](evaluation/reports/phase2_report.md).
+> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 3 report](evaluation/reports/phase3_report.md).
 
-| Check | Pipeline alone | With the workflow | What it measures |
-|---|---:|---:|---|
-| **Recall@5** | 0.947 | **0.938** | Whether search finds the labelled chunks |
-| **Expected facts in answers** | 0.966 | **0.931** | Keyword check against known answers |
-| **Correct refusals** | 0.962 | **0.885** | Off-topic, unknown and "ignore your rules" questions |
-| **Wrongly refused** | 0.010 | **0.031** | Answerable questions the bot refused |
-| **Citations valid** | 1.000 | **0.989** | Citations point to chunks that were retrieved |
-| **Judge: correct** | 1.000 | **0.969** | Judged by a different Gemini model, using only the retrieved text |
+| Check | Result | What it measures |
+|---|---:|---|
+| **Recall@5** | **0.943** | Whether search finds the labelled chunks |
+| **Expected facts in answers** | **0.943** | Keyword check against known answers |
+| **Correct refusals** | **0.962** | Off-topic, unknown and "ignore your rules" questions. One of these is a likely wrong label |
+| **Wrongly refused** | **0.031** | Answerable questions the bot refused |
+| **Citations valid** | **1.000** | Citations point to chunks that were retrieved |
+| **Judge: correct** | **0.979** | Judged by a different Gemini model, using only the retrieved text |
+| **p95 seconds per answer** | **8.08** | Still above the 6 second target |
 
-The workflow adds tools and routing, and that costs some answer quality, because a question can now go down the wrong path.
-
-**Agent test:** intent, routing, tool selection, tool success and approval compliance all scored 1.000 on 58 clear-cut questions. The six attack questions returned no other employee's data and applied no leave without approval.
+**Agent test:** intent, routing, tool selection, tool success and approval compliance all scored 1.000 on 58 clear-cut questions.
 
 ## 🚀 Quick start
 
@@ -185,9 +185,14 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `GET` | `/actions` | Lists actions waiting for approval | `X-API-Key` and `X-User-Id` headers |
 | `POST` | `/actions/{id}` | Approves or declines an action, with `{"approve": true}` | `X-API-Key` and `X-User-Id` headers |
 | `POST` | `/ask/stream` | Sends the answer as it's written, as server-sent events: `token`, then `done` or `error` | `X-API-Key` header |
+| `POST` | `/feedback` | Rates an answer | `X-API-Key` and `X-User-Id` headers |
 | `GET` | `/admin/documents` | Lists the policies in the knowledge base | `X-Admin-Key` header |
-| `POST` | `/admin/documents` | Adds or replaces a policy | `X-Admin-Key` header |
-| `DELETE` | `/admin/documents/{filename}` | Removes a policy | `X-Admin-Key` header |
+| `POST` | `/admin/documents` | Uploads a policy file, and returns an indexing job | `X-Admin-Key` header |
+| `GET` | `/admin/documents/{filename}/versions` | Lists a policy's versions | `X-Admin-Key` header |
+| `DELETE` | `/admin/documents/{filename}` | Removes a policy, keeping history unless `?purge=true` | `X-Admin-Key` header |
+| `GET` | `/admin/jobs`, `/admin/jobs/{id}` | Shows indexing jobs | `X-Admin-Key` header |
+| `POST` | `/admin/jobs/{id}/retry` | Retries a failed job | `X-Admin-Key` header |
+| `GET` | `/admin/unanswered`, `/admin/feedback` | Shows the reports | `X-Admin-Key` header |
 
 To ask a follow-up question, send up to 6 earlier messages as `history`, such as `[{"role": "user", "content": "How much leave do I get?"}, {"role": "assistant", "content": "18 days."}]`. The server keeps no chat history itself.
 
@@ -219,7 +224,7 @@ venv\Scripts\python -m pytest tests -q
 venv\Scripts\python -m evaluation.rag_evaluation --ragas
 ```
 
-The first command runs 314 tests that make no model API calls, including some on a temporary PostgreSQL. GitHub Actions is set up to run them on every push, but it hasn't run yet. The second calls Gemini many times, so it uses your quota.
+The first command runs 397 tests that make no model API calls, including some on a temporary PostgreSQL. GitHub Actions is set up to run them on every push, but it hasn't run yet. The second calls Gemini many times, so it uses your quota.
 
 ## 🔧 Settings
 
@@ -233,6 +238,8 @@ Add these to `.env` to change how it works. `.env.example` lists them all.
 | `CONVERSATION_RETENTION_DAYS` | How long an unused chat is kept. The default is 90 |
 | `SELF_SERVICE_ENABLED` | Set to `false` to turn off the self-service tools |
 | `USE_CATEGORY_ROUTING` | Set to `true` to narrow searches by topic. It's off because it lowered recall when measured |
+| `LLM_TEMPERATURE`, `LLM_MAX_TOKENS`, `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` | Chat model settings, using each provider's defaults if unset |
+| `LLM_FALLBACK_PROVIDER`, `LLM_FALLBACK_MODEL` | Another chat model to use if the main one fails. Off unless set, because it sends text to a second company |
 | `FUSION_METHOD` | `weighted` (default) or `rrf`. RRF scored lower on the test questions |
 | `ABSTENTION_MODE` | `confidence` (default) or `distance`, which uses `MAX_DISTANCE` |
 | `RERANKER` | `flashrank` adds a small local reranker, with more memory use and a model download. `cohere` uses Cohere's API and needs `COHERE_API_KEY`. Both are off by default |
@@ -246,6 +253,7 @@ hr-policy-assistant/
 ├── app/
 │   ├── main.py               # FastAPI: /ask, /ask/stream, /health, request logging
 │   ├── admin.py              # Admin endpoints for managing policies
+│   ├── knowledge.py          # Versions, indexing jobs and reports
 │   ├── workflow.py           # Runs the graph, and saves chats and approvals
 │   ├── memory.py             # Stored conversations
 │   ├── agent/                # LangGraph workflow, tools and mock HR system
@@ -259,6 +267,7 @@ hr-policy-assistant/
 │       ├── prompt.py         # Strict prompt and refusal message
 │       └── store.py          # Vector database connection
 ├── pipeline/
+│   ├── extract.py            # Reads PDF, DOCX, TXT, HTML and Markdown
 │   ├── chunk_documents.py    # Heading-based chunking
 │   ├── embed_and_store.py    # Embeds only what changed, and can resume
 │   └── copy_to_cloud.py      # Copy chunks to a hosted database

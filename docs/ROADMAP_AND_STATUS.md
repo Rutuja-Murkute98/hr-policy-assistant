@@ -8,11 +8,60 @@ A feature is only marked as implemented after checking the code and running it.
 | Phase | Scope | State |
 |---|---|---|
 | Audit | Baseline, findings, these documents | Done |
-| 1 | Foundation, advanced retrieval, evaluation upgrade | In progress |
-| 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Waiting for approval |
+| 1 | Foundation, advanced retrieval, evaluation upgrade | Built, waiting for owner review of the golden set |
+| 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Approved to start, after the owner confirms Phase 1 |
 | 3 | Document management, admin page, model settings, UI improvements | Waiting for approval |
 | 4 | Multi-tenancy, login, Row-Level Security, security hardening | Waiting for approval |
 | 5 | Observability, load test, deployment guides, backups | Waiting for approval |
 | 6 | Optional advanced features | Only after Phases 1 to 5 |
 
-The status table below is filled in as Phase 1 finishes.
+## Phase 1 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Settings checked at startup | Implemented and tested | `tests/unit/test_settings.py` |
+| Company details in a tenant file | Implemented and tested | Includes a test that no company details remain in the code |
+| Alembic migrations with `tenant_id` | Implemented and tested | Run on a real PostgreSQL in integration tests |
+| Docker Compose | Implemented, not tested | This PC has no Docker. CI will build it on the first push |
+| GitHub Actions: tests, ruff, mypy, pip-audit | Partial | All pass locally, but the workflow has never run on GitHub |
+| All dependencies pinned | Implemented and tested | Direct dependencies are pinned, and CI's install was last tried before the newest pins |
+| Linux and macOS commands | Implemented, not tested | No Linux machine was available |
+| Hybrid search | Implemented and tested | Integration tests, and measured on the golden set |
+| Reciprocal Rank Fusion | Implemented and tested | Measured worse here, so it's off by default |
+| FlashRank reranking | Implemented and tested | Measured for retrieval, not in a full answer run |
+| Cohere reranking | Implemented, not tested | Tested only with fakes, because there's no key |
+| Metadata filters: policy, category, effective date, tenant | Implemented and tested | Integration tests on real SQL |
+| Confidence-based abstention | Implemented and tested | Measured, but not stronger than a distance limit on this model. Carrying over to other models is untested |
+| Structured output | Implemented and tested | Fakes, plus live runs |
+| Inline citations checked against retrieved chunks | Implemented and tested | Live numbers still start at the excerpt's position, such as [5] |
+| Content hash per document | Implemented and tested | Includes renamed and removed sections |
+| Rewrite follow-ups | Implemented and tested | Measured on 10 follow-up questions |
+| Rewrite vague questions with no history | Planned | Moved to Phase 2's retry step |
+| Golden set of 100+ with chunk labels | Partial | 123 drafted, none approved yet |
+| Retrieval metrics | Implemented and tested | Recall, precision, MRR, NDCG and latency |
+| Answer metrics with a different judge | Implemented and tested | The judge is from the same vendor |
+| Baseline vs new report | Implemented and tested | `evaluation/reports/phase1_report.md` |
+| CI quality gate | Partial | Works locally on a clean copy, but hasn't run on GitHub |
+
+## Earlier work
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| FastAPI app, key check, rate limits, logging | Implemented and tested | Rate limits are in memory until Phase 4 |
+| Streaming answers | Implemented and tested | Short answers arrive in very few pieces |
+| Admin endpoints and screen | Partial | Endpoints tested on a real database. Upload and remove buttons not clicked in a browser |
+| Swappable providers | Partial | Only Gemini has run live |
+| Slack bot | Implemented, not tested | Tested only with fakes, because there are no Slack tokens |
+| Chat history in the request | Implemented and tested | Not stored on the server until Phase 2 |
+
+## Success targets
+
+See [the Phase 1 report](../evaluation/reports/phase1_report.md). In short: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage and memory on Render aren't assessed yet.
+
+## What the owner must set up or decide
+
+- Review the golden set in `evaluation/data/golden_set.json`, and set each item to `approved` or `rejected`.
+- Decide the five policy contradictions listed in the report.
+- Decide whether `unanswerable-009` should be corrected, since the policy appears to answer it.
+- Push the branch, so CI runs for the first time.
+- Add a Cohere key, Slack tokens or other provider keys only if those options are wanted.

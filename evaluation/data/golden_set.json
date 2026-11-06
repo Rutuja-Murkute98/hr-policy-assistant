@@ -940,7 +940,7 @@
    "must_contain": [],
    "must_refuse": true,
    "review_status": "unreviewed",
-   "notes": ""
+   "notes": "Suspected wrong label: the Code of Conduct says the dress code is casual on Fridays. Still scored as must-refuse until the owner decides."
   },
   {
    "id": "unanswerable-010",
@@ -1733,7 +1733,7 @@
    ],
    "must_refuse": false,
    "review_status": "unreviewed",
-   "notes": ""
+   "notes": "Suspected over-strict check: 'not under notice' fails on a correct answer with different wording. Owner to review."
   },
   {
    "id": "exception-009",

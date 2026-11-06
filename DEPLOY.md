@@ -14,6 +14,8 @@ flowchart LR
 
 > **Keep these secret:** your Gemini key, `HELPDESK_API_KEY` and database connection string. Only enter them in the places below, and never commit them to GitHub.
 
+Commands below are shown for Windows. On Linux or macOS, use `venv/bin/` in place of `venv\Scripts\`.
+
 ## Step 1: Create the database on Neon
 
 1. Sign up at [neon.com](https://neon.com) and create a project. Choose a region close to your users.
@@ -43,7 +45,7 @@ flowchart LR
 4. Wait for the deploy to finish, then copy the URL shown at the top of your service's page. Render may add extra characters to the name, so always copy it rather than typing it.
 5. Open that URL with `/health` on the end. If it doesn't show your chunk count, it isn't your service, so don't use it. You should see:
    ```json
-   {"status":"ok","chunks_indexed":539}
+   {"status":"ok","chunks_indexed":539,"ai":"ok"}
    ```
 
 ## Step 3: Deploy the chat screen on Streamlit Community Cloud
@@ -72,6 +74,16 @@ flowchart LR
 - **Shared quota:** every question uses your Gemini quota, so heavy use can stop answers until it resets. The API allows 10 questions a minute per chat and 30 in total, but those counts reset whenever it restarts.
 - **Sample data only:** Gemini's free tier may use submitted data to improve Google's products, so don't use real HR documents.
 - **Limits change:** check each service's current free limits when you sign up.
+
+## Updating a database from before Phase 1
+
+Run this once against the hosted database, with `DATABASE_URL` set to its connection string. It adds category, version and effective date to the stored chunks, and records each document's hash. It uses no embedding quota unless a policy has changed:
+
+```bash
+venv\Scripts\python -m pipeline.embed_and_store
+```
+
+The API creates its new table by itself when it starts.
 
 ## Optional: the policy admin screen
 

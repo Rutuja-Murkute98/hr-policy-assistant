@@ -52,7 +52,19 @@ One short entry per technology or design choice. A technology is added here befo
 
 ## D7. Search defaults
 
-Filled in from measured results. See the end of [ROADMAP_AND_STATUS.md](ROADMAP_AND_STATUS.md).
+- **Problem:** the brief's target flow uses RRF and a reranker, and later steps depend on which search settings are used.
+- **Options:** six combinations of vector, keyword, RRF, weighted fusion, MMR and FlashRank, measured in the [Phase 1 report](../evaluation/reports/phase1_report.md).
+- **Choice:** vector + keyword search, weighted fusion and MMR, with no reranker by default. RRF is a setting, and off.
+- **Reason:** this had the best recall at 0.947, against 0.902 to 0.910 for RRF. FlashRank had the best MRR at 0.920, but adds about 100 MB of memory and more search time.
+- **Trade-off:** this departs from the brief's RRF flow because of measurements on draft labels, so it should be re-checked after the golden set is reviewed.
+
+## D7a. Confidence score in place of a fixed distance limit
+
+- **Problem:** the distance limit is tied to one embedding model.
+- **Options:** keep the limit, or measure how far the best chunk stands out from all chunks for the question.
+- **Choice:** the confidence score, with a gate of 3.0. The distance limit stays as `ABSTENTION_MODE=distance`.
+- **Reason:** it's meant to carry over between embedding models, and at 3.0 it blocked no answerable question.
+- **Trade-off:** on this model it stops fewer off-topic questions before the model is called: 2 of 26, against 7 for the old limit. The model does most of the refusing, and the carry-over is untested.
 
 ## D8. Structured answers with labelled excerpts
 
@@ -81,8 +93,8 @@ Filled in from measured results. See the end of [ROADMAP_AND_STATUS.md](ROADMAP_
 
 - **Problem:** the answerer shouldn't grade itself.
 - **Options:** another provider, or another model from the same provider.
-- **Choice:** a different Gemini model by default, set by `EVAL_JUDGE_MODEL`.
-- **Reason:** only a Gemini key is available, and the free tier has to cover the run.
+- **Choice:** `gemini-3.1-flash-lite` by default, set by `EVAL_JUDGE_MODEL`. The answering model is `gemini-3.5-flash-lite`.
+- **Reason:** only a Gemini key is available, and the free tier has to cover the run. Other models were retired or allow only 20 requests a day.
 - **Trade-off:** same vendor, so errors may be less independent than with another provider.
 
 ## D12. CI quality gate reads a committed report

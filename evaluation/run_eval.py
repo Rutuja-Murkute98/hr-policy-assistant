@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -46,7 +47,7 @@ K = config.RETRIEVE_K
 PAUSE_SECONDS = 4.5   # stay under the chat model's free-tier limit
 FINGERPRINT_FILES = ["app/rag/retrieval.py", "app/rag/service.py", "app/rag/prompt.py", "app/rag/store.py",
                      "app/config.py", "evaluation/data/golden_set.json"]
-DEFAULT_JUDGE_MODEL = "gemini-2.5-flash"
+DEFAULT_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL", "gemini-3.1-flash-lite")
 
 
 def fingerprint() -> str:
@@ -232,6 +233,9 @@ def run_answers(args) -> None:
     service = RagService(PolicyIndex(get_store()), get_chat_model(), get_reranker())
     progress_file = CACHE / f"answers_{args.name}.json"
     saved = load_json(progress_file)
+    missing = [item["id"] for item in items if item["id"] not in saved]
+    if missing and args.judge_only:
+        raise SystemExit(f"{len(missing)} answers are missing from {progress_file.name}, and --judge-only won't add them")
     for number, item in enumerate(items, start=1):
         if item["id"] in saved:
             continue
@@ -330,5 +334,6 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="new")
     parser.add_argument("--judge-model", default="")
     parser.add_argument("--skip-judge", action="store_true")
+    parser.add_argument("--judge-only", action="store_true", help="judge saved answers, and never add new ones")
     parsed = parser.parse_args()
     (run_retrieval if parsed.mode == "retrieval" else run_answers)(parsed)

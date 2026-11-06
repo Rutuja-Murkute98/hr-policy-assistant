@@ -183,6 +183,10 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
             # Only a question is passed on, so the model can't state a figure of its own
             text = reply.text.strip()
             return {"tool": "", "answer": text if text.endswith("?") else CLARIFY_ANSWER}
+        spec = TOOLS.get(calls[0]["name"])
+        if spec and spec.changes_records and state["intent"] != "action_request":
+            # Asking for information must never change anything, whatever tool the model picks
+            return {"tool": "", "answer": CLARIFY_ANSWER}
         return {"tool": calls[0]["name"], "tool_args": calls[0]["args"] or {}}
 
     def route_tool(state: WorkflowState) -> str:

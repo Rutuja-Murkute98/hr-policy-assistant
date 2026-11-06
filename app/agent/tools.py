@@ -52,6 +52,7 @@ class ToolSpec:
     run: Callable[[MockHRMS, ToolContext, BaseModel, str], dict]
     describe: Callable[[BaseModel], str]
     report: Callable[[dict, BaseModel], str]
+    changes_records: bool = False
 
 
 def run_leave_balance(hrms: MockHRMS, context: ToolContext, args: BaseModel, key: str) -> dict:
@@ -108,10 +109,10 @@ TOOLS = {
         run_payslip, lambda args: "check your latest payslip", report_payslip),
     "apply_for_leave": ToolSpec(
         "apply_for_leave", "Apply for leave for the signed-in employee. The employee must approve it first.",
-        ApplyForLeave, True, run_apply_for_leave, describe_leave, report_leave),
+        ApplyForLeave, True, run_apply_for_leave, describe_leave, report_leave, changes_records=True),
     "raise_hr_ticket": ToolSpec(
         "raise_hr_ticket", "Raise a ticket with the HR team for the signed-in employee.", RaiseTicket, False,
-        run_ticket, lambda args: "raise an HR ticket", report_ticket),
+        run_ticket, lambda args: "raise an HR ticket", report_ticket, changes_records=True),
 }
 
 

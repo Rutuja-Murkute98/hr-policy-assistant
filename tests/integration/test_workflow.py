@@ -391,6 +391,19 @@ def test_ticket_is_raised_and_audited(shared):
     assert (audit[0].tool, audit[0].status, audit[0].attempts, audit[0].user_id) == ("raise_hr_ticket", "success", 1, "E1001")
 
 
+@pytest.mark.parametrize("tool,args", [
+    ("raise_hr_ticket", {"subject": "Manager address", "description": "Their home address"}),
+    ("apply_for_leave", {"leave_type": "earned", "start_date": NEXT_MONDAY, "end_date": NEXT_TUESDAY}),
+])
+def test_a_request_for_information_can_never_change_records(shared, tool, args):
+    llm = ScriptedLLM(intent="personal_data_request", tool=tool, tool_args=args)
+    result = make(shared, llm).ask("What is my manager's home address?", user_id="E1001")
+    assert result.tool == ""
+    assert rows(shared, "hr_tickets") == []
+    assert rows(shared, "pending_actions") == []
+    assert rows(shared, "tool_audit_log") == []
+
+
 def test_unknown_tool_is_refused_and_audited(shared):
     llm = ScriptedLLM(intent="action_request", tool="delete_all_employees")
     result = make(shared, llm).ask("Delete everyone", user_id="E1001")

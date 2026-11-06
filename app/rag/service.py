@@ -86,12 +86,17 @@ class RagService:
             logger.exception("The reranker failed, so it was skipped")
             return None
 
-    def retrieve(self, question: str, filters: SearchFilters | None = None) -> list[Document]:
-        """Return the chunks worth sending to the LLM."""
+    def search(self, question: str, filters: SearchFilters | None = None) -> tuple[list[Document], float]:
+        """Return the chunks worth sending to the LLM, and how strongly the best chunk stood out."""
         vector = self.store.embeddings.embed_query(question)
-        candidates = keep_usable(self.store.candidates(vector, question, config.FETCH_K, use_keywords=self.hybrid,
-                                                       filters=filters or default_filters()))
-        return select_chunks(candidates, self._rerank(question, candidates))
+        found = self.store.candidates(vector, question, config.FETCH_K, use_keywords=self.hybrid,
+                                      filters=filters or default_filters())
+        candidates = keep_usable(found)
+        confidence = max((candidate.confidence for candidate in found), default=0.0)
+        return select_chunks(candidates, self._rerank(question, candidates)), confidence
+
+    def retrieve(self, question: str, filters: SearchFilters | None = None) -> list[Document]:
+        return self.search(question, filters)[0]
 
     def _standalone_question(self, question: str, history: list[dict] | None) -> str:
         """Rewrite a follow-up so it can be searched for without the chat around it."""
@@ -154,6 +159,11 @@ class RagService:
                                     abstain_reason="no_evidence")
             return
 
+        yield from self.answer_from_chunks(standalone, chunks, stream_tokens)
+
+    def answer_from_chunks(self, standalone: str, chunks: list[Document],
+                           stream_tokens: bool = True) -> Iterator[tuple[str, object]]:
+        """Write the answer, check its citations, and yield tokens, then ("done", RagAnswer)."""
         result: StructuredAnswer | None = None
         for kind, value in self._structured_stream(build_messages(standalone, chunks), stream_tokens):
             if kind == "token":
@@ -178,4 +188,5 @@ class RagService:
 
 
 def create_service() -> RagService:
+    """The answering pipeline alone, without the workflow. The evaluation can use it directly."""
     return RagService(PolicyIndex(get_store()), get_chat_model(), get_reranker())

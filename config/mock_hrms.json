@@ -1,0 +1,26 @@
+{
+  "_note": "Fake employees for the mock HR system. None of these people or numbers are real.",
+  "employees": {
+    "E1001": {
+      "name": "Asha Kulkarni",
+      "band": 3,
+      "leave_entitlement": {"earned": 18, "sick": 12, "casual": 6},
+      "leave_used": {"earned": 5, "sick": 2, "casual": 1},
+      "latest_payslip": {"month": "October 2026", "gross": 85000, "deductions": 11200, "net": 73800, "credited_on": "2026-10-30"}
+    },
+    "E1002": {
+      "name": "Rohan Joshi",
+      "band": 5,
+      "leave_entitlement": {"earned": 18, "sick": 12, "casual": 6},
+      "leave_used": {"earned": 17, "sick": 0, "casual": 6},
+      "latest_payslip": {"month": "October 2026", "gross": 160000, "deductions": 27400, "net": 132600, "credited_on": "2026-10-30"}
+    },
+    "E1003": {
+      "name": "Meera Patil",
+      "band": 2,
+      "leave_entitlement": {"earned": 0, "sick": 6, "casual": 3},
+      "leave_used": {"earned": 0, "sick": 1, "casual": 0},
+      "latest_payslip": {"month": "October 2026", "gross": 42000, "deductions": 5300, "net": 36700, "credited_on": "2026-10-30"}
+    }
+  }
+}

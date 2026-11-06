@@ -19,6 +19,7 @@ class SearchFilters:
     tenant_id: str
     policy: str | None = None
     category: str | None = None
+    categories: list[str] | None = None  # any of these, for routing by topic
     effective_on: str | None = None  # an ISO date: only policies in effect on this date
 
 

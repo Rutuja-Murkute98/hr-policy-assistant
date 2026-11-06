@@ -5,32 +5,76 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app import config, security
+from app.agent.tools import ActionNotFound, ActionNotPending
 from app.main import app
-from app.rag.service import RagAnswer
+from app.memory import ConversationNotFound
+from app.workflow import WorkflowAnswer
 
 KEY = {"X-API-Key": "test-key"}
 SOURCES = [{"ref": 1, "policy": "Leave Policy", "section": "4.1", "file": "Leave_Policy.md", "chunk_id": "Leave_Policy > 4.1 > 0"}]
 
 
-class FakeService:
-    def __init__(self, error=None):
-        self.error = error
+class FakeConversations:
+    def conversations(self, user_id):
+        return [{"id": f"chat-of-{user_id}"}]
 
-    def ask(self, question, history=None, filters=None):
+    def messages(self, user_id, conversation_id):
+        if conversation_id != "mine":
+            raise ConversationNotFound(conversation_id)
+        return [{"role": "user", "content": "Hi"}]
+
+
+class FakeActions:
+    def list_pending(self, user_id):
+        return [{"id": f"action-of-{user_id}"}]
+
+
+class FakeService:
+    def __init__(self, error=None, pending=None):
+        self.error = error
+        self.pending = pending
+        self.conversation_id = None
+        self.user_id = None
+        self.conversations = FakeConversations()
+        self.actions = FakeActions()
+        self.decisions = []
+
+    def delete_conversation(self, user_id, conversation_id):
+        if conversation_id != "mine":
+            raise ConversationNotFound(conversation_id)
+
+    def delete_user_history(self, user_id):
+        return 2
+
+    def decide(self, user_id, action_id, approve):
+        self.decisions.append((user_id, action_id, approve))
+        if action_id == "unknown":
+            raise ActionNotFound(action_id)
+        if action_id == "decided":
+            raise ActionNotPending(action_id)
+        if action_id == "broken":
+            raise RuntimeError("secret internal detail")
+        return WorkflowAnswer("Done.", tool_status="success", conversation_id="chat")
+
+    def ask(self, question, history=None, filters=None, user_id=None, conversation_id=None):
         self.history = history
         self.filters = filters
+        self.user_id = user_id
+        self.conversation_id = conversation_id
         if self.error:
             raise self.error
-        return RagAnswer("18 days.", SOURCES)
+        return WorkflowAnswer("18 days.", SOURCES, intent="policy_question", conversation_id=self.conversation_id, pending_action=self.pending)
 
-    def stream(self, question, history=None, filters=None):
+    def stream(self, question, history=None, filters=None, user_id=None, conversation_id=None):
         self.history = history
         self.filters = filters
+        self.user_id = user_id
+        self.conversation_id = conversation_id
         yield "token", "18 "
         if self.error:
             raise self.error
         yield "token", "days."
-        yield "done", RagAnswer("18 days.", SOURCES)
+        yield "done", WorkflowAnswer("18 days.", SOURCES, intent="policy_question", conversation_id=self.conversation_id, pending_action=self.pending)
 
 
 @pytest.fixture
@@ -196,3 +240,80 @@ def test_caller_cannot_choose_the_tenant(client):
 def test_bad_filter_date_is_rejected(client):
     body = {"question": "How much leave?", "filters": {"effective_on": "soon"}}
     assert client.post("/ask", json=body, headers=KEY).status_code == 422
+
+
+USER = {**KEY, "X-User-Id": "E1001"}
+
+
+def test_user_and_conversation_reach_the_service(client):
+    body = {"question": "How much leave?", "conversation_id": "chat-1"}
+    response = client.post("/ask", json=body, headers=USER)
+    assert app.state.service.user_id == "E1001"
+    assert response.json()["conversation_id"] == "chat-1"
+    assert response.json()["intent"] == "policy_question"
+
+
+def test_no_user_header_means_no_user(client):
+    client.post("/ask", json={"question": "How much leave?"}, headers=KEY)
+    assert app.state.service.user_id is None
+
+
+@pytest.mark.parametrize("bad", ["has space", "a/b", "x" * 65, "E1'--"])
+def test_bad_user_ids_are_rejected(client, bad):
+    headers = {**KEY, "X-User-Id": bad}
+    assert client.post("/ask", json={"question": "How much leave?"}, headers=headers).status_code == 422
+
+
+def test_someone_elses_conversation_gives_404(client):
+    def not_yours(*args, **kwargs):
+        raise ConversationNotFound("x")
+
+    app.state.service.ask = not_yours
+    assert client.post("/ask", json={"question": "How much leave?", "conversation_id": "x"}, headers=USER).status_code == 404
+
+
+def test_pending_action_is_returned_in_both_kinds_of_answer(client):
+    app.state.service = FakeService(pending={"id": "a1", "summary": "apply for leave"})
+    assert client.post("/ask", json={"question": "Apply"}, headers=USER).json()["pending_action"]["id"] == "a1"
+    events = read_events(client.post("/ask/stream", json={"question": "Apply"}, headers=USER))
+    assert events[-1][1]["pending_action"]["id"] == "a1"
+
+
+@pytest.mark.parametrize("method,path", [
+    ("get", "/conversations"), ("get", "/conversations/mine/messages"), ("delete", "/conversations/mine"),
+    ("delete", "/conversations"), ("get", "/actions"), ("post", "/actions/a1"),
+])
+def test_conversation_and_action_routes_need_the_key_and_a_user(client, method, path):
+    body = {"json": {"approve": True}} if method == "post" else {}
+    call = getattr(client, method)
+    assert call(path, **body).status_code == 401
+    assert call(path, headers={"X-API-Key": "wrong", "X-User-Id": "E1001"}, **body).status_code == 401
+    assert call(path, headers=KEY, **body).status_code == 422
+    assert call(path, headers=USER, **body).status_code == 200
+
+
+def test_listing_uses_the_header_user(client):
+    assert client.get("/conversations", headers=USER).json() == [{"id": "chat-of-E1001"}]
+    assert client.get("/actions", headers=USER).json() == [{"id": "action-of-E1001"}]
+
+
+def test_unknown_conversations_give_404(client):
+    assert client.get("/conversations/other/messages", headers=USER).status_code == 404
+    assert client.delete("/conversations/other", headers=USER).status_code == 404
+
+
+def test_deleting_all_history_reports_the_count(client):
+    assert client.delete("/conversations", headers=USER).json() == {"deleted": 2}
+
+
+def test_deciding_an_action_uses_the_header_user(client):
+    response = client.post("/actions/a1", json={"approve": False}, headers=USER)
+    assert response.json() == {"answer": "Done.", "status": "success", "conversation_id": "chat"}
+    assert app.state.service.decisions == [("E1001", "a1", False)]
+
+
+@pytest.mark.parametrize("action,status", [("unknown", 404), ("decided", 409), ("broken", 503)])
+def test_action_errors_are_clean(client, action, status):
+    response = client.post(f"/actions/{action}", json={"approve": True}, headers=USER)
+    assert response.status_code == status
+    assert "secret" not in response.text

@@ -1,14 +1,7 @@
 """The real SQL against a real PostgreSQL with pgvector. No model API is called.
 
-Uses TEST_DATABASE_URL if it's set, as in CI. Otherwise it starts a temporary embedded
-PostgreSQL, and skips if that package isn't installed. It never touches the real data.
+See conftest.py for which database is used. It never touches the real data.
 """
-import hashlib
-import math
-import os
-import re
-
-import numpy as np
 import psycopg
 import pytest
 from sqlalchemy import text
@@ -18,6 +11,7 @@ from app.rag.retrieval import SearchFilters, keep_usable, select_chunks
 from app.rag.store import PolicyIndex, get_store, run_migrations
 from pipeline.chunk_documents import chunk_text
 from pipeline.embed_and_store import DocumentChange, apply_documents, plan_documents
+from tests.integration.conftest import WordEmbeddings
 
 pytestmark = pytest.mark.integration
 
@@ -43,37 +37,6 @@ SAFETY = """# Asset Policy
 
 If a company laptop is stolen you must file an FIR with the police within forty eight hours of the theft.
 """
-
-
-class WordEmbeddings:
-    """Deterministic embeddings: texts that share words get similar vectors, with no API call."""
-
-    DIMENSIONS = 64
-
-    def _embed(self, value: str) -> list[float]:
-        vector = np.zeros(self.DIMENSIONS)
-        for word in re.findall(r"\w+", value.lower()):
-            vector[int(hashlib.sha256(word.encode()).hexdigest(), 16) % self.DIMENSIONS] += 1
-        norm = math.sqrt(float(vector @ vector)) or 1.0
-        return (vector / norm).tolist()
-
-    def embed_documents(self, texts):
-        return [self._embed(value) for value in texts]
-
-    def embed_query(self, value):
-        return self._embed(value)
-
-
-@pytest.fixture(scope="module")
-def database_uri(tmp_path_factory):
-    uri = os.getenv("TEST_DATABASE_URL")
-    if uri:
-        yield uri
-        return
-    pgserver = pytest.importorskip("pixeltable_pgserver")
-    server = pgserver.get_server(tmp_path_factory.mktemp("pg"), cleanup_mode="stop")
-    yield server.get_uri()
-    server.cleanup()
 
 
 @pytest.fixture

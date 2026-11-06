@@ -58,6 +58,21 @@ class Settings(BaseSettings):
     min_confidence: float = 3.0        # the best chunk must stand out this much, or the bot abstains
     min_chunk_confidence: float = 2.5  # each chunk sent to the LLM must stand out this much
 
+    # The workflow: see docs/DECISIONS.md
+    use_category_routing: bool = True
+    grade_min_confidence: float = 4.0  # below this, the search is rewritten and tried once more
+    self_service_enabled: bool = True
+
+    # Stored conversations
+    conversation_retention_days: int = Field(default=90, ge=1)
+    summarise_after_messages: int = Field(default=12, ge=2)
+    keep_recent_messages: int = Field(default=6, ge=1)
+
+    # Self-service tools
+    approval_expiry_hours: int = Field(default=24, ge=1)
+    tool_max_attempts: int = Field(default=3, ge=1, le=10)
+    tool_backoff_seconds: float = Field(default=0.5, ge=0)
+
     # Reranking
     reranker: Literal["", "flashrank", "cohere"] = ""
     reranker_model: str = ""
@@ -137,6 +152,16 @@ ABSTENTION_MODE = settings.abstention_mode
 MAX_DISTANCE = settings.max_distance  # tied to one embedding model, so it's only for "distance" mode
 MIN_CONFIDENCE = settings.min_confidence
 MIN_CHUNK_CONFIDENCE = settings.min_chunk_confidence
+
+USE_CATEGORY_ROUTING = settings.use_category_routing
+GRADE_MIN_CONFIDENCE = settings.grade_min_confidence
+SELF_SERVICE_ENABLED = settings.self_service_enabled
+CONVERSATION_RETENTION_DAYS = settings.conversation_retention_days
+SUMMARISE_AFTER_MESSAGES = settings.summarise_after_messages
+KEEP_RECENT_MESSAGES = settings.keep_recent_messages
+APPROVAL_EXPIRY_HOURS = settings.approval_expiry_hours
+TOOL_MAX_ATTEMPTS = settings.tool_max_attempts
+TOOL_BACKOFF_SECONDS = settings.tool_backoff_seconds
 
 RERANKER: str = settings.reranker
 RERANKER_MODEL = settings.reranker_model

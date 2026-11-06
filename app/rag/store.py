@@ -125,13 +125,17 @@ def count_chunks(collection_name: str = config.COLLECTION_NAME, database_uri: st
 
 def filter_clause(filters: SearchFilters) -> tuple[str, dict]:
     """Build the SQL for a search's filters. Values are always passed as parameters."""
-    clause, params = "", {"tenant_id": filters.tenant_id, "default_tenant": config.TENANT_ID}
+    params: dict = {"tenant_id": filters.tenant_id, "default_tenant": config.TENANT_ID}
+    clause = ""
     if filters.policy:
         clause += "AND e.cmetadata->>'policy' = :policy "
         params["policy"] = filters.policy
     if filters.category:
         clause += "AND e.cmetadata->>'category' = :category "
         params["category"] = filters.category
+    if filters.categories:
+        clause += "AND e.cmetadata->>'category' = ANY(:categories) "
+        params["categories"] = filters.categories
     if filters.effective_on:
         clause += "AND e.cmetadata->>'effective_date' <= :effective_on "  # ISO dates sort as text
         params["effective_on"] = filters.effective_on

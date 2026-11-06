@@ -97,6 +97,46 @@ One short entry per technology or design choice. A technology is added here befo
 - **Reason:** only a Gemini key is available, and the free tier has to cover the run. Other models were retired or allow only 20 requests a day.
 - **Trade-off:** same vendor, so errors may be less independent than with another provider.
 
+## D13. Workflow: LangGraph, with one RAG node
+
+- **Problem:** requests now go down several paths, and a paused action has to resume later.
+- **Options:** plain Python routing, LangGraph, or a separate agent per category.
+- **Choice:** LangGraph, as the brief asks, with one policy path and a category filter instead of per-category agents.
+- **Reason:** each step can be tested alone, and pausing for approval and resuming after a restart are built in.
+- **Trade-off:** one more dependency, and each policy question now uses one extra model call to understand it.
+
+## D14. Checkpoints only while a run is paused
+
+- **Problem:** Render sleeps and restarts, so a pending approval can't live in memory. But checkpoints copy the chat, which would dodge the retention rules.
+- **Options:** keep every checkpoint, a table of our own, or `PostgresSaver` with finished runs deleted.
+- **Choice:** `PostgresSaver`, saved only when a run exits or pauses, with finished runs' checkpoints deleted immediately.
+- **Reason:** paused runs survive a restart, there are fewer database writes on Neon, and chats live in one place only.
+- **Trade-off:** a crash mid-run can't resume, so the question has to be asked again. The library's tables have no `tenant_id` column, so run IDs start with the tenant, and Phase 4 must cover them in Row-Level Security.
+
+## D15. Who approves an action
+
+- **Problem:** the brief says applying for leave needs human approval, but not whose.
+- **Options:** the employee confirms, or a manager approves.
+- **Choice:** the employee confirms what the bot is about to submit.
+- **Reason:** this stops the LLM acting on a misunderstanding, and manager approval needs roles, which come in Phase 4.
+- **Trade-off:** this isn't manager sign-off. The mock HR system records the request as `submitted`, not approved.
+
+## D16. Tool results use fixed wording
+
+- **Problem:** an LLM asked to phrase a balance or payslip could change a number.
+- **Options:** have the LLM phrase results, or use templates.
+- **Choice:** templates. The LLM only picks the tool and its arguments.
+- **Reason:** figures can't be changed in the wording, and it saves a model call.
+- **Trade-off:** replies are plainer.
+
+## D17. Employee identity from the request, never from the LLM
+
+- **Problem:** a crafted prompt mustn't reach another employee's data.
+- **Options:** an employee ID tool argument, or identity from the request only.
+- **Choice:** tools have no employee argument. The ID comes from the `X-User-Id` header.
+- **Reason:** the model has no way to name another employee.
+- **Trade-off:** until Phase 4, anyone holding the API key can set that header, so this must stay on fake data.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

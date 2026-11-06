@@ -86,7 +86,8 @@ def describe_leave(args: BaseModel) -> str:
 
 def report_leave(result: dict, args: BaseModel) -> str:
     assert isinstance(args, ApplyForLeave)
-    return (f"Your {args.leave_type} leave from {args.start_date} to {args.end_date} ({result['days']} working day{'s' if result['days'] != 1 else ''}) "
+    days = f"{result['days']} working day{'s' if result['days'] != 1 else ''}"
+    return (f"Your {args.leave_type} leave from {args.start_date} to {args.end_date} ({days}) "
             f"has been submitted as request {result['request_id']}. This is in the mock HR system.")
 
 

@@ -24,6 +24,7 @@ from app.rag.rerank import FlashrankReranker
 from app.rag.retrieval import SearchFilters, keep_usable, select_chunks
 from app.rag.service import RagService
 from app.rag.store import PolicyIndex, get_store, run_migrations
+from app.workflow import create_workflow
 from evaluation.golden import load_golden, review_summary, split_of
 from evaluation.metrics import (
     any_hit_at_k,
@@ -46,7 +47,9 @@ METRICS_FILE = REPORTS / "latest_metrics.json"
 K = config.RETRIEVE_K
 PAUSE_SECONDS = 4.5   # stay under the chat model's free-tier limit
 FINGERPRINT_FILES = ["app/rag/retrieval.py", "app/rag/service.py", "app/rag/prompt.py", "app/rag/store.py",
-                     "app/config.py", "evaluation/data/golden_set.json"]
+                     "app/config.py", "app/agent/graph.py", "app/agent/prompts.py", "app/workflow.py",
+                     "evaluation/data/golden_set.json"]
+EVAL_USER = "E1001"  # a fake employee, as the chat screen would send
 DEFAULT_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL", "gemini-3.1-flash-lite")
 
 
@@ -225,12 +228,27 @@ def call_with_retry(call, tries: int = 4, wait: float = 30):
     raise RuntimeError("unreachable")
 
 
+def ask_item(service: Any, item: dict, workflow: bool):
+    """Ask one question. Through the workflow, it's asked as a signed-in employee in a stored chat."""
+    if not workflow:
+        return service.ask(item["question"], item["history"])
+    chat = service.conversations.start(EVAL_USER)
+    try:
+        for turn in item["history"]:
+            service.conversations.add_message(EVAL_USER, chat, turn["role"], turn["content"])
+        return service.ask(item["question"], user_id=EVAL_USER, conversation_id=chat)
+    finally:
+        service.delete_conversation(EVAL_USER, chat)
+
+
 def run_answers(args) -> None:
     from app.rag.rerank import get_reranker
 
     items = load_golden()
     run_migrations()
-    service = RagService(PolicyIndex(get_store()), get_chat_model(), get_reranker())
+    service: Any = RagService(PolicyIndex(get_store()), get_chat_model(), get_reranker())
+    if args.workflow:
+        service = create_workflow()
     progress_file = CACHE / f"answers_{args.name}.json"
     saved = load_json(progress_file)
     missing = [item["id"] for item in items if item["id"] not in saved]
@@ -241,13 +259,15 @@ def run_answers(args) -> None:
         if item["id"] in saved:
             continue
         started = time.perf_counter()
-        result = call_with_retry(lambda item=item: service.ask(item["question"], item["history"]))
+        result = call_with_retry(lambda item=item: ask_item(service, item, args.workflow))
         saved[item["id"]] = {
             "answer": result.answer, "answered": result.answered, "abstain_reason": result.abstain_reason,
             "cited": [source["chunk_id"] for source in result.sources],
             "retrieved": [chunk.id for chunk in result.chunks],
             "excerpts": [chunk.page_content for chunk in result.chunks],
             "question_used": result.question_used, "seconds": round(time.perf_counter() - started, 2),
+            "intent": getattr(result, "intent", ""), "tool": getattr(result, "tool", ""),
+            "category_asked": getattr(result, "category", ""),
         }
         save_json(progress_file, saved)
         print(f"{number}/{len(items)} {item['id']} answered={result.answered}", flush=True)
@@ -290,7 +310,10 @@ def answer_metrics(items: list[dict], rows: dict[str, dict]) -> dict:
     checks = [citations_correct(rows[i["id"]]["cited"], rows[i["id"]]["retrieved"], set(i["relevant_chunks"]))
               for i in labelled_answered]
     seconds = [rows[i["id"]]["seconds"] for i in items if rows[i["id"]]["retrieved"]]
+    labelled = [i for i in answerable if i["relevant_chunks"]]
     metrics: dict[str, float] = {
+        "recall_at_5": round(mean([recall_at_k(rows[i["id"]]["retrieved"], set(i["relevant_chunks"]), K)
+                                   for i in labelled]), 3),
         "facts_correct": round(mean([float(facts_present(rows[i["id"]]["answer"], i["must_contain"]))
                                      for i in with_facts]), 3),
         "facts_checked": len(with_facts),
@@ -335,6 +358,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", default="new")
     parser.add_argument("--judge-model", default="")
     parser.add_argument("--skip-judge", action="store_true")
+    parser.add_argument("--workflow", action="store_true", help="ask through the full workflow, as the API does")
     parser.add_argument("--judge-only", action="store_true", help="judge saved answers, and never add new ones")
     parsed = parser.parse_args()
     (run_retrieval if parsed.mode == "retrieval" else run_answers)(parsed)

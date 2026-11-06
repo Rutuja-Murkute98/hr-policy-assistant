@@ -4,8 +4,8 @@ CI has no model key and doesn't hold the real embeddings, so it can't repeat the
 Instead this checks the committed results, and that they match the current code and golden set.
 
 To refresh them after changing retrieval or the golden set:
-    python -m evaluation.run_eval answers --name new
-    python -m evaluation.quality_gate --record new
+    python -m evaluation.run_eval answers --name workflow --workflow
+    python -m evaluation.quality_gate --record workflow
 """
 import argparse
 import json
@@ -24,10 +24,7 @@ FLOORS = {
 
 def record(name: str) -> None:
     answers = json.loads((REPORTS / f"answers_{name}.json").read_text(encoding="utf-8"))
-    comparison = json.loads((REPORTS / "retrieval_comparison.json").read_text(encoding="utf-8"))
-    chosen = next(v for v in comparison["variants"] if v["name"] == comparison["chosen"])
-    metrics = {"recall_at_5": chosen["recall_at_5"], **answers["metrics"]}
-    METRICS_FILE.write_text(json.dumps({"fingerprint": fingerprint(), "metrics": metrics}, indent=1) + "\n",
+    METRICS_FILE.write_text(json.dumps({"fingerprint": fingerprint(), "metrics": answers["metrics"]}, indent=1) + "\n",
                             encoding="utf-8", newline="\n")
     print(f"Recorded {METRICS_FILE.name}")
 

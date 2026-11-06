@@ -1,6 +1,7 @@
 """The LangGraph workflow: understand the message, route it, then answer or act.
 
-    understand -> greet | refuse | needs_identity
+    understand -> greet | needs_identity
+    understand -> confirm_out_of_scope -> refuse | retrieve
     understand -> retrieve -> (weak evidence? rewrite -> retrieve, once) -> generate | abstain
     understand -> select_tool -> clarify | execute_tool
                   select_tool -> prepare_approval -> wait_for_approval -> execute_tool
@@ -47,7 +48,9 @@ class WorkflowState(TypedDict, total=False):
     stream_tokens: bool
     intent: str
     category: str
-    standalone: str
+    standalone: str     # the question the answer must address
+    search_query: str   # what to search for, which a retry can reword
+    first_search: dict  # the results before a retry, kept in case the retry finds less
     chunks: list[dict]
     confidence: float
     retried: bool
@@ -97,13 +100,24 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         if intent == "greeting":
             return "greet"
         if intent == "out_of_scope":
-            return "refuse"
+            return "confirm_out_of_scope"
         if intent in ("personal_data_request", "action_request"):
             return "select_tool" if state.get("user_id") and config.SELF_SERVICE_ENABLED else "needs_identity"
         return "retrieve"
 
     def greet(state: WorkflowState) -> dict:
         return _say(state, GREETING_ANSWER, answered=True)
+
+    def confirm_out_of_scope(state: WorkflowState) -> dict:
+        """Check the label against the policies, since wrongly refusing a real question is costly."""
+        filters = SearchFilters(tenant_id=tenant_id)
+        chunks, confidence = rag.search(state["standalone"], filters)
+        if chunks and confidence >= config.OUT_OF_SCOPE_OVERRIDE_CONFIDENCE:
+            return {"intent": "policy_question", "category": ""}
+        return {}
+
+    def route_out_of_scope(state: WorkflowState) -> str:
+        return "refuse" if state["intent"] == "out_of_scope" else "retrieve"
 
     def refuse(state: WorkflowState) -> dict:
         return _say(state, OUT_OF_SCOPE_ANSWER, answered=False, abstain_reason="out_of_scope")
@@ -118,9 +132,13 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         # Narrow by topic the first time only. FAQ and glossary chunks are "general", so they stay in.
         if config.USE_CATEGORY_ROUTING and state.get("category") and not filters.category and not state.get("retried"):
             filters.categories = [state["category"], config.tenant.default_category]
-        chunks, confidence = rag.search(state["standalone"], filters)
-        return {"chunks": [{"id": c.id, "page_content": c.page_content, "metadata": c.metadata} for c in chunks],
-                "confidence": confidence}
+        chunks, confidence = rag.search(state.get("search_query") or state["standalone"], filters)
+        found = {"chunks": [{"id": c.id, "page_content": c.page_content, "metadata": c.metadata} for c in chunks],
+                 "confidence": confidence}
+        first = state.get("first_search")
+        if first and first["chunks"] and (not chunks or first["confidence"] >= confidence):
+            return first  # the retry found nothing better
+        return found
 
     def grade_evidence(state: WorkflowState) -> str:
         weak = not state["chunks"] or state["confidence"] < config.GRADE_MIN_CONFIDENCE
@@ -135,7 +153,9 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
             logger.exception("Rewriting a weak search failed, so the search was repeated without the topic filter")
             rewritten = ""
         usable = rewritten and len(rewritten) <= config.MAX_QUESTION_CHARS
-        return {"retried": True, "standalone": rewritten if usable else state["standalone"]}
+        # Only the search is reworded. The model still answers what the employee asked.
+        return {"retried": True, "search_query": rewritten if usable else state["standalone"],
+                "first_search": {"chunks": state["chunks"], "confidence": state["confidence"]}}
 
     def abstain(state: WorkflowState) -> dict:
         return _say(state, FALLBACK_ANSWER, answered=False, abstain_reason="no_evidence")
@@ -210,12 +230,13 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return _say(state, outcome.message, answered=True, tool_status=outcome.status, pending_action=None)
 
     graph = StateGraph(WorkflowState)
-    for step in (understand, greet, refuse, needs_identity, retrieve, rewrite_query, abstain, generate, select_tool,
-                 clarify, prepare_approval, wait_for_approval, declined, execute_tool):
+    for step in (understand, greet, confirm_out_of_scope, refuse, needs_identity, retrieve, rewrite_query, abstain,
+                 generate, select_tool, clarify, prepare_approval, wait_for_approval, declined, execute_tool):
         graph.add_node(step.__name__, step)
     graph.add_edge(START, "understand")
     graph.add_conditional_edges("understand", route_intent,
-                                ["greet", "refuse", "needs_identity", "retrieve", "select_tool"])
+                                ["greet", "confirm_out_of_scope", "needs_identity", "retrieve", "select_tool"])
+    graph.add_conditional_edges("confirm_out_of_scope", route_out_of_scope, ["refuse", "retrieve"])
     graph.add_conditional_edges("retrieve", grade_evidence, ["rewrite_query", "generate", "abstain"])
     graph.add_edge("rewrite_query", "retrieve")
     graph.add_conditional_edges("select_tool", route_tool, ["clarify", "prepare_approval", "execute_tool"])

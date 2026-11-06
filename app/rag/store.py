@@ -162,14 +162,17 @@ class PolicyIndex:
         params = {"vector": str(vector), "collection": self.store.collection_name, "k": k, **filter_params}
         keyword_sql = text(
             CHUNK_COLUMNS + CHUNK_JOIN + where + f"AND {FULL_TEXT} @@ {KEYWORD_QUERY} "
-            f"ORDER BY ts_rank_cd({FULL_TEXT}, {KEYWORD_QUERY}) DESC LIMIT :k"
+            f"ORDER BY ts_rank_cd({FULL_TEXT}, {KEYWORD_QUERY}) DESC, e.id LIMIT :k"  # the id makes ties repeatable
         )
         with self.store.session_maker() as session:
-            vector_rows = session.execute(text(CHUNK_COLUMNS + CHUNK_JOIN + where + "ORDER BY distance LIMIT :k"),
+            vector_rows = session.execute(text(CHUNK_COLUMNS + CHUNK_JOIN + where + "ORDER BY distance, e.id LIMIT :k"),
                                           params).all()
             keyword_rows = session.execute(keyword_sql, {**params, "question": question}).all() if use_keywords else []
-            spread_params = {key: value for key, value in params.items() if key != "k"}
-            stats = session.execute(text(SPREAD + CHUNK_JOIN + where), spread_params).one()
+            # Measured across the whole tenant, so a topic filter can't make a strong chunk look weak
+            stats = session.execute(text(SPREAD + CHUNK_JOIN), {
+                "vector": params["vector"], "collection": params["collection"],
+                "tenant_id": filter_params["tenant_id"], "default_tenant": filter_params["default_tenant"],
+            }).one()
 
         found: dict[str, Candidate] = {}
         for row in [*vector_rows, *keyword_rows]:

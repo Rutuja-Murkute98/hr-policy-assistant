@@ -41,6 +41,9 @@ Examples:
 "How many earned leave days do I get per year?" is a policy_question: it asks what the rules say.
 "How do I apply for leave?" is a policy_question.
 "Does the company pay for a gym?" is a policy_question, even if the answer may be no.
+"How much professional tax is deducted in February?" is a policy_question: it doesn't ask about their own record.
+"Who is the CEO?" is a policy_question: it's about the company.
+"What does the ICC do?" is a policy_question: abbreviations may be HR terms.
 "How many earned leaves do I have left?" is a personal_data_request.
 "Show my payslip" is a personal_data_request.
 "Apply for sick leave tomorrow" is an action_request.

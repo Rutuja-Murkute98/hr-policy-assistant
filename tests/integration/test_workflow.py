@@ -149,11 +149,11 @@ def test_greeting_uses_no_model_call(shared):
     assert llm.seen == []
 
 
-def test_out_of_scope_is_politely_refused_without_a_search(shared):
+def test_out_of_scope_is_politely_refused(shared):
     result = make(shared, ScriptedLLM(intent="out_of_scope")).ask("What is the capital of France?")
     assert result.answer == OUT_OF_SCOPE_ANSWER
     assert not result.answered
-    assert result.chunks == []
+    assert result.chunks == []  # the check against the policies doesn't send anything to the answer step
 
 
 def test_failed_understanding_falls_back_to_the_policy_path(shared):
@@ -174,26 +174,58 @@ def test_self_service_can_be_switched_off(shared, monkeypatch):
     assert make(shared, llm).ask("My balance?", user_id="E1001").abstain_reason == "needs_identity"
 
 
-def test_category_narrows_the_first_search(shared):
+def test_category_narrows_the_first_search_when_switched_on(shared, monkeypatch):
+    monkeypatch.setattr(config, "USE_CATEGORY_ROUTING", True)
     llm = ScriptedLLM(category="leave", answer=StructuredAnswer(answered=False))
     result = make(shared, llm).ask("laptop stolen FIR police")
     assert {chunk.metadata["source"] for chunk in result.chunks} == {"Leave_Policy.md"}
 
 
-def test_category_routing_can_be_switched_off(shared, monkeypatch):
-    monkeypatch.setattr(config, "USE_CATEGORY_ROUTING", False)
+def test_category_routing_is_off_by_default(shared):
+    assert config.USE_CATEGORY_ROUTING is False
     llm = ScriptedLLM(category="leave", answer=StructuredAnswer(answered=False))
     result = make(shared, llm).ask("laptop stolen FIR police")
     assert "IT_Asset_and_Equipment_Policy.md" in {chunk.metadata["source"] for chunk in result.chunks}
 
 
 def test_weak_evidence_rewrites_and_retries_once_without_the_category(shared, monkeypatch):
+    monkeypatch.setattr(config, "USE_CATEGORY_ROUTING", True)
     monkeypatch.setattr(config, "GRADE_MIN_CONFIDENCE", 1000.0)
     llm = ScriptedLLM(category="general", retry_text="stolen company laptop FIR police")
     result = make(shared, llm).ask("zzz")
-    assert result.question_used == "stolen company laptop FIR police"
     assert "IT_Asset_and_Equipment_Policy.md" in {chunk.metadata["source"] for chunk in result.chunks}
-    assert sum("Question: zzz" in shown for shown in llm.seen) == 1
+    assert sum("Question: zzz" in shown and "excerpts" not in shown for shown in llm.seen) == 1
+
+
+def test_a_retry_only_rewords_the_search_not_the_question_answered(shared, monkeypatch):
+    monkeypatch.setattr(config, "GRADE_MIN_CONFIDENCE", 1000.0)
+    llm = ScriptedLLM(retry_text="stolen company laptop FIR police")
+    result = make(shared, llm).ask("My laptop went missing")
+    assert result.question_used == "My laptop went missing"
+    assert "Question: My laptop went missing" in llm.seen[-1]
+    assert "stolen company laptop FIR police" not in llm.seen[-1]
+
+
+def test_a_retry_that_finds_less_keeps_the_first_results(shared, monkeypatch):
+    monkeypatch.setattr(config, "GRADE_MIN_CONFIDENCE", 1000.0)
+    llm = ScriptedLLM(retry_text="completely unrelated zebra words")
+    result = make(shared, llm).ask("How many earned leave days do confirmed employees get?")
+    assert result.chunks[0].metadata["source"] == "Leave_Policy.md"
+    assert result.answered
+
+
+def test_a_strong_search_overrules_an_out_of_scope_label(shared, monkeypatch):
+    monkeypatch.setattr(config, "OUT_OF_SCOPE_OVERRIDE_CONFIDENCE", -100.0)
+    result = make(shared, ScriptedLLM(intent="out_of_scope")).ask("How many earned leave days do employees get?")
+    assert result.intent == "policy_question"
+    assert result.answered
+
+
+def test_a_weak_search_keeps_the_out_of_scope_label(shared, monkeypatch):
+    monkeypatch.setattr(config, "OUT_OF_SCOPE_OVERRIDE_CONFIDENCE", 1000.0)
+    result = make(shared, ScriptedLLM(intent="out_of_scope")).ask("How many earned leave days do employees get?")
+    assert result.intent == "out_of_scope"
+    assert result.abstain_reason == "out_of_scope"
 
 
 def test_no_evidence_after_the_retry_abstains(shared, monkeypatch):

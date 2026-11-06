@@ -137,6 +137,22 @@ One short entry per technology or design choice. A technology is added here befo
 - **Reason:** the model has no way to name another employee.
 - **Trade-off:** until Phase 4, anyone holding the API key can set that header, so this must stay on fake data.
 
+## D18. Topic filter off by default
+
+- **Problem:** the brief routes policy questions through a category filter.
+- **Options:** always filter, filter and retry, or don't filter.
+- **Choice:** built as `USE_CATEGORY_ROUTING`, and off by default.
+- **Reason:** on the golden set, a perfect choice of every relevant topic only moved recall from 0.933 to 0.954, and limiting to one topic, as the workflow does, dropped it to 0.869. Many questions cross topics.
+- **Trade-off:** this departs from the brief. Other topics stay searchable, so a stray chunk from another policy can appear.
+
+## D19. An "out of scope" label is checked against the policies
+
+- **Problem:** the understanding step refused real questions such as "Who is the CEO?".
+- **Options:** trust the model, tune the prompt only, or check with a search.
+- **Choice:** refuse only if a search also finds little, with a confidence below 4.5. The search uses an embedding call, not a chat call.
+- **Reason:** those questions scored 6.48 and 4.75, while eight off-topic examples scored at most 3.81.
+- **Trade-off:** an off-topic question that happens to match a policy reaches the answer step, which can still refuse it.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

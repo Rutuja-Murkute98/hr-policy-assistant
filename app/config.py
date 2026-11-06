@@ -59,8 +59,9 @@ class Settings(BaseSettings):
     min_chunk_confidence: float = 2.5  # each chunk sent to the LLM must stand out this much
 
     # The workflow: see docs/DECISIONS.md
-    use_category_routing: bool = True
+    use_category_routing: bool = False  # measured worse: see docs/DECISIONS.md, D18
     grade_min_confidence: float = 4.0  # below this, the search is rewritten and tried once more
+    out_of_scope_override_confidence: float = 4.5  # a search this strong overrules an "out of scope" label
     self_service_enabled: bool = True
 
     # Stored conversations
@@ -155,6 +156,7 @@ MIN_CHUNK_CONFIDENCE = settings.min_chunk_confidence
 
 USE_CATEGORY_ROUTING = settings.use_category_routing
 GRADE_MIN_CONFIDENCE = settings.grade_min_confidence
+OUT_OF_SCOPE_OVERRIDE_CONFIDENCE = settings.out_of_scope_override_confidence
 SELF_SERVICE_ENABLED = settings.self_service_enabled
 CONVERSATION_RETENTION_DAYS = settings.conversation_retention_days
 SUMMARISE_AFTER_MESSAGES = settings.summarise_after_messages

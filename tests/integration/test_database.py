@@ -120,6 +120,14 @@ def test_confidence_is_higher_for_the_best_match(index):
     assert found[0].confidence > found[-1].confidence
 
 
+def test_a_topic_filter_doesnt_change_a_chunks_confidence(index):
+    question = "file an FIR with the police"
+    fir = "IT_Asset_and_Equipment_Policy > 1. Stolen Laptop > 0"
+    everywhere = {c.chunk.id: c.confidence for c in search(index, question)}
+    filtered = {c.chunk.id: c.confidence for c in search(index, question, policy="Asset Policy")}
+    assert filtered[fir] == pytest.approx(everywhere[fir])
+
+
 def test_results_work_with_filtering_and_selection(index, monkeypatch):
     monkeypatch.setattr(config, "ABSTENTION_MODE", "distance")
     monkeypatch.setattr(config, "MAX_DISTANCE", 1.0)

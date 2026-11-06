@@ -659,6 +659,24 @@ def test_the_audit_log_holds_no_key_or_personal_data(world, client):
     assert "new@acme.example" not in logged
 
 
+def test_the_app_role_cannot_change_or_delete_audit_entries(world, client):
+    client.post("/admin/users", headers=harriet(world), json={"email": "new@acme.example"})
+    for statement in ("DELETE FROM audit_events", "UPDATE audit_events SET action = 'nothing'",
+                      "DELETE FROM tool_audit_log", "UPDATE tool_audit_log SET status = 'success'"):
+        with pytest.raises(exc.ProgrammingError, match="permission denied"), TenantEngine(world.engine, "acme").begin() as connection:
+            connection.execute(text(statement))
+    assert audit_actions(world) == ["user_added"]
+
+
+def test_old_audit_entries_are_removed_after_the_retention_period(world, client):
+    client.post("/admin/users", headers=harriet(world), json={"email": "new@acme.example"})
+    with world.engine.begin() as connection:
+        connection.execute(text("INSERT INTO audit_events (tenant_id, actor, action, created_at) "
+                                "VALUES ('acme', 'x', 'old_event', now() - interval '400 days')"))
+    assert world.identity.audit.purge_older_than(365) == 1
+    assert audit_actions(world) == ["user_added"]
+
+
 # Personal data
 
 def test_personal_data_is_masked_before_the_model_and_in_storage(world, client):

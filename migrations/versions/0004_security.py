@@ -19,6 +19,7 @@ APP_ROLE = "helpdesk_app"
 TENANT_TABLES = ("policy_documents", "conversations", "messages", "pending_actions", "tool_audit_log",
                  "hr_leave_requests", "hr_tickets", "document_versions", "indexing_jobs", "feedback",
                  "unanswered_questions", "embedding_models", "users", "api_keys", "audit_events")
+APPEND_ONLY_TABLES = ("audit_events", "tool_audit_log")  # the app can add to these, but never change them
 
 
 def created_at() -> sa.Column:
@@ -99,7 +100,8 @@ def upgrade() -> None:
     op.execute(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}")
     op.execute(f"GRANT SELECT ON organisations TO {APP_ROLE}")
     for table in TENANT_TABLES:
-        op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO {APP_ROLE}")
+        access = "SELECT, INSERT" if table in APPEND_ONLY_TABLES else "SELECT, INSERT, UPDATE, DELETE"
+        op.execute(f"GRANT {access} ON {table} TO {APP_ROLE}")
         op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
         op.execute(f"CREATE POLICY tenant_isolation ON {table} "
                    "USING (tenant_id = current_setting('app.tenant_id', true)) "

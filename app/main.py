@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
         app.state.service = registry
         app.state.identity = create_identity(registry.engine)
         app.state.count_chunks = count_chunks
+        app.state.identity.audit.purge_older_than(config.AUDIT_RETENTION_DAYS)
         rate_limit.store = get_rate_store(registry.engine)
     yield
     close = getattr(app.state.service, "close", None)

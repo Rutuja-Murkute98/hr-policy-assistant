@@ -72,6 +72,7 @@ class Settings(BaseSettings):
 
     # Stored conversations
     conversation_retention_days: int = Field(default=90, ge=1)
+    audit_retention_days: int = Field(default=365, ge=1)
     summarise_after_messages: int = Field(default=12, ge=2)
     keep_recent_messages: int = Field(default=6, ge=1)
 
@@ -185,6 +186,7 @@ GRADE_MIN_CONFIDENCE = settings.grade_min_confidence
 OUT_OF_SCOPE_OVERRIDE_CONFIDENCE = settings.out_of_scope_override_confidence
 SELF_SERVICE_ENABLED = settings.self_service_enabled
 CONVERSATION_RETENTION_DAYS = settings.conversation_retention_days
+AUDIT_RETENTION_DAYS = settings.audit_retention_days
 SUMMARISE_AFTER_MESSAGES = settings.summarise_after_messages
 KEEP_RECENT_MESSAGES = settings.keep_recent_messages
 APPROVAL_EXPIRY_HOURS = settings.approval_expiry_hours

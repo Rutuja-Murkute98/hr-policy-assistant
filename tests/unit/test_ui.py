@@ -1,4 +1,5 @@
 """The chat screen, with the API deliberately unreachable. No API quota is used."""
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -10,6 +11,7 @@ from streamlit.testing.v1 import AppTest
 UI_DIR = Path(__file__).resolve().parents[2] / "ui"
 APP_FILE = str(UI_DIR / "streamlit_app.py")
 ADMIN_FILE = str(UI_DIR / "pages" / "admin.py")
+sys.path.insert(0, str(UI_DIR))  # Streamlit does this when it starts the main script
 
 
 @pytest.fixture

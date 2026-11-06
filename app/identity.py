@@ -53,7 +53,7 @@ def hash_key(key: str) -> str:
 
 
 class AuditLog:
-    """Record who did what. It has no update or delete method: the app only ever adds to it."""
+    """Record who did what. Requests can only add to it: the app's database role can't change or delete entries."""
 
     def __init__(self, engine: Engine):
         self.engine = engine
@@ -66,6 +66,16 @@ class AuditLog:
                 "VALUES (:tenant_id, :actor, :action, :target, CAST(:details AS jsonb))"
             ), {"tenant_id": tenant_id, "actor": actor, "action": action, "target": mask(target),
                 "details": json.dumps(mask_value(details or {}), default=str)})
+
+    def purge_older_than(self, days: int) -> int:
+        """Remove entries past the retention period, at startup, so personal data isn't kept for ever."""
+        removed = 0
+        with self.engine.begin() as connection:
+            for table in ("audit_events", "tool_audit_log"):
+                removed += connection.execute(text(
+                    f"DELETE FROM {table} WHERE created_at < now() - make_interval(days => :days)"
+                ), {"days": days}).rowcount
+        return removed
 
     def recent(self, tenant_id: str, limit: int = 100) -> list[dict]:
         with TenantEngine(self.engine, tenant_id).begin() as connection:

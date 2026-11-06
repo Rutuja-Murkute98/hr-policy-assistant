@@ -10,7 +10,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import Engine, text
 
 from app import config
-from app.identity import IdentityError, OrganisationUnavailable, Principal
+from app.identity import KEY_PREFIX, IdentityError, OrganisationUnavailable, Principal
 
 logger = logging.getLogger("hr_helpdesk")
 
@@ -39,7 +39,7 @@ def current_principal(
     """Work out who's calling, and which organisation they belong to. The caller can't choose the tenant."""
     principal = _signed_in(request, authorization)  # a signed-in user is who the token says: X-User-Id is ignored
     identity = getattr(request.app.state, "identity", None)
-    if principal is None and x_api_key and identity:
+    if principal is None and x_api_key.startswith(KEY_PREFIX) and identity:
         tenant_id = identity.api_keys.tenant_for(x_api_key)
         if tenant_id:
             # An integration, such as a Slack bot, says which of its own organisation's users it's acting for

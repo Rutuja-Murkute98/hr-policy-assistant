@@ -95,7 +95,8 @@ def main() -> None:
             continue
         saved[item["id"]] = run_item(workflow, engine, item)
         save_json(PROGRESS_FILE, saved)
-        print(f"{number}/{len(items)} {item['id']} {saved[item['id']]['intent']} {saved[item['id']]['tool']}", flush=True)
+        row = saved[item['id']]
+        print(f"{number}/{len(items)} {item['id']} {row['intent']} {row['tool']}", flush=True)
         time.sleep(PAUSE_SECONDS)
     report = {"review": {"unreviewed": sum(i["review_status"] == "unreviewed" for i in items),
                          "approved": sum(i["review_status"] == "approved" for i in items)},

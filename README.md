@@ -40,13 +40,15 @@ The knowledge base is a set of 33 sample HR policy documents for a company calle
 | 🛡️ | **Grounded answers** | A strict prompt limits answers to the retrieved policy text and includes conditions and exceptions |
 | 🙅 | **Honest refusals** | Off-topic and unknown questions get a fixed reply pointing to the HR helpdesk |
 | 📚 | **Checked citations** | Answers cite the excerpts they used, and only citations of retrieved text are kept |
-| 💭 | **Follow-up questions** | Understands questions like "what about on probation?" from the chat so far, without treating earlier answers as policy facts |
+| 💭 | **Stored conversations** | Chats are kept per user and tenant, with summaries, a retention period and deletion. Follow-ups like "what about on probation?" are understood from the chat, and earlier answers are never treated as policy facts |
+| 🧭 | **Agent workflow** | A LangGraph workflow sorts each message and sends it to the policy search, a tool or a polite refusal, and retries a weak search once |
+| 🧾 | **HR self-service** | Check leave balance and payslip, apply for leave with human approval, and raise tickets, on a mock HR system with fake employees. Every tool call is logged |
 | ⚡ | **Web API** | FastAPI backend with streaming answers, API key check, rate limiting, request IDs and a health check |
 | 🗂️ | **Policy admin screen** | HR can add, replace or remove a policy, and only the sections that changed use embedding quota |
 | 🔀 | **Swappable models** | Choose Gemini, Claude, OpenAI or local Ollama models with settings instead of code changes |
 | 💬 | **Slack bot** | Employees can ask in Slack, using the same API as the chat screen |
 | 🎨 | **Branded chat screen** | Welcome message, popular questions, typing animation and live online status, on desktop or phone |
-| 📊 | **Measured quality** | A draft 123-question evaluation with chunk-level labels and a separate judge model, plus 199 automated tests |
+| 📊 | **Measured quality** | A draft 123-question evaluation with chunk-level labels and a separate judge model, plus 314 automated tests |
 | 🔁 | **Smart indexing** | Embeds only what changed, stays within free-tier limits and carries on where it stopped if interrupted |
 
 ## 🧠 How it works
@@ -74,19 +76,22 @@ flowchart TB
 
 ## 📊 Evaluation results
 
-Measured on 123 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels. They cover normal, unanswerable, ambiguous, multi-hop, follow-up, conflicting, exception and adversarial questions.
+Measured on 123 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels, and 58 agent questions in [`evaluation/data/agent_set.json`](evaluation/data/agent_set.json).
 
-> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full comparison, including what got worse, is in the [Phase 1 report](evaluation/reports/phase1_report.md).
+> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what got worse and which targets aren't met, are in the [Phase 2 report](evaluation/reports/phase2_report.md).
 
-| Check | Before | Now | What it measures |
+| Check | Pipeline alone | With the workflow | What it measures |
 |---|---:|---:|---|
-| **Recall@5** | 0.923 to 0.947 | **0.947** | Whether search finds the labelled chunks |
-| **Expected facts in answers** | 0.943 | **0.966** | Keyword check against known answers |
-| **Correct refusals** | 0.962 | **0.962** | Off-topic, unknown and "ignore your rules" questions |
-| **Wrongly refused** | 0.041 | **0.010** | Answerable questions the bot refused |
-| **Citations valid** | 1.000 | **1.000** | Citations point to chunks that were retrieved |
-| **Judge: faithful and correct** | 1.000 | **1.000** | Judged by a different Gemini model, using only the retrieved text |
-| **Median seconds per question** | 2.10 | **5.21** | Worse in the full run, which included rate limit retries. A paced sample of 11 questions took 2.29 |
+| **Recall@5** | 0.947 | **0.938** | Whether search finds the labelled chunks |
+| **Expected facts in answers** | 0.966 | **0.931** | Keyword check against known answers |
+| **Correct refusals** | 0.962 | **0.885** | Off-topic, unknown and "ignore your rules" questions |
+| **Wrongly refused** | 0.010 | **0.031** | Answerable questions the bot refused |
+| **Citations valid** | 1.000 | **0.989** | Citations point to chunks that were retrieved |
+| **Judge: correct** | 1.000 | **0.969** | Judged by a different Gemini model, using only the retrieved text |
+
+The workflow adds tools and routing, and that costs some answer quality, because a question can now go down the wrong path.
+
+**Agent test:** intent, routing, tool selection, tool success and approval compliance all scored 1.000 on 58 clear-cut questions. The six attack questions returned no other employee's data and applied no leave without approval.
 
 ## 🚀 Quick start
 
@@ -174,12 +179,19 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `GET` | `/live` | Checks that the server is running | Not needed |
 | `GET` | `/health` | Checks the database and counts indexed chunks | Not needed |
 | `POST` | `/ask` | Answers a question | `X-API-Key` header |
+| `GET`, `DELETE` | `/conversations` | Lists a user's chats, or deletes their whole history | `X-API-Key` and `X-User-Id` headers |
+| `GET` | `/conversations/{id}/messages` | Reads one chat | `X-API-Key` and `X-User-Id` headers |
+| `DELETE` | `/conversations/{id}` | Deletes one chat | `X-API-Key` and `X-User-Id` headers |
+| `GET` | `/actions` | Lists actions waiting for approval | `X-API-Key` and `X-User-Id` headers |
+| `POST` | `/actions/{id}` | Approves or declines an action, with `{"approve": true}` | `X-API-Key` and `X-User-Id` headers |
 | `POST` | `/ask/stream` | Sends the answer as it's written, as server-sent events: `token`, then `done` or `error` | `X-API-Key` header |
 | `GET` | `/admin/documents` | Lists the policies in the knowledge base | `X-Admin-Key` header |
 | `POST` | `/admin/documents` | Adds or replaces a policy | `X-Admin-Key` header |
 | `DELETE` | `/admin/documents/{filename}` | Removes a policy | `X-Admin-Key` header |
 
 To ask a follow-up question, send up to 6 earlier messages as `history`, such as `[{"role": "user", "content": "How much leave do I get?"}, {"role": "assistant", "content": "18 days."}]`. The server keeps no chat history itself.
+
+Send an `X-User-Id` header and `conversation_id` to use a stored chat. **This is a demo identity:** real sign-in comes in Phase 4, and until then anyone with the API key can name any user, so keep it on fake data.
 
 To limit a search, send `filters` with any of `policy`, `category` and `effective_on`, such as `{"category": "leave", "effective_on": "2026-05-01"}`.
 
@@ -207,7 +219,7 @@ venv\Scripts\python -m pytest tests -q
 venv\Scripts\python -m evaluation.rag_evaluation --ragas
 ```
 
-The first command runs 199 tests that make no model API calls, including some on a temporary PostgreSQL. GitHub Actions is set up to run them on every push, but it hasn't run yet. The second calls Gemini many times, so it uses your quota.
+The first command runs 314 tests that make no model API calls, including some on a temporary PostgreSQL. GitHub Actions is set up to run them on every push, but it hasn't run yet. The second calls Gemini many times, so it uses your quota.
 
 ## 🔧 Settings
 
@@ -218,6 +230,9 @@ Add these to `.env` to change how it works. `.env.example` lists them all.
 | `LLM_PROVIDER`, `LLM_MODEL` | Chat model: `google` (default), `anthropic`, `openai` or `ollama`. Install the provider's package, such as `langchain-anthropic`, and set its API key |
 | `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL` | Embedding model: `google` (default), `openai` or `ollama`. Each model gets its own collection, so run the indexing step and measure `MAX_DISTANCE` again |
 | `HYBRID_SEARCH` | Set to `false` to use vector search only |
+| `CONVERSATION_RETENTION_DAYS` | How long an unused chat is kept. The default is 90 |
+| `SELF_SERVICE_ENABLED` | Set to `false` to turn off the self-service tools |
+| `USE_CATEGORY_ROUTING` | Set to `true` to narrow searches by topic. It's off because it lowered recall when measured |
 | `FUSION_METHOD` | `weighted` (default) or `rrf`. RRF scored lower on the test questions |
 | `ABSTENTION_MODE` | `confidence` (default) or `distance`, which uses `MAX_DISTANCE` |
 | `RERANKER` | `flashrank` adds a small local reranker, with more memory use and a model download. `cohere` uses Cohere's API and needs `COHERE_API_KEY`. Both are off by default |
@@ -231,6 +246,9 @@ hr-policy-assistant/
 ├── app/
 │   ├── main.py               # FastAPI: /ask, /ask/stream, /health, request logging
 │   ├── admin.py              # Admin endpoints for managing policies
+│   ├── workflow.py           # Runs the graph, and saves chats and approvals
+│   ├── memory.py             # Stored conversations
+│   ├── agent/                # LangGraph workflow, tools and mock HR system
 │   ├── security.py           # API key check and rate limiter
 │   ├── config.py             # Settings, checked at startup
 │   └── rag/
@@ -254,6 +272,7 @@ hr-policy-assistant/
 │   ├── run_eval.py           # Compares search settings and measures answers
 │   ├── metrics.py            # Recall, precision, MRR, NDCG and fact checks
 │   ├── quality_gate.py       # Fails CI if results are stale or too low
+│   ├── run_agent_eval.py     # Measures intent, routing, tools and approvals
 │   ├── data/golden_set.json  # 123 draft questions with chunk labels
 │   ├── reports/              # Baseline vs new results
 │   └── results/              # Saved answers and scores
@@ -277,6 +296,7 @@ hr-policy-assistant/
 |---|---|
 | Language | Python 3.13 |
 | RAG framework | LangChain |
+| Workflow | LangGraph, with paused runs saved in PostgreSQL |
 | Chat model | Gemini (`gemini-3.5-flash-lite`) by default, or Claude, OpenAI or Ollama |
 | Embeddings | Gemini (`gemini-embedding-2`) by default, or OpenAI or Ollama |
 | Vector database | PostgreSQL + pgvector: embedded with `pixeltable-pgserver` on your PC, Neon when hosted |

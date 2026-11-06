@@ -109,4 +109,30 @@ flowchart LR
     API -. optional .-> CO["Cohere Rerank"]
 ```
 
-Later phases add stored conversations and a LangGraph workflow (Phase 2), richer document management (Phase 3), organisations, login and Row-Level Security (Phase 4), and observability (Phase 5).
+## Phase 2 workflow
+
+```mermaid
+flowchart TB
+    M["Message + stored chat"] --> U["Understand: intent, standalone question"]
+    U -->|greeting| G["Fixed welcome"]
+    U -->|out of scope| C{"Search also weak?"}
+    C -->|yes| R["Polite refusal"]
+    C -->|no| S
+    U -->|policy question| S["Search"]
+    S --> E{"Weak evidence?"}
+    E -->|yes, first time| W["Reword the search"] --> S
+    E -->|no| A["Answer with checked citations"]
+    E -->|nothing found| B["Abstain"]
+    U -->|personal data or action| T["Model picks a tool and arguments"]
+    T -->|details missing| Q["Ask a question"]
+    T -->|balance, payslip or ticket| X["Run the tool"]
+    T -->|leave request| P["Check the rules, record as pending"]
+    P --> H["Pause until the employee decides"]
+    H -->|approve| X
+    H -->|decline| N["Nothing changed"]
+    X --> L["Audit log + fixed wording"]
+```
+
+The server decides who the employee is, not the model, and a request for information can never use a tool that changes records. A finished run leaves no checkpoint, so chats live only in the conversation tables.
+
+Later phases add richer document management (Phase 3), organisations, login and Row-Level Security (Phase 4), and observability (Phase 5).

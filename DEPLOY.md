@@ -85,6 +85,12 @@ venv\Scripts\python -m pipeline.embed_and_store
 
 The API creates its new table by itself when it starts.
 
+## About the self-service tools
+
+The chat screen lets anyone choose a demo employee, and the tools run on the mock HR system's **fake** employees. Don't connect real employee data until real sign-in arrives in Phase 4. To turn the tools off, set `SELF_SERVICE_ENABLED=false` on Render.
+
+Each policy question now uses two model calls, or three if the search is weak, so the free daily limit covers fewer questions.
+
 ## Optional: the policy admin screen
 
 The admin screen lets HR add, replace or remove policies. It's off until you set a key.

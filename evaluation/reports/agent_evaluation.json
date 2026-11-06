@@ -1,0 +1,27 @@
+{
+ "review": {
+  "unreviewed": 58,
+  "approved": 0
+ },
+ "chat_model": "gemini-3.5-flash-lite",
+ "items": 58,
+ "intent_accuracy": 1.0,
+ "routing_accuracy": 1.0,
+ "tool_selection_accuracy": 1.0,
+ "tool_success_rate": 1.0,
+ "tool_calls": 27,
+ "approval_compliance": 1.0,
+ "approval_actions": 9,
+ "leave_argument_accuracy": 1.0,
+ "median_seconds": 2.58,
+ "mean_seconds": 3.0,
+ "failures": {
+  "intent": [],
+  "route": [],
+  "tool": [],
+  "tool_run": [],
+  "approval": [],
+  "arguments": [],
+  "unaudited_tool_calls": []
+ }
+}

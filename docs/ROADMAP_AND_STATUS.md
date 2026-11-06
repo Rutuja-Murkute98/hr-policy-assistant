@@ -9,7 +9,7 @@ A feature is only marked as implemented after checking the code and running it.
 |---|---|---|
 | Audit | Baseline, findings, these documents | Done |
 | 1 | Foundation, advanced retrieval, evaluation upgrade | Built, waiting for owner review of the golden set |
-| 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Approved to start, after the owner confirms Phase 1 |
+| 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Built, waiting for owner review |
 | 3 | Document management, admin page, model settings, UI improvements | Waiting for approval |
 | 4 | Multi-tenancy, login, Row-Level Security, security hardening | Waiting for approval |
 | 5 | Observability, load test, deployment guides, backups | Waiting for approval |
@@ -43,6 +43,27 @@ A feature is only marked as implemented after checking the code and running it.
 | Baseline vs new report | Implemented and tested | `evaluation/reports/phase1_report.md` |
 | CI quality gate | Partial | Works locally on a clean copy, but hasn't run on GitHub |
 
+## Phase 2 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Conversations and messages per user and tenant | Implemented and tested | Real PostgreSQL. Isolation tests for other users and tenants |
+| Rewrite follow-ups from recent history | Implemented and tested | Measured on 10 follow-up questions |
+| Summarise long conversations | Implemented and tested | Scripted model only, not a long real chat |
+| Retention period and deleting a user's history | Implemented and tested | Real PostgreSQL |
+| LangGraph workflow with intent routing | Implemented and tested | 58 agent questions and 123 golden questions |
+| Category filter for policy questions | Implemented and tested | Built, but measured worse, so it's off by default |
+| Grade evidence, rewrite and retry once | Implemented and tested | Retry rewords only the search |
+| Out-of-scope refusal | Implemented and tested | Checked against a search first |
+| Mock HRMS with fake employees | Implemented and tested | Fake data only, with a replaceable interface |
+| Leave balance, payslip and ticket tools | Implemented and tested | Fixed wording, with figures from the tool |
+| Apply for leave with human approval | Implemented and tested | Includes a real browser run. The employee approves, not a manager |
+| Pause and resume across a restart | Implemented and tested | Scripted model on real PostgreSQL. Not tried on Render |
+| Retries with backoff | Implemented and tested | Simulated failures |
+| Audit log for every tool call | Implemented and tested | Arguments are stored unmasked until Phase 4 |
+| Agent evaluation | Implemented and tested | Draft labels, 100% on a small test |
+| Real sign-in | Planned | Phase 4. Until then, anyone with the API key can name any user, so this must stay on fake data |
+
 ## Earlier work
 
 | Feature | Status | Evidence or gap |
@@ -56,11 +77,14 @@ A feature is only marked as implemented after checking the code and running it.
 
 ## Success targets
 
-See [the Phase 1 report](../evaluation/reports/phase1_report.md). In short: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage and memory on Render aren't assessed yet.
+See [the Phase 2 report](../evaluation/reports/phase2_report.md). In short: recall and citations meet their targets on draft labels, while refusals are at 88.5% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
+
+**The CI quality gate currently fails** on refusals, at 0.885 against a floor of 0.90. Its floor hasn't been lowered, and two of the three failures look like wrong labels awaiting review.
 
 ## What the owner must set up or decide
 
-- Review the golden set in `evaluation/data/golden_set.json`, and set each item to `approved` or `rejected`.
+- Review the golden set in `evaluation/data/golden_set.json`, and the agent set in `evaluation/data/agent_set.json`, and set each item to `approved` or `rejected`.
+- Decide whether `adversarial-004` should count as correct, since it rejected the false claim and gave the true figure.
 - Decide the five policy contradictions listed in the report.
 - Decide whether `unanswerable-009` should be corrected, since the policy appears to answer it.
 - Push the branch, so CI runs for the first time.

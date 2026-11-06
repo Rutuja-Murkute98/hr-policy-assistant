@@ -141,7 +141,7 @@ def test_results_work_with_filtering_and_selection(index, monkeypatch):
 def test_parsed_text_is_stored_for_keyword_search(index, database_uri):
     """Row-Level Security can't use a full-text index first, so searches read this column instead of parsing."""
     with psycopg.connect(database_uri) as connection:
-        rows = connection.execute("SELECT count(*), count(*) FILTER (WHERE search_text @@ 'earned'::tsquery) "
+        rows = connection.execute("SELECT count(*), count(*) FILTER (WHERE search_text @@ to_tsquery('english', 'earned')) "
                                   "FROM langchain_pg_embedding").fetchone()
     assert rows[0] > 0
     assert rows[1] > 0

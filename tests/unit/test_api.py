@@ -4,7 +4,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app import config, security
+from app import config, main, security
 from app.main import app
 from app.rag.service import RagAnswer
 
@@ -39,6 +39,7 @@ def client(monkeypatch):
     security.rate_limit.reset()
     app.state.service = FakeService()
     app.state.count_chunks = lambda: 539
+    app.state.last_ai_failure = None
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
 
@@ -46,7 +47,64 @@ def client(monkeypatch):
 def test_health_needs_no_key_and_counts_chunks(client):
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "chunks_indexed": 539}
+    assert response.json() == {"status": "ok", "chunks_indexed": 539, "ai": "ok"}
+
+
+class AnsweredService(FakeService):
+    """Its answers come from the AI, shown by the chunks that were sent to it."""
+
+    def ask(self, question, history=None, filters=None):
+        return RagAnswer("18 days.", SOURCES, chunks=["a chunk"])
+
+
+class GreetingService(FakeService):
+    """Its answers involve no AI call, like a greeting or an empty search."""
+
+    def ask(self, question, history=None, filters=None):
+        return RagAnswer("Hello!")
+
+
+@pytest.mark.parametrize("path", ["/ask", "/ask/stream"])
+def test_health_reports_a_failed_ai_call(client, path):
+    app.state.service = FakeService(RuntimeError("quota"))
+    client.post(path, json={"question": "How much leave?"}, headers=KEY)
+    body = client.get("/health").json()
+    assert body["status"] == "ok"
+    assert body["ai"] == "unavailable"
+
+
+def test_a_real_ai_answer_clears_the_failure(client):
+    app.state.service = FakeService(RuntimeError("quota"))
+    client.post("/ask", json={"question": "How much leave?"}, headers=KEY)
+    app.state.service = AnsweredService()
+    client.post("/ask", json={"question": "How much leave?"}, headers=KEY)
+    assert client.get("/health").json()["ai"] == "ok"
+
+
+def test_a_reply_without_an_ai_call_does_not_clear_the_failure(client):
+    app.state.service = FakeService(RuntimeError("quota"))
+    client.post("/ask", json={"question": "How much leave?"}, headers=KEY)
+    app.state.service = GreetingService()
+    client.post("/ask", json={"question": "hello"}, headers=KEY)
+    assert client.get("/health").json()["ai"] == "unavailable"
+
+
+def test_a_failure_is_forgotten_after_a_while(client, monkeypatch):
+    app.state.service = FakeService(RuntimeError("quota"))
+    client.post("/ask", json={"question": "How much leave?"}, headers=KEY)
+    started = main.time.monotonic()
+    monkeypatch.setattr(main.time, "monotonic", lambda: started + main.AI_FAILURE_MEMORY_SECONDS + 1)
+    assert client.get("/health").json()["ai"] == "ok"
+
+
+def test_source_text_reaches_the_caller(client):
+    class WithText(FakeService):
+        def ask(self, question, history=None, filters=None):
+            return RagAnswer("18 days [1].", [{**SOURCES[0], "text": "18 days of Earned Leave."}])
+
+    app.state.service = WithText()
+    body = client.post("/ask", json={"question": "How much leave?"}, headers=KEY).json()
+    assert body["sources"][0]["text"] == "18 days of Earned Leave."
 
 
 def test_health_reports_empty_index(client):

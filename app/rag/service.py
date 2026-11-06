@@ -60,7 +60,9 @@ def check_citations(result: StructuredAnswer, chunks: list[Document]) -> tuple[s
     text = re.sub(r" +([.,;:])", r"\1", CITATION.sub(keep_valid, result.answer)).strip()
     return text, [{"ref": int(label), "policy": valid[label].metadata["policy"],
                    "section": valid[label].metadata["section"], "file": valid[label].metadata["source"],
-                   "chunk_id": valid[label].id or valid[label].metadata.get("chunk_id", "")}
+                   "chunk_id": valid[label].id or valid[label].metadata.get("chunk_id", ""),
+                   # The policy wording itself, without the heading path on the chunk's first line
+                   "text": valid[label].page_content.partition("\n\n")[2].strip()}
                   for label in usable]
 
 

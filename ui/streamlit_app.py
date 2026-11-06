@@ -10,7 +10,8 @@ from pathlib import Path
 
 import requests
 import streamlit as st
-from ui_settings import api_url, setting, tenant
+from chat_format import error_html, link_citations, sources_html, usable_history
+from ui_settings import api_url, demo_employees, setting, tenant
 
 UI_DIR = Path(__file__).resolve().parent
 API_URL = api_url()
@@ -33,21 +34,66 @@ AVATARS = {"assistant": ":material/support_agent:", "user": ":material/person:"}
 WAKING_UP = "The helpdesk is waking up or unavailable. Please try again in a minute."
 MAX_HISTORY_MESSAGES = 6  # earlier messages sent with each question, for follow-up questions
 MAX_MESSAGE_CHARS = 2000  # the longest earlier message the API accepts
-TYPING_DOTS = '<div class="typing" role="status" aria-label="Typing"><span></span><span></span><span></span></div>'
+# The dots show at once. The notes fade in after 5 and 20 seconds, using only CSS, because
+# this script can't update the screen while it waits for the API's first word.
+TYPING_DOTS = (
+    '<div class="typing-wrap" role="status" aria-label="Checking the policies">'
+    '<div class="typing" aria-hidden="true"><span></span><span></span><span></span></div>'
+    '<div class="wait-notes" aria-hidden="true">'
+    '<span class="wait-note wait-note-first">Still checking the policies...</span>'
+    '<span class="wait-note wait-note-second">This is taking longer than usual. Thanks for waiting.</span>'
+    "</div></div>"
+)
+STATUS_LABELS = {"online": "Online", "limited": "Service issue", "connecting": "Connecting"}
+STATUS_CHECK_SECONDS = 5  # how often to check again while the API can't be reached
 
 
 @st.cache_data(ttl=30, show_spinner=False)
-def api_is_online() -> bool:
-    """Check the API at most once every 30 seconds. A sleeping API wakes up from this."""
+def _fetch_status() -> str:
     try:
-        return requests.get(f"{API_URL}/health", timeout=2).ok
-    except requests.RequestException:
-        return False
+        response = requests.get(f"{API_URL}/health", timeout=2)
+        if not response.ok:
+            return "connecting"
+        return "limited" if response.json().get("ai") == "unavailable" else "online"
+    except (requests.RequestException, ValueError):
+        return "connecting"
+
+
+def api_status() -> str:
+    """Return "online", "limited" (answers are failing) or "connecting".
+
+    A good result is reused for 30 seconds. A sleeping API wakes up from this check,
+    and "connecting" isn't reused, so the badge updates as soon as the API is back.
+    """
+    status = _fetch_status()
+    if status == "connecting":
+        _fetch_status.clear()
+    return status
+
+
+def show_header(shown_status: str) -> None:
+    """Draw the company header, and redraw the page if the status changes."""
+    status = api_status()
+    if status != shown_status:
+        st.rerun()
+    st.markdown(
+        f"""<div class="brand-bar">
+          <div class="brand-logo" aria-hidden="true">{TENANT['logo_initials']}</div>
+          <div class="brand-text">
+            <div class="brand-company">{COMPANY}</div>
+            <div class="brand-product">{TENANT['product_name']}</div>
+          </div>
+          <div class="brand-status {status}" role="status">
+            <span class="status-dot"></span>{STATUS_LABELS[status]}
+          </div>
+        </div>""",
+        unsafe_allow_html=True,
+    )
 
 
 def chat_history() -> list[dict]:
-    """Return the recent messages, without the welcome and the question being asked now."""
-    messages = st.session_state.messages[1:-1]
+    """Return the recent messages, without the welcome, failed replies or the question being asked now."""
+    messages = usable_history(st.session_state.messages[1:-1])
     return [{"role": message["role"], "content": message["content"][:MAX_MESSAGE_CHARS]}
             for message in messages[-MAX_HISTORY_MESSAGES:]]
 
@@ -71,21 +117,46 @@ def read_events(lines: Iterable[str]) -> Iterator[tuple[str, dict]]:
             yield event, json.loads(line.removeprefix("data: "))
 
 
-def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[str]:
-    """Yield the answer as the API writes it, or a friendly message if the call fails.
+def api_headers() -> dict[str, str]:
+    headers = {"X-API-Key": API_KEY, "X-Client-Id": st.session_state.client_id}
+    if st.session_state.get("employee_id"):
+        headers["X-User-Id"] = st.session_state.employee_id
+    return headers
 
-    The sources arrive after the answer, so they're put in result.
+
+def decide_action(action_id: str, approve: bool) -> None:
+    """Send the employee's decision, and show what happened."""
+    try:
+        response = requests.post(f"{API_URL}/actions/{action_id}", json={"approve": approve},
+                                 headers=api_headers(), timeout=150)
+    except requests.RequestException:
+        st.session_state.messages.append({"role": "assistant", "content": WAKING_UP, "sources": [], "error": True})
+        return
+    st.session_state.pending_action = None
+    content = response.json()["answer"] if response.ok else error_message(response)
+    st.session_state.messages.append({"role": "assistant", "content": content, "sources": []})
+
+
+def change_employee() -> None:
+    start_new_chat()  # one employee must never continue another's chat
+
+
+def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[str]:
+    """Yield the answer as the API writes it.
+
+    The sources arrive after the answer, so they're put in result. So is the message
+    to show if the call fails, so that it can be shown differently from an answer.
     """
     try:
         response = requests.post(
-            f"{API_URL}/ask/stream", json={"question": question, "history": history},
-            headers={"X-API-Key": API_KEY, "X-Client-Id": st.session_state.client_id},
+            f"{API_URL}/ask/stream",
+            json={"question": question, "history": history, "conversation_id": st.session_state.conversation_id},
+            headers=api_headers(),
             timeout=150, stream=True,  # long enough for a free hosted API and database to wake up
         )
         if not response.ok:
-            yield error_message(response)
+            result["error"] = error_message(response)
             return
-        api_is_online.clear()
         response.encoding = "utf-8"
         for event, data in read_events(response.iter_lines(decode_unicode=True)):
             if event == "token":
@@ -93,58 +164,64 @@ def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[
             elif event == "done":
                 result["sources"] = data["sources"]
                 result["answer"] = data.get("answer")
+                result["pending_action"] = data.get("pending_action")
+                st.session_state.conversation_id = data.get("conversation_id")
             elif event == "error":
-                yield data["detail"]
+                result["error"] = data["detail"]
     except requests.RequestException:
-        yield WAKING_UP
+        result["error"] = WAKING_UP
 
 
-def show_sources(sources: list[dict]) -> None:
-    if sources:
-        with st.expander(f"Sources ({len(sources)})", icon=":material/menu_book:"):
-            for source in sources:
-                st.markdown(f"[{source['ref']}] **{source['policy']}**: {source['section']}")
+def show_message(index: int, message: dict) -> None:
+    with st.chat_message(message["role"], avatar=AVATARS[message["role"]]):
+        if message.get("error"):
+            st.markdown(error_html(message["content"]), unsafe_allow_html=True)
+            return
+        st.markdown(link_citations(message["content"], message["sources"], index))
+        if message["sources"]:
+            st.markdown(sources_html(message["sources"], index), unsafe_allow_html=True)
 
 
 def queue_question(question: str) -> None:
     st.session_state.queued_question = question
 
 
+def try_again() -> None:
+    """Ask the last question again, removing the failed attempt."""
+    st.session_state.messages.pop()
+    queue_question(st.session_state.messages.pop()["content"])
+
+
 def start_new_chat() -> None:
     st.session_state.messages = [{"role": "assistant", "content": WELCOME, "sources": []}]
+    st.session_state.conversation_id = None
+    st.session_state.pending_action = None
 
 
 st.set_page_config(page_title=f"HR Helpdesk | {COMPANY}", page_icon=":material/support_agent:")
 st.markdown(f"<style>{(UI_DIR / 'style.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
 
-online = api_is_online()
-st.markdown(
-    f"""<div class="brand-bar">
-      <div class="brand-logo" aria-hidden="true">{TENANT['logo_initials']}</div>
-      <div class="brand-text">
-        <div class="brand-company">{COMPANY}</div>
-        <div class="brand-product">{TENANT['product_name']}</div>
-      </div>
-      <div class="brand-status {'online' if online else ''}">
-        <span class="status-dot"></span>{'Online' if online else 'Connecting'}
-      </div>
-    </div>""",
-    unsafe_allow_html=True,
-)
+page_status = api_status()
+# Only while the API can't be reached, the header checks again by itself. Otherwise an
+# open tab would keep waking the hosted API and database.
+st.fragment(show_header, run_every=STATUS_CHECK_SECONDS if page_status == "connecting" else None)(page_status)
 
 if "messages" not in st.session_state:
     start_new_chat()
 if "client_id" not in st.session_state:
     st.session_state.client_id = uuid.uuid4().hex  # gives each chat its own rate limit
 
+employees = demo_employees()
+if employees:
+    st.selectbox("Demo employee (fake data, until real sign-in)", list(employees), format_func=employees.get,
+                 key="employee_id", on_change=change_employee)
+
 # A question comes from the box or from a suggested-question button
 question = st.chat_input("Ask about leave, payroll, work from home...", max_chars=500)
 question = question or st.session_state.pop("queued_question", None)
 
-for message in st.session_state.messages:
-    with st.chat_message(message["role"], avatar=AVATARS[message["role"]]):
-        st.markdown(message["content"])
-        show_sources(message["sources"])
+for message_index, past_message in enumerate(st.session_state.messages):
+    show_message(message_index, past_message)
 
 if question:
     st.session_state.messages.append({"role": "user", "content": question, "sources": []})
@@ -156,7 +233,7 @@ if question:
         typing = st.empty()
         with typing.container():
             st.markdown(TYPING_DOTS, unsafe_allow_html=True)
-            if not online:
+            if page_status == "connecting":
                 st.caption("The helpdesk is waking up. The first question can take a minute or two.")
 
 
@@ -169,13 +246,28 @@ if question:
 
         result = {"sources": []}
         streamed = st.write_stream(clear_typing_then_stream(stream_answer(question, history, result)))
+    if "error" in result:
+        failed = {"role": "assistant", "content": result["error"], "sources": [], "error": True}
+        st.session_state.messages.append(failed)
+    else:
         answer = result.get("answer") or streamed  # the API's final, checked text wins
-        sources = result["sources"]
-        show_sources(sources)
-    st.session_state.messages.append({"role": "assistant", "content": answer, "sources": sources})
-    st.rerun()  # shows the "New chat" button straight away
+        st.session_state.messages.append({"role": "assistant", "content": answer, "sources": result["sources"]})
+        st.session_state.pending_action = result.get("pending_action")
+    _fetch_status.clear()  # the badge should reflect how this question went
+    st.rerun()  # shows the sources, links and buttons straight away
 
-if len(st.session_state.messages) == 1:
+pending = st.session_state.get("pending_action")
+if pending:
+    with st.container(horizontal=True):
+        st.button("Approve", icon=":material/check:", type="primary", key="approve_action",
+                  on_click=decide_action, args=(pending["id"], True))
+        st.button("Decline", icon=":material/close:", key="decline_action",
+                  on_click=decide_action, args=(pending["id"], False))
+elif st.session_state.messages[-1].get("error"):
+    with st.container(horizontal=True):
+        st.button("Try again", icon=":material/replay:", type="primary", on_click=try_again)
+        st.button("New chat", icon=":material/refresh:", on_click=start_new_chat)
+elif len(st.session_state.messages) == 1:
     st.markdown('<div class="suggest-label">Popular questions</div>', unsafe_allow_html=True)
     columns = st.columns(2)
     for index, suggestion in enumerate(SUGGESTIONS):

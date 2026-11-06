@@ -36,7 +36,22 @@ def test_shows_connecting_when_the_api_is_unreachable(chat):
 def test_unreachable_api_gives_a_friendly_message(chat):
     chat.chat_input[0].set_value("How much leave do I get?").run()
     assert not chat.exception
-    assert chat.chat_message[-1].markdown[0].value.startswith("The helpdesk is waking up")
+    reply = chat.chat_message[-1].markdown[0].value
+    assert "error-note" in reply and "The helpdesk is waking up" in reply
+
+
+def test_failed_reply_offers_try_again_and_new_chat(chat):
+    assert [button.label for button in chat.button if button.label == "Try again"] == []
+    chat.chat_input[0].set_value("How much leave do I get?").run()
+    assert [button.label for button in chat.button] == ["Try again", "New chat"]
+
+
+def test_try_again_asks_the_same_question_without_a_duplicate(chat):
+    chat.chat_input[0].set_value("How much leave do I get?").run()
+    next(button for button in chat.button if button.label == "Try again").click().run()
+    assert not chat.exception
+    assert len(chat.chat_message) == 3  # welcome, the question once, and its reply
+    assert chat.chat_message[1].markdown[0].value == "How much leave do I get?"
 
 
 def test_suggestion_button_asks_its_question(chat):
@@ -60,3 +75,31 @@ def test_admin_screen_explains_an_unreachable_api():
     app.text_input[0].set_value("some-key").run()
     assert not app.exception
     assert "waking up" in app.error[0].value
+
+
+def test_demo_employee_is_chosen_from_fake_data(chat):
+    assert chat.selectbox[0].options == ["Asha Kulkarni", "Rohan Joshi", "Meera Patil"]
+    assert chat.session_state.employee_id == "E1001"
+
+
+def test_changing_employee_starts_a_new_chat(chat):
+    chat.session_state.conversation_id = "someone-elses-chat"
+    chat.selectbox[0].set_value("E1002").run()
+    assert not chat.exception
+    assert chat.session_state.conversation_id is None
+
+
+def test_a_pending_action_shows_approve_and_decline(chat):
+    chat.session_state.pending_action = {"id": "a1", "summary": "apply for leave"}
+    chat.run()
+    assert {"approve_action", "decline_action"} <= {button.key for button in chat.button}
+
+
+def test_approving_with_the_api_unreachable_keeps_the_action_and_explains(chat):
+    chat.session_state.pending_action = {"id": "a1", "summary": "apply for leave"}
+    chat.run()
+    chat.button(key="approve_action").click().run()
+    assert not chat.exception
+    assert chat.session_state.pending_action == {"id": "a1", "summary": "apply for leave"}
+    assert chat.session_state.messages[-1]["error"] is True
+

@@ -28,6 +28,24 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 logger = logging.getLogger("hr_helpdesk")
 
 UNAVAILABLE = "The AI service is unavailable right now. Please try again later."
+AI_FAILURE_MEMORY_SECONDS = 300  # how long /health reports a failed AI call, if nothing has worked since
+
+
+def record_ai_failure(app: FastAPI) -> None:
+    app.state.last_ai_failure = time.monotonic()
+
+
+def record_ai_result(app: FastAPI, result) -> None:
+    """Clear a failure once the AI really answered. A greeting or an empty search doesn't call it."""
+    if result.chunks or result.intent in ("out_of_scope", "personal_data_request", "action_request"):
+        app.state.last_ai_failure = None
+
+
+def ai_status(app: FastAPI) -> str:
+    failed_at = getattr(app.state, "last_ai_failure", None)
+    if failed_at is None or time.monotonic() - failed_at > AI_FAILURE_MEMORY_SECONDS:
+        return "ok"
+    return "unavailable"
 
 
 @asynccontextmanager
@@ -75,6 +93,7 @@ class Source(BaseModel):
     section: str
     file: str
     chunk_id: str
+    text: str = ""  # the policy wording this citation points to
 
 
 class AskResponse(BaseModel):
@@ -107,7 +126,7 @@ def live():
 
 @app.get("/health")
 def health(request: Request):
-    """Check the database without using any Gemini quota."""
+    """Check the database, and report recent AI failures, without using any Gemini quota."""
     try:
         chunks = request.app.state.count_chunks()
     except Exception:
@@ -115,7 +134,7 @@ def health(request: Request):
         raise HTTPException(503, "Database unavailable") from None
     if chunks == 0:
         raise HTTPException(503, "No policies indexed. Run: python -m pipeline.embed_and_store")
-    return {"status": "ok", "chunks_indexed": chunks}
+    return {"status": "ok", "chunks_indexed": chunks, "ai": ai_status(request.app)}
 
 
 def user_id_header(x_user_id: str = Header(default="", max_length=64, pattern=r"^[A-Za-z0-9_-]*$")) -> str | None:
@@ -154,7 +173,9 @@ def ask(body: AskRequest, request: Request, user_id: str | None = Depends(user_i
     except Exception:
         # Usually a Gemini quota or network problem. The details stay in the log.
         logger.exception("request_id=%s failed to answer", request.state.request_id)
+        record_ai_failure(request.app)
         raise HTTPException(503, UNAVAILABLE) from None
+    record_ai_result(request.app, result)
     return AskResponse(answer=result.answer, sources=result.sources, request_id=request.state.request_id,
                        conversation_id=result.conversation_id, intent=result.intent,
                        pending_action=result.pending_action)
@@ -170,6 +191,7 @@ def ask_stream(body: AskRequest, request: Request, user_id: str | None = Depends
     question, history, filters = parse_request(body)
     service = request.app.state.service
     request_id = request.state.request_id
+    api = request.app
 
     def events():
         try:
@@ -178,6 +200,7 @@ def ask_stream(body: AskRequest, request: Request, user_id: str | None = Depends
                 if kind == "token":
                     yield server_sent_event("token", {"text": value})
                 else:
+                    record_ai_result(api, value)
                     # The final text can differ from the tokens if a citation check failed, so it's sent too
                     yield server_sent_event("done", {"answer": value.answer, "sources": value.sources,
                                                      "request_id": request_id, "intent": value.intent,
@@ -188,6 +211,7 @@ def ask_stream(body: AskRequest, request: Request, user_id: str | None = Depends
         except Exception:
             # The response has already started, so the error has to be sent as an event
             logger.exception("request_id=%s failed to answer", request_id)
+            record_ai_failure(api)
             yield server_sent_event("error", {"detail": UNAVAILABLE})
 
     return StreamingResponse(events(), media_type="text/event-stream",

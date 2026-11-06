@@ -1,4 +1,5 @@
 """Settings shared by the chat screen and the admin screen."""
+import json
 import os
 import tomllib
 from pathlib import Path
@@ -25,6 +26,14 @@ def tenant() -> dict:
     path = setting("TENANT_CONFIG_FILE") or PROJECT_ROOT / "config" / "tenant.toml"
     with Path(path).open("rb") as file:
         return tomllib.load(file)
+
+
+def demo_employees() -> dict[str, str]:
+    """List the mock HR system's fake employees, by id. Real sign-in replaces this in Phase 4."""
+    path = PROJECT_ROOT / "config" / "mock_hrms.json"
+    if not path.exists():
+        return {}
+    return {key: value["name"] for key, value in json.loads(path.read_text(encoding="utf-8"))["employees"].items()}
 
 
 def api_url() -> str:

@@ -200,7 +200,9 @@ owner or a superuser, which is what the app connects as, so it has to change rol
 through a connection pool, and they work behind a transaction-pooling proxy such as Neon's, where session settings
 could reach another client. With no tenant set, no rows are visible, so a mistake fails closed.
 
-**Trade-offs:** Each transaction costs two more statements. Paused-run storage needed a small subclass of LangGraph's
+**Trade-offs:** Each transaction costs one more statement. RLS also stops PostgreSQL using a full-text index before it
+has checked the tenant, which added 150 to 200 ms per search here, so `langchain_pg_embedding` gets a stored
+`search_text` column, added on startup because the library creates that table. Paused-run storage needed a small subclass of LangGraph's
 saver, overriding its private `_cursor` method. An integration test fails if an upgrade breaks it. Looking up which
 organisation a login or key belongs to has to run as the owner, in a few reviewed methods in `app/identity.py`.
 

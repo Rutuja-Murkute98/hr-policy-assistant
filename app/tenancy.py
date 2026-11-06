@@ -15,8 +15,9 @@ from sqlalchemy import Connection, Engine, text
 
 APP_ROLE = "helpdesk_app"
 SAFE_TENANT_ID = re.compile(r"^[a-z0-9_-]+$")
-SET_ROLE = text(f"SET LOCAL ROLE {APP_ROLE}")
-SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
+# One statement, so a hosted database only costs one round trip per transaction
+ENTER_TENANT = f"SELECT set_config('role', '{APP_ROLE}', true), set_config('app.tenant_id', %s, true)"
+ENTER_TENANT_SQL = text(ENTER_TENANT.replace("%s", ":tenant_id"))
 CHECKPOINT_TABLES = ("checkpoints", "checkpoint_writes", "checkpoint_blobs")
 SECURITY_LOCK = 72_004  # any fixed number: it stops two server processes changing security at once
 THREAD_TENANT = "split_part(thread_id, ':', 1) = current_setting('app.tenant_id', true)"
@@ -31,8 +32,7 @@ def check_tenant_id(tenant_id: str) -> str:
 
 def enter_tenant(connection, tenant_id: str) -> None:
     """Switch this transaction to the app role and one tenant. Works on a connection or a session."""
-    connection.execute(SET_ROLE)
-    connection.execute(SET_TENANT, {"tenant_id": tenant_id})
+    connection.execute(ENTER_TENANT_SQL, {"tenant_id": tenant_id})
 
 
 class TenantEngine:

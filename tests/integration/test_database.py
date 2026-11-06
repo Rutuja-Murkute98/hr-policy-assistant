@@ -138,11 +138,13 @@ def test_results_work_with_filtering_and_selection(index, monkeypatch):
     assert chunks[0].id == "IT_Asset_and_Equipment_Policy > 1. Stolen Laptop > 0"
 
 
-def test_full_text_index_exists(index, database_uri):
+def test_parsed_text_is_stored_for_keyword_search(index, database_uri):
+    """Row-Level Security can't use a full-text index first, so searches read this column instead of parsing."""
     with psycopg.connect(database_uri) as connection:
-        names = [row[0] for row in connection.execute(
-            "SELECT indexname FROM pg_indexes WHERE tablename = 'langchain_pg_embedding'").fetchall()]
-    assert "ix_embedding_full_text" in names
+        rows = connection.execute("SELECT count(*), count(*) FILTER (WHERE search_text @@ 'earned'::tsquery) "
+                                  "FROM langchain_pg_embedding").fetchone()
+    assert rows[0] > 0
+    assert rows[1] > 0
 
 
 def test_edit_only_changes_what_changed_and_removes_renamed_sections(index):

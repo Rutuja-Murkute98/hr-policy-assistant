@@ -32,7 +32,7 @@ from app.rag.rerank import get_reranker
 from app.rag.retrieval import SearchFilters
 from app.rag.service import RagAnswer, RagService
 from app.rag.store import PolicyIndex, get_database_uri, get_store
-from app.tenancy import APP_ROLE, check_tenant_id, secure_library_tables, tenant_scoped
+from app.tenancy import ENTER_TENANT, check_tenant_id, secure_library_tables, tenant_scoped
 
 logger = logging.getLogger("hr_helpdesk")
 PURGE_INTERVAL_SECONDS = 24 * 60 * 60
@@ -64,8 +64,7 @@ class TenantSaver(PostgresSaver):
     def _cursor(self, *, pipeline: bool = False):
         with self.lock, self.pool.connection() as connection, connection.transaction(), connection.cursor(
                 binary=True, row_factory=dict_row) as cursor:
-            cursor.execute(f"SET LOCAL ROLE {APP_ROLE}")
-            cursor.execute("SELECT set_config('app.tenant_id', %s, true)", (self.tenant_id,))
+            cursor.execute(ENTER_TENANT, (self.tenant_id,))
             yield cursor
 
 

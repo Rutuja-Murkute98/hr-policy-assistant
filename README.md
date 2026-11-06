@@ -174,29 +174,43 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 
 ## 🔌 API
 
-| Method | Endpoint | Purpose | API key |
+| Method | Endpoint | Purpose | Who can use it |
 |---|---|---|---|
-| `GET` | `/live` | Checks that the server is running | Not needed |
-| `GET` | `/health` | Checks the database and counts indexed chunks | Not needed |
-| `POST` | `/ask` | Answers a question | `X-API-Key` header |
-| `GET`, `DELETE` | `/conversations` | Lists a user's chats, or deletes their whole history | `X-API-Key` and `X-User-Id` headers |
-| `GET` | `/conversations/{id}/messages` | Reads one chat | `X-API-Key` and `X-User-Id` headers |
-| `DELETE` | `/conversations/{id}` | Deletes one chat | `X-API-Key` and `X-User-Id` headers |
-| `GET` | `/actions` | Lists actions waiting for approval | `X-API-Key` and `X-User-Id` headers |
-| `POST` | `/actions/{id}` | Approves or declines an action, with `{"approve": true}` | `X-API-Key` and `X-User-Id` headers |
-| `POST` | `/ask/stream` | Sends the answer as it's written, as server-sent events: `token`, then `done` or `error` | `X-API-Key` header |
-| `POST` | `/feedback` | Rates an answer | `X-API-Key` and `X-User-Id` headers |
-| `GET` | `/admin/documents` | Lists the policies in the knowledge base | `X-Admin-Key` header |
-| `POST` | `/admin/documents` | Uploads a policy file, and returns an indexing job | `X-Admin-Key` header |
-| `GET` | `/admin/documents/{filename}/versions` | Lists a policy's versions | `X-Admin-Key` header |
-| `DELETE` | `/admin/documents/{filename}` | Removes a policy, keeping history unless `?purge=true` | `X-Admin-Key` header |
-| `GET` | `/admin/jobs`, `/admin/jobs/{id}` | Shows indexing jobs | `X-Admin-Key` header |
-| `POST` | `/admin/jobs/{id}/retry` | Retries a failed job | `X-Admin-Key` header |
-| `GET` | `/admin/unanswered`, `/admin/feedback` | Shows the reports | `X-Admin-Key` header |
+| `GET` | `/live` | Checks that the server is running | Anyone |
+| `GET` | `/health` | Checks the database and counts indexed chunks | Anyone |
+| `POST` | `/auth/session` | Records a sign-in, and says who it is | A signed-in person |
+| `GET` | `/me` | Says who's calling, and their organisation | Any caller |
+| `POST` | `/ask` | Answers a question | Any caller |
+| `POST` | `/ask/stream` | Sends the answer as it's written, as server-sent events: `token`, then `done` or `error` | Any caller |
+| `GET`, `DELETE` | `/conversations` | Lists a user's chats, or deletes their whole history | A known user |
+| `GET` | `/conversations/{id}/messages` | Reads one chat | A known user |
+| `DELETE` | `/conversations/{id}` | Deletes one chat | A known user |
+| `GET` | `/actions` | Lists actions waiting for approval | A known user |
+| `POST` | `/actions/{id}` | Approves or declines an action, with `{"approve": true}` | A known user |
+| `POST` | `/feedback` | Rates an answer | A known user |
+| `GET`, `POST` | `/admin/documents` | Lists policies, or uploads one and returns an indexing job | HR admin |
+| `GET` | `/admin/documents/{filename}/versions` | Lists a policy's versions | HR admin |
+| `DELETE` | `/admin/documents/{filename}` | Removes a policy, keeping history unless `?purge=true` | HR admin |
+| `GET` | `/admin/jobs`, `/admin/jobs/{id}` | Shows indexing jobs | HR admin |
+| `POST` | `/admin/jobs/{id}/retry` | Retries a failed job | HR admin |
+| `GET` | `/admin/unanswered`, `/admin/feedback` | Shows the reports | HR admin |
+| `GET`, `POST` | `/admin/users` | Lists people, or lets someone sign in | HR admin |
+| `PATCH` | `/admin/users/{id}` | Changes a role, or deactivates someone | HR admin |
+| `GET`, `POST` | `/admin/api-keys` | Lists keys, or creates one for an integration | HR admin |
+| `DELETE` | `/admin/api-keys/{id}` | Revokes a key | HR admin |
+| `GET` | `/admin/audit` | Shows what's happened in this organisation | HR admin |
+| `GET`, `POST` | `/platform/organisations` | Lists organisations, or adds one | Platform admin |
+| `PATCH` | `/platform/organisations/{id}` | Suspends or restores an organisation | Platform admin |
 
-To ask a follow-up question, send up to 6 earlier messages as `history`, such as `[{"role": "user", "content": "How much leave do I get?"}, {"role": "assistant", "content": "18 days."}]`. The server keeps no chat history itself.
+**How callers prove who they are** depends on `AUTH_MODE`:
 
-Send an `X-User-Id` header and `conversation_id` to use a stored chat. **This is a demo identity:** real sign-in comes in Phase 4, and until then anyone with the API key can name any user, so keep it on fake data.
+- **`demo` (default):** a shared `X-API-Key`, plus `X-User-Id` to name a user, and a shared `X-Admin-Key` for admin routes. **Anyone with the key can name any user, so this is for fake data only.**
+- **`oidc`:** people sign in and send `Authorization: Bearer <ID token>`. The shared keys stop working. Accounts must be added by an HR admin first.
+- **In both:** a per-organisation key from `/admin/api-keys`, sent as `X-API-Key` with `X-User-Id`, lets an integration act for its own organisation's users. Treat that key like a password, because it can name any user in that organisation.
+
+The organisation always comes from the caller's identity. No header or request field can choose it.
+
+To ask a follow-up question, send up to 6 earlier messages as `history`, such as `[{"role": "user", "content": "How much leave do I get?"}, {"role": "assistant", "content": "..."}]`. With a known user, send `conversation_id` to use a stored chat instead.
 
 To limit a search, send `filters` with any of `policy`, `category` and `effective_on`, such as `{"category": "leave", "effective_on": "2026-05-01"}`.
 
@@ -244,6 +258,10 @@ Add these to `.env` to change how it works. `.env.example` lists them all.
 | `ABSTENTION_MODE` | `confidence` (default) or `distance`, which uses `MAX_DISTANCE` |
 | `RERANKER` | `flashrank` adds a small local reranker, with more memory use and a model download. `cohere` uses Cohere's API and needs `COHERE_API_KEY`. Both are off by default |
 | `TENANT_CONFIG_FILE` | Points to the file with the company's name, HR email, branding and policy categories |
+| `AUTH_MODE`, `OIDC_ISSUER`, `OIDC_CLIENT_ID` | `demo` (default) or `oidc` for real sign-in. See [DEPLOY.md](DEPLOY.md) |
+| `PLATFORM_ADMIN_EMAILS` | The first platform admins, who can add organisations |
+| `REDIS_URL` | Counts rate limits in Redis instead of PostgreSQL. Needs `requirements-redis.txt` |
+| `AUDIT_RETENTION_DAYS` | How long audit entries are kept: 365 by default |
 | `HELPDESK_ADMIN_KEY` | Turns on the admin endpoints and the screen at `/admin` on the chat screen's address |
 
 ## 📁 Project structure
@@ -257,7 +275,12 @@ hr-policy-assistant/
 │   ├── workflow.py           # Runs the graph, and saves chats and approvals
 │   ├── memory.py             # Stored conversations
 │   ├── agent/                # LangGraph workflow, tools and mock HR system
-│   ├── security.py           # API key check and rate limiter
+│   ├── security.py           # Who's calling, and lasting rate limits
+│   ├── identity.py           # Organisations, users, API keys, sign-in tokens and audit log
+│   ├── accounts.py           # Endpoints for sign-in, people, keys and organisations
+│   ├── tenancy.py            # Row-Level Security: keeps each organisation's data apart
+│   ├── pii.py                # Masks personal data in text and logs
+│   ├── guards.py             # Prompt injection defences
 │   ├── config.py             # Settings, checked at startup
 │   └── rag/
 │       ├── service.py        # Answers, streaming and follow-up questions

@@ -85,6 +85,57 @@ venv\Scripts\python -m pipeline.embed_and_store
 
 The API creates its new table by itself when it starts.
 
+## Signing in (`AUTH_MODE=oidc`)
+
+By default this runs in demo mode: anyone with the shared key can name any demo employee. To have people sign in, you
+need a client from a sign-in provider. These steps use Google, and any OpenID Connect provider works the same way.
+
+1. In the [Google Cloud console](https://console.cloud.google.com/apis/credentials), create an **OAuth client ID** of
+   type *Web application*. Add `https://YOUR-APP.streamlit.app/oauth2callback` as an authorised redirect URI.
+2. In Render's **Environment** settings, add:
+   - `AUTH_MODE` = `oidc`
+   - `OIDC_ISSUER` = `https://accounts.google.com`
+   - `OIDC_CLIENT_ID` = your client ID
+   - `PLATFORM_ADMIN_EMAILS` = your own work email
+3. In Streamlit's **Secrets**, add these. `cookie_secret` should be a long random value you generate yourself:
+
+   ```toml
+   AUTH_MODE = "oidc"
+
+   [auth]
+   redirect_uri = "https://YOUR-APP.streamlit.app/oauth2callback"
+   cookie_secret = "a-long-random-value"
+   client_id = "your-client-id.apps.googleusercontent.com"
+   client_secret = "your-client-secret"
+   server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+   expose_tokens = "id"
+   ```
+
+4. Sign in, open `/admin` on the chat screen's address, and add people on the **People** tab. Nobody can sign in until
+   they're added, and an employee ID links them to their HR records.
+
+An ID token lasts about an hour. After that, the person is asked to sign in again.
+
+**This hasn't been run with a real provider yet**, because it needs a client that only you can create. The API's token
+checks are tested against a fake provider, and the screens with a pretend signed-in user.
+
+**The database role.** The migration creates a role called `helpdesk_app` and gives it to the user the app connects as.
+The app needs that, because Row-Level Security doesn't apply to a table's owner. So the database user needs permission
+to create roles, which Neon's default owner has. **This hasn't been run on Neon yet**: if the first start fails there,
+check the Render log for a permission error.
+
+## Organisations
+
+With sign-in on, a platform admin can add an organisation with `POST /platform/organisations`, naming its first HR
+admin. That admin uploads its policies on the admin screen. Each organisation's documents, chats, users, keys and audit
+log are kept apart by the database. A platform admin can add and suspend organisations, but has no route to read inside
+another one. Someone who can reach the database directly as the owner can see everything.
+
+## Integrations
+
+On the admin screen's **API keys** tab, create a key for an integration, such as the Slack bot, and use it as its
+`HELPDESK_API_KEY`. It's shown once and only a hash is stored. Keys keep working in `oidc` mode, and the shared key doesn't.
+
 ## About the self-service tools
 
 The chat screen lets anyone choose a demo employee, and the tools run on the mock HR system's **fake** employees. Don't connect real employee data until real sign-in arrives in Phase 4. To turn the tools off, set `SELF_SERVICE_ENABLED=false` on Render.

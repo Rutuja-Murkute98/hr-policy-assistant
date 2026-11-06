@@ -33,7 +33,7 @@ CHUNK_COLUMNS = (
 )
 # plainto_tsquery requires every word to match, so its ANDs are swapped for ORs
 KEYWORD_QUERY = "replace(plainto_tsquery('english', :question)::text, '&', '|')::tsquery"
-FULL_TEXT = "to_tsvector('english', e.document)"
+FULL_TEXT = "e.search_text"
 SPREAD = (
     "SELECT avg(1 - (e.embedding <=> CAST(:vector AS vector))) AS mean, "
     "stddev_pop(1 - (e.embedding <=> CAST(:vector AS vector))) AS spread "
@@ -68,10 +68,17 @@ UPDATE_METADATA = text(
     "UPDATE langchain_pg_embedding SET cmetadata = CAST(:metadata AS jsonb) WHERE id = :id "
     "AND collection_id = (SELECT uuid FROM langchain_pg_collection WHERE name = :collection)"
 )
-SEARCH_INDEX = text(
-    "CREATE INDEX IF NOT EXISTS ix_embedding_full_text ON langchain_pg_embedding "
-    "USING gin (to_tsvector('english', document))"
+# Row-Level Security stops PostgreSQL using a full-text index before it has checked the tenant, which meant parsing
+# every chunk's text on every search. Keeping the parsed text in a column removes that cost.
+HAS_SEARCH_TEXT = text(
+    "SELECT 1 FROM information_schema.columns "
+    "WHERE table_name = 'langchain_pg_embedding' AND column_name = 'search_text'"
 )
+ADD_SEARCH_TEXT = text(
+    "ALTER TABLE langchain_pg_embedding ADD COLUMN search_text tsvector "
+    "GENERATED ALWAYS AS (to_tsvector('english', document)) STORED"
+)
+DROP_OLD_SEARCH_INDEX = text("DROP INDEX IF EXISTS ix_embedding_full_text")
 DOCUMENT_HASHES = text(
     "SELECT source_file, content_hash FROM policy_documents "
     "WHERE tenant_id = :tenant_id AND collection_name = :collection"
@@ -212,8 +219,10 @@ class PolicyIndex:
         self.store = store
         self.tenant_id = check_tenant_id(tenant_id)
         with store.session_maker() as session:
-            session.execute(SEARCH_INDEX)
-            secure_library_tables(session, config.TENANT_ID)
+            secure_library_tables(session, config.TENANT_ID)  # also makes other server processes wait for this step
+            if not session.execute(HAS_SEARCH_TEXT).first():
+                session.execute(ADD_SEARCH_TEXT)
+                session.execute(DROP_OLD_SEARCH_INDEX)
             session.commit()
         self._check_embedding_model()
 

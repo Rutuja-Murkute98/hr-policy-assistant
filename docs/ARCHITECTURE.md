@@ -135,6 +135,34 @@ flowchart TB
 
 The server decides who the employee is, not the model, and a request for information can never use a tool that changes records. A finished run leaves no checkpoint, so chats live only in the conversation tables.
 
+## Phase 4 tenancy and security
+
+```mermaid
+flowchart TB
+    UI["Chat and admin screens<br>st.login gets an ID token"] -- "Bearer token" --> AUTH
+    BOT["Integration"] -- "per-organisation API key" --> AUTH
+    AUTH["Who's calling?<br>Check signature, issuer, audience, expiry<br>Tenant comes from the account"] --> ROLE{"Role allowed?"}
+    ROLE -- no --> R403["401 or 403"]
+    ROLE -- yes --> LIMIT["Rate limit<br>client, organisation, everyone"]
+    LIMIT --> REG["Workflow for this organisation only"]
+    REG --> MASK["Mask personal data in the question"]
+    MASK --> WF["LangGraph workflow"]
+    WF --> LLM["Model<br>never sees masked data or other tenants"]
+    WF --> TX["Each transaction:<br>SET LOCAL ROLE helpdesk_app<br>set_config app.tenant_id"]
+    TX --> RLS[("PostgreSQL<br>Row-Level Security on every tenant table")]
+```
+
+Three walls keep organisations apart. **The caller can't choose a tenant**, because it comes from their verified
+identity. **Each organisation has its own objects**, and a store refuses a tenant that isn't its own. **The database
+refuses anyway:** each transaction runs as a role that Row-Level Security applies to, so a query that forgets its filter
+sees only its own tenant's rows, or none if no tenant is set.
+
+A few lookups have to cross tenants, so they run as the owner: finding a login's account, finding an API key's
+organisation, writing audit entries, and counting rate limits. They're all in `app/identity.py` and `app/security.py`.
+
+The self-service step that can use tools never sees retrieved text, and the answer step has no tools. So the worst a
+poisoned policy can do is produce a wrong answer, with a citation pointing at the poisoned text.
+
 ## Phase 3 document flow
 
 ```mermaid

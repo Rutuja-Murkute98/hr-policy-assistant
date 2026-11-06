@@ -60,9 +60,9 @@ A feature is only marked as implemented after checking the code and running it.
 | Apply for leave with human approval | Implemented and tested | Includes a real browser run. The employee approves, not a manager |
 | Pause and resume across a restart | Implemented and tested | Scripted model on real PostgreSQL. Not tried on Render |
 | Retries with backoff | Implemented and tested | Simulated failures |
-| Audit log for every tool call | Implemented and tested | Arguments are stored unmasked until Phase 4 |
+| Audit log for every tool call | Implemented and tested | Arguments are masked, and the app can't change entries |
 | Agent evaluation | Implemented and tested | Draft labels, 100% on a small test |
-| Real sign-in | Planned | Phase 4. Until then, anyone with the API key can name any user, so this must stay on fake data |
+| Real sign-in | Partial | See Phase 4. Built, but not yet run with a real provider |
 
 ## Phase 3 status
 
@@ -82,7 +82,7 @@ A feature is only marked as implemented after checking the code and running it.
 | Duplicate detection by content hash | Implemented and tested | Live and in tests |
 | Job status in a table, shown on the admin page | Implemented and tested | The table of jobs on the admin page was only seen empty |
 | Admin page: documents, versions, jobs, retry, unanswered, feedback | Partial | Tabs opened in a browser. The retry and remove buttons weren't clicked |
-| Admin role only | Partial | One shared admin key until Phase 4 |
+| Admin role only | Implemented and tested | HR admin role with sign-in. Demo mode still has one shared admin key |
 | Chat, embedding and rerank providers by setting | Partial | Only Gemini and FlashRank have run live |
 | Temperature, max tokens, timeouts and retries | Implemented, not tested | Mapped per provider with fakes. Not exercised live |
 | Store embedding model and dimension, refuse to mix | Implemented and tested | Real PostgreSQL |
@@ -96,7 +96,7 @@ A feature is only marked as implemented after checking the code and running it.
 
 | Feature | Status | Evidence or gap |
 |---|---|---|
-| FastAPI app, key check, rate limits, logging | Implemented and tested | Rate limits are in memory until Phase 4 |
+| FastAPI app, key check, rate limits, logging | Implemented and tested | Limits are stored in PostgreSQL. See Phase 4 |
 | Streaming answers | Implemented and tested | Short answers arrive in very few pieces |
 | Admin endpoints and screen | Partial | Endpoints tested on a real database. Upload and remove buttons not clicked in a browser |
 | Swappable providers | Partial | Only Gemini has run live |

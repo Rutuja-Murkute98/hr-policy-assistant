@@ -129,7 +129,7 @@ def main() -> None:
     from app import config
     from app.db import get_engine
     from app.knowledge import KnowledgeBase
-    from app.rag.store import PolicyIndex, forget_embedding_model, get_store, run_migrations
+    from app.rag.store import PolicyIndex, clear_tenant_chunks, get_store, run_migrations
     from pipeline.chunk_documents import POLICY_DIR, chunk_text
 
     parser = argparse.ArgumentParser(description="Index the HR policies into pgvector")
@@ -142,9 +142,7 @@ def main() -> None:
     run_migrations()
     vector_store = get_store()
     if args.rebuild:
-        vector_store.delete_collection()
-        vector_store.create_collection()
-        forget_embedding_model(vector_store.collection_name)
+        clear_tenant_chunks(vector_store.collection_name, config.TENANT_ID)
 
     index = PolicyIndex(vector_store)
     knowledge = KnowledgeBase(get_engine(), index, config.TENANT_ID)

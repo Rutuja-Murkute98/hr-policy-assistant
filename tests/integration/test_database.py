@@ -112,7 +112,9 @@ def test_filter_values_are_parameters_not_sql(index):
 
 def test_another_tenant_finds_nothing(index):
     vector = index.embeddings.embed_query("leave")
-    assert index.candidates(vector, "leave", 5, filters=SearchFilters(tenant_id="another-tenant")) == []
+    other = PolicyIndex(index.store, "another-tenant")
+    assert other.candidates(vector, "leave", 5, filters=SearchFilters(tenant_id="another-tenant")) == []
+    assert other.stored_chunks() == {}
 
 
 def test_confidence_is_higher_for_the_best_match(index):

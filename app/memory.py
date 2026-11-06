@@ -7,6 +7,8 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from sqlalchemy import Engine, text
 
 from app import config
+from app.pii import mask
+from app.tenancy import TenantEngine, tenant_scoped
 
 logger = logging.getLogger("hr_helpdesk")
 
@@ -20,9 +22,10 @@ class ConversationNotFound(Exception):
 
 
 class ConversationStore:
-    def __init__(self, engine: Engine, tenant_id: str):
-        self.engine = engine
+    def __init__(self, engine: Engine | TenantEngine, tenant_id: str, public_emails: tuple[str, ...] = ()):
+        self.engine = tenant_scoped(engine, tenant_id)
         self.tenant_id = tenant_id
+        self.public_emails = public_emails  # such as the HR helpdesk's, which answers mention
 
     def _owner(self, user_id: str, **extra) -> dict:
         return {"tenant_id": self.tenant_id, "user_id": user_id, **extra}
@@ -54,7 +57,8 @@ class ConversationStore:
             return connection.execute(text(
                 "INSERT INTO messages (tenant_id, user_id, conversation_id, role, content) "
                 "VALUES (:tenant_id, :user_id, :conversation_id, :role, :content) RETURNING id"
-            ), self._owner(user_id, conversation_id=conversation_id, role=role, content=content)).scalar_one()
+            ), self._owner(user_id, conversation_id=conversation_id, role=role,
+                         content=mask(content, self.public_emails))).scalar_one()
 
     def messages(self, user_id: str, conversation_id: str) -> list[dict]:
         self.start(user_id, conversation_id)  # checks the owner, so a stranger gets "not found"
@@ -130,7 +134,7 @@ class ConversationStore:
             connection.execute(text(
                 "UPDATE conversations SET summary = :summary, summarised_messages = summarised_messages + :covered "
                 "WHERE id = :id AND tenant_id = :tenant_id AND user_id = :user_id"
-            ), self._owner(user_id, id=conversation_id, summary=summary, covered=covered))
+            ), self._owner(user_id, id=conversation_id, summary=mask(summary, self.public_emails), covered=covered))
 
 
 def build_summary_messages(previous: str, older: list[dict]) -> list[BaseMessage]:

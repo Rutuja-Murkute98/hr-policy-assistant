@@ -5,6 +5,8 @@ Without it, PostgreSQL runs inside Python and keeps its data in the pgdata folde
 """
 import json
 import re
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -19,6 +21,7 @@ from sqlalchemy import text
 from app import config
 from app.rag.providers import get_embeddings
 from app.rag.retrieval import Candidate, SearchFilters, evidence_scores
+from app.tenancy import check_tenant_id, enter_tenant, secure_library_tables
 
 CHUNK_JOIN = (
     "FROM langchain_pg_embedding e JOIN langchain_pg_collection c ON e.collection_id = c.uuid "
@@ -38,8 +41,18 @@ SPREAD = (
 # A chunk with no is_current value is current: only superseded copies carry it
 IS_CURRENT = "COALESCE(e.cmetadata->>'is_current', 'true') = 'true' "
 STORED_CHUNKS = text(
-    "SELECT e.id, e.document, e.cmetadata FROM langchain_pg_embedding e "
-    f"JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = :collection AND {IS_CURRENT}"
+    "SELECT e.id, e.document, e.cmetadata " + CHUNK_JOIN + "AND " + IS_CURRENT
+)
+UPSERT_CHUNK = text(
+    "INSERT INTO langchain_pg_embedding (id, collection_id, embedding, document, cmetadata) "
+    "SELECT :id, c.uuid, CAST(:embedding AS vector), :document, CAST(:metadata AS jsonb) "
+    "FROM langchain_pg_collection c WHERE c.name = :collection "
+    "ON CONFLICT (id) DO UPDATE SET embedding = EXCLUDED.embedding, document = EXCLUDED.document, "
+    "cmetadata = EXCLUDED.cmetadata"
+)
+DELETE_CHUNKS = text(
+    "DELETE FROM langchain_pg_embedding e USING langchain_pg_collection c WHERE e.collection_id = c.uuid "
+    "AND c.name = :collection AND e.id = ANY(:ids)"
 )
 ARCHIVE_CHUNKS = text(
     "INSERT INTO langchain_pg_embedding (id, collection_id, embedding, document, cmetadata) "
@@ -142,11 +155,16 @@ def get_store(collection_name: str = config.COLLECTION_NAME, database_uri: str |
     )
 
 
-def forget_embedding_model(collection_name: str, database_uri: str | None = None) -> None:
-    """Clear a collection's recorded model, after a rebuild removes its vectors."""
+def clear_tenant_chunks(collection_name: str, tenant_id: str, database_uri: str | None = None) -> None:
+    """Remove one organisation's chunks and recorded model, for a rebuild. Others in the collection stay."""
     with psycopg.connect(database_uri or get_database_uri()) as conn:
-        if conn.execute("SELECT to_regclass('embedding_models')").fetchone()[0]:  # type: ignore[index]
-            conn.execute("DELETE FROM embedding_models WHERE collection_name = %s", (collection_name,))
+        conn.execute(
+            "DELETE FROM langchain_pg_embedding e USING langchain_pg_collection c WHERE e.collection_id = c.uuid "
+            "AND c.name = %s AND COALESCE(e.cmetadata->>'tenant_id', %s) = %s",
+            (collection_name, config.TENANT_ID, tenant_id),
+        )
+        conn.execute("DELETE FROM embedding_models WHERE collection_name = %s AND tenant_id = %s",
+                     (collection_name, tenant_id))
 
 
 def count_chunks(collection_name: str = config.COLLECTION_NAME, database_uri: str | None = None) -> int:
@@ -184,21 +202,37 @@ def filter_clause(filters: SearchFilters) -> tuple[str, dict]:
 
 
 class PolicyIndex:
-    """The searches and changes the app needs from the vector database."""
+    """One organisation's view of the vector database. It can't see or change anyone else's chunks.
 
-    def __init__(self, store: PGVector):
+    Every statement runs inside the tenant, so PostgreSQL's Row-Level Security applies as well as
+    the filters here. The library's own write methods run as the table owner, so they aren't used.
+    """
+
+    def __init__(self, store: PGVector, tenant_id: str = config.TENANT_ID):
         self.store = store
+        self.tenant_id = check_tenant_id(tenant_id)
         with store.session_maker() as session:
             session.execute(SEARCH_INDEX)
+            secure_library_tables(session, config.TENANT_ID)
             session.commit()
         self._check_embedding_model()
 
+    @contextmanager
+    def _session(self) -> Iterator:
+        with self.store.session_maker() as session:
+            enter_tenant(session, self.tenant_id)
+            yield session
+            session.commit()
+
+    def _check_owner(self, chunks: list[Document]) -> None:
+        for chunk in chunks:
+            if chunk.metadata.get("tenant_id", config.TENANT_ID) != self.tenant_id:
+                raise ValueError("A chunk for another tenant can't be stored here")
+
     def _check_embedding_model(self) -> None:
         """Refuse to run on a collection built with another embedding model."""
-        with self.store.session_maker() as session:
-            if not session.execute(text("SELECT to_regclass('embedding_models')")).scalar():
-                return  # migrations haven't created the table yet, as in the first indexing run
-            row = session.execute(MODEL_FOR_COLLECTION, {"tenant_id": config.TENANT_ID,
+        with self._session() as session:
+            row = session.execute(MODEL_FOR_COLLECTION, {"tenant_id": self.tenant_id,
                                                          "collection": self.store.collection_name}).first()
             if row:
                 if (row.provider, row.model) != (config.EMBEDDING_PROVIDER, config.EMBEDDING_MODEL):
@@ -212,16 +246,13 @@ class PolicyIndex:
                 self._record_embedding_model(session, int(dimension))
 
     def _record_embedding_model(self, session, dimension: int) -> None:
-        session.execute(SAVE_MODEL, {"tenant_id": config.TENANT_ID, "collection": self.store.collection_name,
+        session.execute(SAVE_MODEL, {"tenant_id": self.tenant_id, "collection": self.store.collection_name,
                                      "provider": config.EMBEDDING_PROVIDER, "model": config.EMBEDDING_MODEL,
                                      "dimension": dimension})
-        session.commit()
 
     def _check_dimension(self, dimension: int) -> None:
-        with self.store.session_maker() as session:
-            if not session.execute(text("SELECT to_regclass('embedding_models')")).scalar():
-                return
-            row = session.execute(MODEL_FOR_COLLECTION, {"tenant_id": config.TENANT_ID,
+        with self._session() as session:
+            row = session.execute(MODEL_FOR_COLLECTION, {"tenant_id": self.tenant_id,
                                                          "collection": self.store.collection_name}).first()
             if not row:
                 self._record_embedding_model(session, dimension)
@@ -237,13 +268,16 @@ class PolicyIndex:
     def candidates(self, vector: list[float], question: str, k: int, use_keywords: bool = True,
                    filters: SearchFilters | None = None) -> list[Candidate]:
         """Return the k closest chunks, plus the k best keyword matches, within the filters."""
-        where, filter_params = filter_clause(filters or SearchFilters(tenant_id=config.TENANT_ID))
+        filters = filters or SearchFilters(tenant_id=self.tenant_id)
+        if filters.tenant_id != self.tenant_id:
+            raise ValueError("A search can't ask for another tenant's chunks")
+        where, filter_params = filter_clause(filters)
         params = {"vector": str(vector), "collection": self.store.collection_name, "k": k, **filter_params}
         keyword_sql = text(
             CHUNK_COLUMNS + CHUNK_JOIN + where + f"AND {FULL_TEXT} @@ {KEYWORD_QUERY} "
             f"ORDER BY ts_rank_cd({FULL_TEXT}, {KEYWORD_QUERY}) DESC, e.id LIMIT :k"  # the id makes ties repeatable
         )
-        with self.store.session_maker() as session:
+        with self._session() as session:
             vector_rows = session.execute(text(CHUNK_COLUMNS + CHUNK_JOIN + where + "ORDER BY distance, e.id LIMIT :k"),
                                           params).all()
             keyword_rows = session.execute(keyword_sql, {**params, "question": question}).all() if use_keywords else []
@@ -274,58 +308,62 @@ class PolicyIndex:
         return results
 
     def stored_chunks(self) -> dict[str, Document]:
-        """Return every stored chunk, without its embedding, by id."""
-        with self.store.session_maker() as session:
-            rows = session.execute(STORED_CHUNKS, {"collection": self.store.collection_name}).all()
+        """Return every current chunk of this tenant, without its embedding, by id."""
+        with self._session() as session:
+            rows = session.execute(STORED_CHUNKS, {"collection": self.store.collection_name,
+                                                   "tenant_id": self.tenant_id,
+                                                   "default_tenant": config.TENANT_ID}).all()
         return {row.id: Document(id=row.id, page_content=row.document, metadata=row.cmetadata)
                 for row in rows}
 
     def add(self, chunks: list[Document]) -> None:
         """Embed and store the chunks. A chunk whose id is already stored is replaced."""
+        self._check_owner(chunks)
         vectors = self.store.embeddings.embed_documents([chunk.page_content for chunk in chunks])
         self._check_dimension(len(vectors[0]))
-        self.store.add_embeddings(texts=[chunk.page_content for chunk in chunks], embeddings=vectors,
-                                  metadatas=[chunk.metadata for chunk in chunks],
-                                  ids=[str(chunk.id) for chunk in chunks])
+        with self._session() as session:
+            # If an id belonged to another tenant, Row-Level Security would refuse this rather than overwrite it
+            session.execute(UPSERT_CHUNK, [
+                {"id": str(chunk.id), "embedding": str(vector), "document": chunk.page_content,
+                 "metadata": json.dumps(chunk.metadata), "collection": self.store.collection_name}
+                for chunk, vector in zip(chunks, vectors, strict=True)
+            ])
 
     def archive_chunks(self, ids: list[str], version_number: int, superseded_on: str) -> None:
         """Copy chunks as a superseded version, with their embeddings, so no quota is used."""
         extra = json.dumps({"is_current": "false", "version_number": version_number, "superseded_on": superseded_on})
-        with self.store.session_maker() as session:
+        with self._session() as session:
             session.execute(ARCHIVE_CHUNKS, {"ids": ids, "version": version_number, "extra": extra,
                                              "collection": self.store.collection_name})
-            session.commit()
 
     def delete_archived(self, source_file: str) -> None:
-        with self.store.session_maker() as session:
+        with self._session() as session:
             session.execute(DELETE_ARCHIVED, {"collection": self.store.collection_name, "source": source_file})
-            session.commit()
 
     def update_metadata(self, chunks: list[Document]) -> None:
         """Change stored details without embedding anything again."""
-        with self.store.session_maker() as session:
+        self._check_owner(chunks)
+        with self._session() as session:
             for chunk in chunks:
                 session.execute(UPDATE_METADATA, {"id": chunk.id, "metadata": json.dumps(chunk.metadata),
                                                   "collection": self.store.collection_name})
-            session.commit()
 
     def delete(self, ids: list[str]) -> None:
-        self.store.delete(ids=ids)
+        with self._session() as session:
+            session.execute(DELETE_CHUNKS, {"ids": ids, "collection": self.store.collection_name})
 
     def document_hashes(self) -> dict[str, str]:
-        with self.store.session_maker() as session:
-            rows = session.execute(DOCUMENT_HASHES, {"tenant_id": config.TENANT_ID,
+        with self._session() as session:
+            rows = session.execute(DOCUMENT_HASHES, {"tenant_id": self.tenant_id,
                                                      "collection": self.store.collection_name}).all()
         return {row.source_file: row.content_hash for row in rows}
 
     def save_document(self, record: DocumentRecord) -> None:
-        with self.store.session_maker() as session:
-            session.execute(SAVE_DOCUMENT, {**record.__dict__, "tenant_id": config.TENANT_ID,
+        with self._session() as session:
+            session.execute(SAVE_DOCUMENT, {**record.__dict__, "tenant_id": self.tenant_id,
                                             "collection": self.store.collection_name})
-            session.commit()
 
     def delete_document(self, source_file: str) -> None:
-        with self.store.session_maker() as session:
-            session.execute(DELETE_DOCUMENT, {"tenant_id": config.TENANT_ID, "source_file": source_file,
+        with self._session() as session:
+            session.execute(DELETE_DOCUMENT, {"tenant_id": self.tenant_id, "source_file": source_file,
                                               "collection": self.store.collection_name})
-            session.commit()

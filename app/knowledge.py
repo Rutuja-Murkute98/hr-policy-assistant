@@ -17,7 +17,11 @@ from langchain_core.documents import Document
 from sqlalchemy import Engine, text
 
 from app import config
+from app.config import Tenant
+from app.guards import find_injection_signs, strip_invisible
+from app.pii import mask
 from app.rag.retrieval import body_of
+from app.tenancy import TenantEngine, tenant_scoped
 from pipeline.chunk_documents import chunk_text
 from pipeline.embed_and_store import SyncPlan, content_hash, plan_sync, run_sync
 from pipeline.extract import extract_document
@@ -57,8 +61,9 @@ def text_hash(content: str) -> str:
     return hashlib.sha256(content.strip().encode()).hexdigest()
 
 
-def known_categories() -> set[str]:
-    return {*config.tenant.document_categories.values(), config.tenant.default_category}
+def known_categories(profile: Tenant | None = None) -> set[str]:
+    profile = profile or config.tenant
+    return {*profile.document_categories.values(), profile.default_category}
 
 
 def overrides_of(row) -> dict:
@@ -67,11 +72,16 @@ def overrides_of(row) -> dict:
 
 
 class KnowledgeBase:
-    def __init__(self, engine: Engine, index, tenant_id: str, policy_dir: Path | None = None):
-        self.engine = engine
+    def __init__(self, engine: Engine | TenantEngine, index, tenant_id: str, policy_dir: Path | None = None,
+                 profile: Tenant | None = None):
+        if getattr(index, "tenant_id", tenant_id) != tenant_id:
+            raise ValueError("This search index belongs to another tenant")
+        self.engine = tenant_scoped(engine, tenant_id)
         self.index = index
         self.tenant_id = tenant_id
-        self.policy_dir = policy_dir if policy_dir is not None else config.POLICY_DIR
+        self.profile = profile or config.tenant
+        # The policy folder holds one organisation's files. Everyone's versions are in the database.
+        self.policy_dir = None if tenant_id != config.TENANT_ID else (policy_dir or config.POLICY_DIR)
 
     @property
     def _scope(self) -> dict:
@@ -125,16 +135,19 @@ class KnowledgeBase:
         stem = Path(file_name).stem
         if not re.fullmatch(SAFE_STEM, stem) or Path(file_name).name != file_name:
             raise UploadRejected("Use a file name like Leave_Policy.pdf: letters, numbers, _ and - only.")
-        if details.category and details.category not in known_categories():
-            raise UploadRejected(f"Category must be one of: {', '.join(sorted(known_categories()))}.")
+        categories = known_categories(self.profile)
+        if details.category and details.category not in categories:
+            raise UploadRejected(f"Category must be one of: {', '.join(sorted(categories))}.")
 
-        extracted = extract_document(data, file_name, details.title)
-        if len(extracted.markdown) > config.MAX_UPLOAD_CHARS:
+        # An upload is untrusted: invisible characters go, and anything that looks like an instruction is flagged
+        markdown = strip_invisible(extract_document(data, file_name, details.title).markdown)
+        warnings = find_injection_signs(markdown)
+        if len(markdown) > config.MAX_UPLOAD_CHARS:
             raise UploadRejected(f"This has more than {config.MAX_UPLOAD_CHARS:,} characters of text.")
         source_file = f"{stem}.md"  # one name per policy, whatever format it arrives in
         overrides = {"policy": details.title, "category": details.category, "version": details.version_label,
                      "effective_date": details.effective_date.isoformat() if details.effective_date else None}
-        chunks = chunk_text(extracted.markdown, source_file, overrides)
+        chunks = chunk_text(markdown, source_file, overrides, self.tenant_id, self.profile)
         if not chunks:
             raise UploadRejected("No sections with text were found in this file.")
 
@@ -142,7 +155,7 @@ class KnowledgeBase:
             other = connection.execute(text(
                 "SELECT source_file FROM document_versions WHERE tenant_id = :tenant_id AND collection_name = :collection "
                 "AND text_hash = :hash AND source_file <> :file AND status = 'current' LIMIT 1"
-            ), {**self._scope, "hash": text_hash(extracted.markdown), "file": source_file}).scalar()
+            ), {**self._scope, "hash": text_hash(markdown), "file": source_file}).scalar()
             active = connection.execute(text(
                 "SELECT id FROM indexing_jobs WHERE tenant_id = :tenant_id AND collection_name = :collection "
                 "AND source_file = :file AND status IN ('queued', 'running') LIMIT 1"
@@ -153,7 +166,7 @@ class KnowledgeBase:
             raise JobConflict("This policy is already being indexed. Please wait for that to finish.")
 
         metadata = dict(chunks[0].metadata)
-        metadata["content_hash"] = self._version_hash(extracted.markdown, metadata)
+        metadata["content_hash"] = self._version_hash(markdown, metadata)
         self._ensure_baseline(source_file)
         with self.engine.connect() as connection:
             latest = connection.execute(text(
@@ -161,7 +174,8 @@ class KnowledgeBase:
                 "AND source_file = :file AND status = 'current'"
             ), {**self._scope, "file": source_file}).scalar()
         if latest == metadata["content_hash"]:
-            return {"file": source_file, "status": "unchanged", "job_id": None, "version": self.current_number(source_file)}
+            return {"file": source_file, "status": "unchanged", "job_id": None, "version": self.current_number(source_file),
+                    "warnings": warnings}
 
         job_id = uuid.uuid4().hex
         with self.engine.begin() as connection:
@@ -169,7 +183,7 @@ class KnowledgeBase:
                 "UPDATE document_versions SET status = 'abandoned' WHERE tenant_id = :tenant_id "
                 "AND collection_name = :collection AND source_file = :file AND status = 'pending'"
             ), {**self._scope, "file": source_file})
-            version_id, number = self._insert_version(connection, source_file, metadata, file_name, extracted.markdown,
+            version_id, number = self._insert_version(connection, source_file, metadata, file_name, markdown,
                                                       "pending", details.uploaded_by)
             connection.execute(text(
                 "INSERT INTO indexing_jobs (id, tenant_id, collection_name, source_file, version_id, status, created_by) "
@@ -177,7 +191,8 @@ class KnowledgeBase:
             ), {**self._scope, "id": job_id, "file": source_file, "version_id": version_id, "by": details.uploaded_by})
         # Search skips very short sections as lead-ins, so say so rather than let them vanish quietly
         too_short = [c.metadata["section"] for c in chunks if len(body_of(c)) < config.MIN_BODY_CHARS]
-        return {"file": source_file, "status": "queued", "job_id": job_id, "version": number, "too_short": too_short}
+        return {"file": source_file, "status": "queued", "job_id": job_id, "version": number, "too_short": too_short,
+                "warnings": warnings}
 
     @staticmethod
     def _version_hash(content: str, metadata: dict) -> str:
@@ -214,7 +229,7 @@ class KnowledgeBase:
                 "SELECT * FROM document_versions WHERE id = :id"
             ), {"id": job.version_id}).one()
         try:
-            chunks = chunk_text(version.content, version.source_file, overrides_of(version))
+            chunks = chunk_text(version.content, version.source_file, overrides_of(version), self.tenant_id, self.profile)
             stored = self.index.stored_chunks()
             plan = plan_sync(stored, chunks, {version.source_file})
             self._update_job(job_id, to_embed=len(plan.to_embed))
@@ -248,6 +263,8 @@ class KnowledgeBase:
                 "AND collection_name = :collection AND source_file = :file AND status = 'current'"
             ), {**self._scope, "file": version.source_file})
             connection.execute(text("UPDATE document_versions SET status = 'current' WHERE id = :id"), {"id": version.id})
+        if self.policy_dir is None:
+            return
         try:
             (Path(self.policy_dir) / version.source_file).write_text(version.content, encoding="utf-8")
         except OSError:
@@ -301,7 +318,8 @@ class KnowledgeBase:
                 ), {**self._scope, "file": source_file})
         if purge:
             self.index.delete_archived(source_file)
-        (Path(self.policy_dir) / source_file).unlink(missing_ok=True)
+        if self.policy_dir is not None:
+            (Path(self.policy_dir) / source_file).unlink(missing_ok=True)
         return {"file": source_file, "removed": len(plan.stale_ids), "purged": purge}
 
     def documents(self) -> list[dict]:
@@ -371,7 +389,7 @@ class KnowledgeBase:
         with self.engine.begin() as connection:
             connection.execute(text(
                 "INSERT INTO unanswered_questions (tenant_id, question, reason) VALUES (:tenant_id, :question, :reason)"
-            ), {"tenant_id": self.tenant_id, "question": question[:config.MAX_QUESTION_CHARS], "reason": reason})
+            ), {"tenant_id": self.tenant_id, "question": mask(question)[:config.MAX_QUESTION_CHARS], "reason": reason})
 
     def unanswered_report(self, limit: int = 50) -> list[dict]:
         with self.engine.connect() as connection:
@@ -404,7 +422,7 @@ class KnowledgeBase:
                 "ON CONFLICT (tenant_id, user_id, message_id) DO UPDATE SET rating = EXCLUDED.rating, "
                 "comment = EXCLUDED.comment"
             ), {"tenant_id": self.tenant_id, "user_id": user_id, "message_id": message_id, "rating": rating,
-                "comment": comment})
+                "comment": mask(comment)})
 
     def feedback_summary(self, limit: int = 20) -> dict:
         with self.engine.connect() as connection:

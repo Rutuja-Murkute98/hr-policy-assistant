@@ -16,6 +16,8 @@ from sqlalchemy import Engine, text
 
 from app import config
 from app.agent.hrms import HRMSRejected, HRMSUnavailable, MockHRMS
+from app.pii import mask_value
+from app.tenancy import TenantEngine, tenant_scoped
 
 
 @dataclass
@@ -135,7 +137,7 @@ class ToolOutcome:
 class ToolRunner:
     """Run tools with validation, retries with backoff, approval checks and an audit entry for every call."""
 
-    def __init__(self, engine: Engine, hrms: MockHRMS, sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, engine: Engine | TenantEngine, hrms: MockHRMS, sleep: Callable[[float], None] = time.sleep):
         self.engine = engine
         self.hrms = hrms
         self.sleep = sleep
@@ -148,7 +150,7 @@ class ToolRunner:
                 "attempts, approval_id, duration_ms) VALUES (:tenant_id, :user_id, :conversation_id, :run_id, :tool, "
                 "CAST(:arguments AS jsonb), :status, :attempts, :approval_id, :duration_ms)"
             ), {"tenant_id": context.tenant_id, "user_id": context.user_id, "conversation_id": context.conversation_id,
-                "run_id": context.run_id, "tool": tool, "arguments": json.dumps(arguments, default=str),
+                "run_id": context.run_id, "tool": tool, "arguments": json.dumps(mask_value(arguments), default=str),
                 "status": status, "attempts": attempts, "approval_id": approval_id,
                 "duration_ms": int((time.perf_counter() - started) * 1000)})
 
@@ -226,8 +228,8 @@ class ActionNotPending(Exception):
 
 
 class PendingActions:
-    def __init__(self, engine: Engine, tenant_id: str):
-        self.engine = engine
+    def __init__(self, engine: Engine | TenantEngine, tenant_id: str):
+        self.engine = tenant_scoped(engine, tenant_id)
         self.tenant_id = tenant_id
 
     def list_pending(self, user_id: str) -> list[dict]:

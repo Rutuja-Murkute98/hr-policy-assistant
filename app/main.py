@@ -11,21 +11,27 @@ from contextlib import asynccontextmanager
 from datetime import date
 from typing import Literal
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app import config
+from app.accounts import admin_router as accounts_admin_router
+from app.accounts import platform_router
+from app.accounts import router as accounts_router
 from app.admin import router as admin_router
 from app.agent.tools import ActionNotFound, ActionNotPending
+from app.identity import Principal, create_identity
 from app.knowledge import NotFound
 from app.memory import ConversationNotFound
+from app.pii import install_log_masking
 from app.rag.retrieval import SearchFilters
 from app.rag.store import count_chunks, run_migrations
-from app.security import rate_limit, verify_api_key
-from app.workflow import create_workflow
+from app.security import audit, current_principal, get_rate_store, rate_limit, required_user, service_for
+from app.workflow import create_registry
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+install_log_masking()
 logger = logging.getLogger("hr_helpdesk")
 
 UNAVAILABLE = "The AI service is unavailable right now. Please try again later."
@@ -54,8 +60,11 @@ async def lifespan(app: FastAPI):
     # Connect once at startup. Indexing is a separate script, so this is fast.
     if not hasattr(app.state, "service"):
         run_migrations()
-        app.state.service = create_workflow()
+        registry = create_registry()
+        app.state.service = registry
+        app.state.identity = create_identity(registry.engine)
         app.state.count_chunks = count_chunks
+        rate_limit.store = get_rate_store(registry.engine)
     yield
     close = getattr(app.state.service, "close", None)
     if close:
@@ -64,6 +73,9 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="HR Helpdesk RAG", lifespan=lifespan)
 app.include_router(admin_router)
+app.include_router(accounts_router)
+app.include_router(accounts_admin_router)
+app.include_router(platform_router)
 
 
 class ChatMessage(BaseModel):
@@ -111,7 +123,8 @@ class AskResponse(BaseModel):
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Give each request an id and log it. Questions aren't logged, as they may be personal."""
-    request.state.request_id = uuid.uuid4().hex[:12]
+    # The letter stops an id of all digits looking like a phone or Aadhaar number to the log masking
+    request.state.request_id = f"r{uuid.uuid4().hex[:11]}"
     started = time.perf_counter()
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
@@ -140,37 +153,23 @@ def health(request: Request):
     return {"status": "ok", "chunks_indexed": chunks, "ai": ai_status(request.app)}
 
 
-def user_id_header(x_user_id: str = Header(default="", max_length=64, pattern=r"^[A-Za-z0-9_-]*$")) -> str | None:
-    """Say who this request is for. Only callers with the API key get this far, so it's trusted.
-
-    Phase 4 replaces this with real sign-in. Until then, anyone with the API key can name any user.
-    """
-    return x_user_id or None
-
-
-def required_user(user_id: str | None = Depends(user_id_header)) -> str:
-    if not user_id:
-        raise HTTPException(422, "This needs an X-User-Id header")
-    return user_id
-
-
-def parse_request(body: AskRequest) -> tuple[str, list[dict], SearchFilters]:
+def parse_request(body: AskRequest, principal: Principal) -> tuple[str, list[dict], SearchFilters]:
     question = body.question.strip()
     if len(question) < 2:
         raise HTTPException(422, "Please type a question")
     effective_on = body.filters.effective_on
-    filters = SearchFilters(tenant_id=config.TENANT_ID, policy=body.filters.policy, category=body.filters.category,
+    filters = SearchFilters(tenant_id=principal.tenant_id, policy=body.filters.policy, category=body.filters.category,
                             effective_on=effective_on.isoformat() if effective_on else None)
     return question, [message.model_dump() for message in body.history], filters
 
 
-@app.post("/ask", response_model=AskResponse,
-          dependencies=[Depends(verify_api_key), Depends(rate_limit)])
-def ask(body: AskRequest, request: Request, user_id: str | None = Depends(user_id_header)):
-    question, history, filters = parse_request(body)
+@app.post("/ask", response_model=AskResponse, dependencies=[Depends(rate_limit)])
+def ask(body: AskRequest, request: Request, principal: Principal = Depends(current_principal)):
+    question, history, filters = parse_request(body, principal)
+    service = service_for(request, principal)
     try:
-        result = request.app.state.service.ask(question, history, filters, user_id=user_id,
-                                               conversation_id=body.conversation_id)
+        result = service.ask(question, history, filters, user_id=principal.user_id,
+                             conversation_id=body.conversation_id)
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None
     except Exception:
@@ -188,17 +187,17 @@ def server_sent_event(event: str, data: dict) -> str:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n"
 
 
-@app.post("/ask/stream", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
-def ask_stream(body: AskRequest, request: Request, user_id: str | None = Depends(user_id_header)):
+@app.post("/ask/stream", dependencies=[Depends(rate_limit)])
+def ask_stream(body: AskRequest, request: Request, principal: Principal = Depends(current_principal)):
     """Send the answer as it's written, as server-sent events: token, then done or error."""
-    question, history, filters = parse_request(body)
-    service = request.app.state.service
+    question, history, filters = parse_request(body, principal)
+    service = service_for(request, principal)
     request_id = request.state.request_id
     api = request.app
 
     def events():
         try:
-            for kind, value in service.stream(question, history, filters, user_id=user_id,
+            for kind, value in service.stream(question, history, filters, user_id=principal.user_id,
                                               conversation_id=body.conversation_id):
                 if kind == "token":
                     yield server_sent_event("token", {"text": value})
@@ -234,54 +233,58 @@ class Feedback(BaseModel):
     comment: str = Field(default="", max_length=1000)
 
 
-@app.post("/feedback", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
-def give_feedback(body: Feedback, request: Request, user_id: str = Depends(required_user)):
+@app.post("/feedback", dependencies=[Depends(rate_limit)])
+def give_feedback(body: Feedback, request: Request, principal: Principal = Depends(required_user)):
     """Rate an answer. Rating it again replaces the earlier rating."""
     try:
-        request.app.state.service.knowledge.save_feedback(user_id, body.message_id, body.rating, body.comment)
+        service_for(request, principal).knowledge.save_feedback(principal.user_id, body.message_id, body.rating,
+                                                                body.comment)
     except NotFound:
         raise HTTPException(404, "Answer not found") from None
     return {"saved": True}
 
 
-@app.get("/conversations", dependencies=[Depends(verify_api_key)])
-def list_conversations(request: Request, user_id: str = Depends(required_user)):
-    return request.app.state.service.conversations.conversations(user_id)
+@app.get("/conversations")
+def list_conversations(request: Request, principal: Principal = Depends(required_user)):
+    return service_for(request, principal).conversations.conversations(principal.user_id)
 
 
-@app.get("/conversations/{conversation_id}/messages", dependencies=[Depends(verify_api_key)])
-def conversation_messages(conversation_id: str, request: Request, user_id: str = Depends(required_user)):
+@app.get("/conversations/{conversation_id}/messages")
+def conversation_messages(conversation_id: str, request: Request, principal: Principal = Depends(required_user)):
     try:
-        return request.app.state.service.conversations.messages(user_id, conversation_id)
+        return service_for(request, principal).conversations.messages(principal.user_id, conversation_id)
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None
 
 
-@app.delete("/conversations/{conversation_id}", dependencies=[Depends(verify_api_key)])
-def delete_conversation(conversation_id: str, request: Request, user_id: str = Depends(required_user)):
+@app.delete("/conversations/{conversation_id}")
+def delete_conversation(conversation_id: str, request: Request, principal: Principal = Depends(required_user)):
     try:
-        request.app.state.service.delete_conversation(user_id, conversation_id)
+        service_for(request, principal).delete_conversation(principal.user_id, conversation_id)
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None
+    audit(request, principal, "conversation_deleted", conversation_id)
     return {"deleted": conversation_id}
 
 
-@app.delete("/conversations", dependencies=[Depends(verify_api_key)])
-def delete_all_conversations(request: Request, user_id: str = Depends(required_user)):
+@app.delete("/conversations")
+def delete_all_conversations(request: Request, principal: Principal = Depends(required_user)):
     """Delete this user's whole chat history."""
-    return {"deleted": request.app.state.service.delete_user_history(user_id)}
+    removed = service_for(request, principal).delete_user_history(principal.user_id)
+    audit(request, principal, "conversation_history_deleted", count=removed)
+    return {"deleted": removed}
 
 
-@app.get("/actions", dependencies=[Depends(verify_api_key)])
-def pending_actions(request: Request, user_id: str = Depends(required_user)):
-    return request.app.state.service.actions.list_pending(user_id)
+@app.get("/actions")
+def pending_actions(request: Request, principal: Principal = Depends(required_user)):
+    return service_for(request, principal).actions.list_pending(principal.user_id)
 
 
-@app.post("/actions/{action_id}", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
-def decide_action(action_id: str, body: Decision, request: Request, user_id: str = Depends(required_user)):
+@app.post("/actions/{action_id}", dependencies=[Depends(rate_limit)])
+def decide_action(action_id: str, body: Decision, request: Request, principal: Principal = Depends(required_user)):
     """Approve or decline an action. Only the person it's for can decide, and only once."""
     try:
-        result = request.app.state.service.decide(user_id, action_id, body.approve)
+        result = service_for(request, principal).decide(principal.user_id, action_id, body.approve)
     except ActionNotFound:
         raise HTTPException(404, "Action not found") from None
     except ActionNotPending:
@@ -289,4 +292,6 @@ def decide_action(action_id: str, body: Decision, request: Request, user_id: str
     except Exception:
         logger.exception("request_id=%s failed to finish an action", request.state.request_id)
         raise HTTPException(503, UNAVAILABLE) from None
+    audit(request, principal, "action_approved" if body.approve else "action_declined", action_id,
+          status=result.tool_status)
     return {"answer": result.answer, "status": result.tool_status, "conversation_id": result.conversation_id}

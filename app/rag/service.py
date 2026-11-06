@@ -8,11 +8,11 @@ from langchain_core.documents import Document
 
 from app import config
 from app.rag.prompt import (
-    FALLBACK_ANSWER,
-    GREETING_ANSWER,
     StructuredAnswer,
     build_messages,
     build_rewrite_messages,
+    fallback_answer,
+    greeting_answer,
 )
 from app.rag.providers import get_chat_model
 from app.rag.rerank import get_reranker
@@ -34,10 +34,6 @@ class RagAnswer:
     question_used: str = ""  # the question that was searched for, after any rewriting
     answered: bool = True    # false when the bot abstained
     abstain_reason: str = ""
-
-
-def default_filters() -> SearchFilters:
-    return SearchFilters(tenant_id=config.TENANT_ID)
 
 
 def check_citations(result: StructuredAnswer, chunks: list[Document]) -> tuple[str, list[dict]] | None:
@@ -73,8 +69,10 @@ def _field(partial: object, name: str, default: object = None) -> object:
 
 
 class RagService:
-    def __init__(self, store, llm, reranker=None, hybrid: bool = config.HYBRID_SEARCH):
+    def __init__(self, store, llm, reranker=None, hybrid: bool = config.HYBRID_SEARCH, profile=None):
         self.store = store
+        self.profile = profile or config.tenant
+        self.tenant_id = getattr(store, "tenant_id", config.TENANT_ID)
         self.llm = llm
         self.reranker = reranker
         self.hybrid = hybrid
@@ -93,7 +91,7 @@ class RagService:
         """Return the chunks worth sending to the LLM, and how strongly the best chunk stood out."""
         vector = self.store.embeddings.embed_query(question)
         found = self.store.candidates(vector, question, config.FETCH_K, use_keywords=self.hybrid,
-                                      filters=filters or default_filters())
+                                      filters=filters or SearchFilters(tenant_id=self.tenant_id))
         candidates = keep_usable(found)
         confidence = max((candidate.confidence for candidate in found), default=0.0)
         return select_chunks(candidates, self._rerank(question, candidates)), confidence
@@ -148,8 +146,8 @@ class RagService:
         The final answer is the one to keep, because citation checks can change the streamed text.
         """
         if GREETING.fullmatch(question.strip()):  # no search or API quota needed
-            yield "token", GREETING_ANSWER
-            yield "done", RagAnswer(GREETING_ANSWER, question_used=question)
+            yield "token", greeting_answer(self.profile)
+            yield "done", RagAnswer(greeting_answer(self.profile), question_used=question)
             return
 
         # Only this rewritten question reaches the answer prompt, not the chat itself,
@@ -157,8 +155,8 @@ class RagService:
         standalone = self._standalone_question(question, history)
         chunks = self.retrieve(standalone, filters)
         if not chunks:  # not enough evidence: skip the LLM call
-            yield "token", FALLBACK_ANSWER
-            yield "done", RagAnswer(FALLBACK_ANSWER, question_used=standalone, answered=False,
+            yield "token", fallback_answer(self.profile)
+            yield "done", RagAnswer(fallback_answer(self.profile), question_used=standalone, answered=False,
                                     abstain_reason="no_evidence")
             return
 
@@ -168,7 +166,7 @@ class RagService:
                            stream_tokens: bool = True) -> Iterator[tuple[str, object]]:
         """Write the answer, check its citations, and yield tokens, then ("done", RagAnswer)."""
         result: StructuredAnswer | None = None
-        for kind, value in self._structured_stream(build_messages(standalone, chunks), stream_tokens):
+        for kind, value in self._structured_stream(build_messages(standalone, chunks, self.profile), stream_tokens):
             if kind == "token":
                 yield "token", value
             else:
@@ -186,7 +184,7 @@ class RagService:
             yield "done", RagAnswer(checked[0], checked[1], chunks, standalone)
             return
 
-        yield "done", RagAnswer(FALLBACK_ANSWER, chunks=chunks, question_used=standalone, answered=False,
+        yield "done", RagAnswer(fallback_answer(self.profile), chunks=chunks, question_used=standalone, answered=False,
                                 abstain_reason=reason)
 
 

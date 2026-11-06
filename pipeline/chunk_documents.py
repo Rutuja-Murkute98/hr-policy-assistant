@@ -44,8 +44,10 @@ def split_into_sections(text: str) -> Iterator[tuple[list[str], str]]:
         yield path, text[match.end():end].strip()
 
 
-def document_details(text: str, file_name: str) -> dict[str, str | None]:
+def document_details(text: str, file_name: str, tenant_id: str | None = None,
+                     profile: config.Tenant | None = None) -> dict[str, str | None]:
     """Read the details that apply to every chunk of a document."""
+    profile = profile or config.tenant
     version, effective = VERSION.search(text), EFFECTIVE_DATE.search(text)
     effective_date = None
     if effective:
@@ -54,8 +56,8 @@ def document_details(text: str, file_name: str) -> dict[str, str | None]:
         except ValueError:
             pass  # a date in another format is left out, not guessed
     return {
-        "tenant_id": config.TENANT_ID,
-        "category": config.tenant.document_categories.get(file_name, config.tenant.default_category),
+        "tenant_id": tenant_id or config.TENANT_ID,
+        "category": profile.document_categories.get(file_name, profile.default_category),
         "version": version[1] if version else None,
         "effective_date": effective_date,
     }
@@ -66,15 +68,20 @@ def chunk_document(file: Path) -> list[Document]:
     return chunk_text(file.read_text(encoding="utf-8"), file.name)
 
 
-def chunk_text(text: str, file_name: str, overrides: dict | None = None) -> list[Document]:
+def chunk_text(text: str, file_name: str, overrides: dict | None = None, tenant_id: str | None = None,
+               profile: config.Tenant | None = None) -> list[Document]:
     """Turn the text of one policy into chunks with metadata.
 
     overrides can set policy, category, version and effective_date, such as from an upload form.
+    Chunk ids are unique across the database, so without the prefix another organisation's
+    file of the same name would clash with this one's.
     """
+    owner = tenant_id or config.TENANT_ID
+    id_prefix = "" if owner == config.TENANT_ID else f"{owner}::"
     stem = Path(file_name).stem
     given = {key: value for key, value in (overrides or {}).items() if value}
     policy_title = given.pop("policy", None)
-    details = {**document_details(text, file_name), **given}
+    details = {**document_details(text, file_name, owner, profile), **given}
     chunks = []
     for headings, body in split_into_sections(text):
         if len(headings) == 1:
@@ -88,7 +95,7 @@ def chunk_text(text: str, file_name: str, overrides: dict | None = None) -> list
         parts = [body] if len(body) <= MAX_SECTION_CHARS else long_section_splitter.split_text(body)
         heading_path = " > ".join(headings)
         for part_number, part in enumerate(parts):
-            chunk_id = f"{stem} > {' > '.join(headings[1:])} > {part_number}"
+            chunk_id = f"{id_prefix}{stem} > {' > '.join(headings[1:])} > {part_number}"
             chunks.append(Document(
                 id=chunk_id,
                 # Including the headings tells the search and the LLM what this text is about

@@ -8,7 +8,9 @@ from pathlib import Path
 
 from sqlalchemy import Engine, text
 
+from app import config
 from app.config import PROJECT_ROOT
+from app.tenancy import TenantEngine, tenant_scoped
 
 DEFAULT_DATA_FILE = PROJECT_ROOT / "config" / "mock_hrms.json"
 LEAVE_TYPES = ("earned", "sick", "casual")
@@ -29,10 +31,14 @@ def working_days(start: date, end: date) -> int:
 
 
 class MockHRMS:
-    def __init__(self, engine: Engine, tenant_id: str, data_file: Path = DEFAULT_DATA_FILE):
-        self.engine = engine
+    def __init__(self, engine: Engine | TenantEngine, tenant_id: str, data_file: Path | None = None):
+        self.engine = tenant_scoped(engine, tenant_id)
         self.tenant_id = tenant_id
-        self.employees = json.loads(data_file.read_text(encoding="utf-8"))["employees"]
+        # The same employee id in another organisation is a different person, with no record here
+        if data_file is None and tenant_id != config.TENANT_ID:
+            self.employees: dict = {}
+        else:
+            self.employees = json.loads((data_file or DEFAULT_DATA_FILE).read_text(encoding="utf-8"))["employees"]
 
     def _employee(self, employee_id: str) -> dict:
         employee = self.employees.get(employee_id)

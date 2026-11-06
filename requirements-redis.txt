@@ -1,0 +1,2 @@
+# Only for a deployment that sets REDIS_URL. Rate limits otherwise use PostgreSQL.
+redis==8.1.0

@@ -98,12 +98,23 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=5_000_000, ge=1)
     embedding_wait_seconds: int = Field(default=65, ge=0)
 
+    # Sign-in: see docs/DECISIONS.md, D27. "demo" keeps shared keys and a chosen demo employee.
+    auth_mode: Literal["demo", "oidc"] = "demo"
+    oidc_issuer: str = ""  # such as https://accounts.google.com
+    oidc_client_id: str = ""
+    platform_admin_emails: str = ""  # comma-separated: the first platform admins, who can add organisations
+    redis_url: str = ""  # empty = rate limits are counted in PostgreSQL
+    rate_limit_tenant_per_minute: int = Field(default=30, ge=1)
+    rate_limit_login_per_minute: int = Field(default=30, ge=1)
+
     @model_validator(mode="after")
     def check_combinations(self) -> "Settings":
         if self.retrieve_k > self.fetch_k:
             raise ValueError("RETRIEVE_K can't be larger than FETCH_K")
         if self.rate_limit_per_minute > self.rate_limit_total_per_minute:
             raise ValueError("RATE_LIMIT_PER_MINUTE can't be larger than RATE_LIMIT_TOTAL_PER_MINUTE")
+        if self.auth_mode == "oidc" and not (self.oidc_issuer and self.oidc_client_id):
+            raise ValueError("AUTH_MODE=oidc needs OIDC_ISSUER and OIDC_CLIENT_ID")
         if self.llm_fallback_provider and not self.llm_fallback_model:
             raise ValueError("LLM_FALLBACK_PROVIDER needs LLM_FALLBACK_MODEL")
         if self.reranker == "cohere" and not self.cohere_api_key:
@@ -196,3 +207,11 @@ MAX_MESSAGE_CHARS = settings.max_message_chars
 MAX_UPLOAD_CHARS = settings.max_upload_chars
 MAX_UPLOAD_BYTES = settings.max_upload_bytes
 EMBEDDING_WAIT_SECONDS = settings.embedding_wait_seconds
+
+AUTH_MODE: str = settings.auth_mode
+OIDC_ISSUER = settings.oidc_issuer
+OIDC_CLIENT_ID = settings.oidc_client_id
+PLATFORM_ADMIN_EMAILS = [email.strip() for email in settings.platform_admin_emails.split(",") if email.strip()]
+REDIS_URL = settings.redis_url
+RATE_LIMIT_TENANT_PER_MINUTE = settings.rate_limit_tenant_per_minute
+RATE_LIMIT_LOGIN_PER_MINUTE = settings.rate_limit_login_per_minute

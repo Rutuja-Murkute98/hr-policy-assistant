@@ -189,6 +189,87 @@ One short entry per technology or design choice. A technology is added here befo
 - **Choice:** `LLM_FALLBACK_PROVIDER` and `LLM_FALLBACK_MODEL`, unset by default. A fallback is only used if the main model fails before any text is written.
 - **Trade-off:** a failure partway through an answer still fails, because half an answer from each model would be wrong.
 
+## D25. Tenant isolation is enforced by the database, per transaction
+
+**Decision:** Every tenant table has a Row-Level Security policy on `app.tenant_id`. Tenant work runs as the
+`helpdesk_app` role, set with `SET LOCAL ROLE` and `set_config(..., true)` inside each transaction. Queries keep their
+own tenant filters as well.
+
+**Why:** Application filters alone fail silently the day one query forgets its filter. RLS doesn't apply to a table's
+owner or a superuser, which is what the app connects as, so it has to change role. Per-transaction settings can't leak
+through a connection pool, and they work behind a transaction-pooling proxy such as Neon's, where session settings
+could reach another client. With no tenant set, no rows are visible, so a mistake fails closed.
+
+**Trade-offs:** Each transaction costs two more statements. Paused-run storage needed a small subclass of LangGraph's
+saver, overriding its private `_cursor` method. An integration test fails if an upgrade breaks it. Looking up which
+organisation a login or key belongs to has to run as the owner, in a few reviewed methods in `app/identity.py`.
+
+## D26. Chunk ids are prefixed for every organisation but the first
+
+**Decision:** Chunks share one collection and one id column. Other organisations' ids start with `{tenant}::`.
+The first organisation's ids don't change.
+
+**Why:** `langchain_pg_embedding.id` is a global primary key. Without the prefix, two organisations uploading
+`Leave_Policy.md` would have the same ids, and one upload could overwrite the other's chunks. Keeping the first
+organisation's ids means its 539 embeddings and the golden set's labels stay valid, with no quota spent. All writes
+also run under RLS, so if an id ever did clash, the database would refuse the write rather than overwrite.
+
+**Trade-offs:** LangChain's own write methods run as the owner, so `PolicyIndex` now writes with its own SQL.
+
+## D27. Sign-in uses OpenID Connect, checked by the API with PyJWT
+
+**Decision:** Streamlit's `st.login` (which needs Authlib) handles sign-in with the provider and passes the ID token to
+the API. The API checks its signature, issuer, audience and expiry with PyJWT against the provider's published keys,
+and looks up the user by verified email. Accounts must be added by an admin first. Integrations use hashed per-tenant API
+keys. `AUTH_MODE=demo` keeps today's shared keys for local work and the sample deployment.
+
+**Why:** The API is the security boundary, so it can't trust a screen's word for who someone is. OIDC means this project
+stores no passwords. PyJWT is small and well maintained, and adds no web framework. No self-service sign-up, because an
+HR helpdesk shouldn't accept anyone with a Google account. The first sign-in pins the provider's subject id to the
+account, and `email_verified` is required, so an unproven email can't claim an account.
+
+**Trade-offs:** An ID token lasts about an hour with most providers, after which the person signs in again, as there's
+no refresh yet. A real login needs a client from a provider, which the owner has to create. Tests use a fake provider.
+
+## D28. Rate limits are counted in PostgreSQL, or Redis if it's set up
+
+**Decision:** Limits per client, per organisation and overall, over a sliding 60 seconds. Counts live in
+`rate_limit_hits`, with advisory locks. Setting `REDIS_URL` moves them to Redis (`requirements-redis.txt`).
+
+**Why:** The in-memory limiter forgot everything on a restart, and each server process counted separately. Every
+deployment already has PostgreSQL, and the free tiers here have no Redis, so a new service shouldn't be required.
+
+**Trade-offs:** Each limited request adds a database transaction. That's small next to a model call, but Redis is the
+better choice at real volume. The Redis path is tested against a fake client, not a real server.
+
+## D29. Personal data is masked before it's stored or sent to a model
+
+**Decision:** Questions are masked at the start of the workflow, so stored chats, prompts, tickets and audit entries
+only ever have the masked text. Patterns cover email, Indian phone numbers, PAN, Aadhaar, IFSC, card numbers (with a
+Luhn check) and bank accounts when they're labelled. A logging filter applies the same masking to every log line.
+
+**Why:** On Gemini's free tier, what's sent may be used by the provider, so masking only the stored copy would miss the
+biggest risk. One place to mask means no path can forget. The assistant has no need for someone's Aadhaar number to
+answer an HR question.
+
+**Trade-offs:** If an employee puts a phone number in a ticket request, the ticket says `[PHONE]`. Names and free-text
+addresses aren't caught, so this reduces risk rather than removing it. **The rule of sample data only on the free tier
+still stands.** The HR email in an answer is kept, as it's public and answers would be useless without it.
+
+## D30. Prompt injection is mainly stopped by what the model can't do
+
+**Decision:** The self-service path, the only one offered tools, never sees retrieved text. Identity comes from the
+request, never from the model. Risky actions need a recorded approval. On top of that, excerpts are fenced in the prompt
+and can't close their own fence, invisible characters are removed, and uploads that look like instructions get a
+warning and an audit entry.
+
+**Why:** No prompt wording reliably stops injection, so the design assumes it can succeed, and limits what success can
+do: at worst, a poisoned policy can give a wrong answer with a citation that points at the poisoned text.
+
+**Trade-offs:** Pattern matching on uploads is a signal for a person, not a defence, and it'll miss rewording. Uploads
+with warnings are still indexed, because HR text can legitimately say things like "ignore the above rule", and only
+HR admins can upload.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

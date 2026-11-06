@@ -121,7 +121,8 @@ def clean(shared, monkeypatch):
 
 def make(shared, llm=None, tenant_id=config.TENANT_ID, hrms=None) -> ChatWorkflow:
     llm = llm or ScriptedLLM()
-    rag = RagService(shared.index, llm)
+    index = shared.index if tenant_id == config.TENANT_ID else PolicyIndex(shared.index.store, tenant_id)
+    rag = RagService(index, llm)
     return ChatWorkflow(rag, llm, shared.engine, shared.saver, hrms=hrms, tenant_id=tenant_id, today=lambda: TODAY)
 
 

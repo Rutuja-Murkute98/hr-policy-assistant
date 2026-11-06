@@ -4,9 +4,11 @@ Workflow checkpoints only exist while a run is paused for approval. A finished r
 is deleted straight away, so stored chats stay in the conversation tables, under their retention rules.
 """
 import logging
+import threading
 import time
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import date
 
@@ -21,13 +23,16 @@ from app.agent.graph import build_workflow
 from app.agent.hrms import MockHRMS
 from app.agent.tools import PendingActions, ToolRunner
 from app.db import get_engine
+from app.identity import Organisations, OrganisationUnavailable
 from app.knowledge import KnowledgeBase
 from app.memory import ConversationStore, summarise_if_long
+from app.pii import mask
 from app.rag.providers import get_chat_model
 from app.rag.rerank import get_reranker
 from app.rag.retrieval import SearchFilters
 from app.rag.service import RagAnswer, RagService
 from app.rag.store import PolicyIndex, get_database_uri, get_store
+from app.tenancy import APP_ROLE, check_tenant_id, secure_library_tables, tenant_scoped
 
 logger = logging.getLogger("hr_helpdesk")
 PURGE_INTERVAL_SECONDS = 24 * 60 * 60
@@ -43,19 +48,46 @@ class WorkflowAnswer(RagAnswer):
     message_id: int | None = None  # the stored answer, which feedback refers to
 
 
+class TenantSaver(PostgresSaver):
+    """Paused runs for one tenant. Row-Level Security applies, as it does to the app's own tables.
+
+    The role and tenant are set per transaction, so this overrides the library's cursor method, and
+    an integration test proves it still works. Any change to that method would fail that test.
+    """
+
+    def __init__(self, pool: ConnectionPool, tenant_id: str):
+        super().__init__(pool)  # type: ignore[arg-type]
+        self.pool = pool
+        self.tenant_id = check_tenant_id(tenant_id)
+
+    @contextmanager
+    def _cursor(self, *, pipeline: bool = False):
+        with self.lock, self.pool.connection() as connection, connection.transaction(), connection.cursor(
+                binary=True, row_factory=dict_row) as cursor:
+            cursor.execute(f"SET LOCAL ROLE {APP_ROLE}")
+            cursor.execute("SELECT set_config('app.tenant_id', %s, true)", (self.tenant_id,))
+            yield cursor
+
+
 class ChatWorkflow:
     def __init__(self, rag: RagService, llm, engine, checkpointer, hrms=None, tenant_id: str = config.TENANT_ID,
                  today=date.today):
+        if rag.tenant_id != tenant_id:
+            raise ValueError("This search service belongs to another tenant")
+        scoped = tenant_scoped(engine, tenant_id)
         self.rag = rag
         self.llm = llm
         self.tenant_id = tenant_id
         self.today = today
-        self.conversations = ConversationStore(engine, tenant_id)
-        self.actions = PendingActions(engine, tenant_id)
-        self.runner = ToolRunner(engine, hrms or MockHRMS(engine, tenant_id))
-        self.knowledge = KnowledgeBase(engine, rag.store, tenant_id)
+        self.public_emails = (rag.profile.hr_email,)
+        self.conversations = ConversationStore(scoped, tenant_id, self.public_emails)
+        self.actions = PendingActions(scoped, tenant_id)
+        self.runner = ToolRunner(scoped, hrms or MockHRMS(scoped, tenant_id))
+        self.knowledge = KnowledgeBase(scoped, rag.store, tenant_id, profile=rag.profile)
         self.checkpointer = checkpointer
-        self.graph = build_workflow(rag, llm, self.runner, tenant_id, checkpointer)
+        if isinstance(checkpointer, PostgresSaver):
+            self.checkpointer = TenantSaver(checkpointer.conn, tenant_id)  # type: ignore[arg-type]
+        self.graph = build_workflow(rag, llm, self.runner, tenant_id, self.checkpointer)
         self._last_purge = 0.0
 
     @property
@@ -100,6 +132,8 @@ class ChatWorkflow:
                conversation_id: str | None = None) -> Iterator[tuple[str, object]]:
         """Yield ("token", text) as the answer is written, then ("done", WorkflowAnswer)."""
         self.run_maintenance()
+        # From here on the masked text is all that's used, so a model provider never sees what was masked
+        question = mask(question, self.public_emails)
         summary = ""
         if user_id:
             # A stored chat is the source of history, so a caller can't rewrite what was said
@@ -108,7 +142,8 @@ class ChatWorkflow:
             self.conversations.add_message(user_id, conversation_id, "user", question)
         else:
             conversation_id = None
-            history = (history or [])[-config.MAX_HISTORY_MESSAGES:]
+            history = [{**turn, "content": mask(turn["content"], self.public_emails)}
+                       for turn in (history or [])[-config.MAX_HISTORY_MESSAGES:]]
 
         run_id = f"{self.tenant_id}:{user_id or 'anonymous'}:{uuid.uuid4().hex}"
         run_config = self._config(run_id)
@@ -185,6 +220,10 @@ def create_checkpointer(database_uri: str) -> PostgresSaver:
                           kwargs={"autocommit": True, "prepare_threshold": 0, "row_factory": dict_row})
     saver = PostgresSaver(pool)  # type: ignore[arg-type]
     saver.setup()
+    engine = get_engine(database_uri)
+    with engine.begin() as connection:
+        secure_library_tables(connection, config.TENANT_ID)
+    engine.dispose()
     return saver
 
 
@@ -193,8 +232,50 @@ def create_rag_service(llm=None) -> RagService:
 
 
 def create_workflow() -> ChatWorkflow:
+    """One workflow for the default organisation, as the evaluations use."""
     uri = get_database_uri()
     llm = get_chat_model()
     workflow = ChatWorkflow(create_rag_service(llm), llm, get_engine(uri), create_checkpointer(uri))
     workflow.run_maintenance(force=True)
     return workflow
+
+
+class WorkflowRegistry:
+    """One workflow per organisation, sharing the database pools and model, as memory is tight."""
+
+    def __init__(self, store, llm, engine, checkpointer, reranker=None):
+        self.store = store
+        self.llm = llm
+        self.engine = engine
+        self.checkpointer = checkpointer
+        self.reranker = reranker
+        self.organisations = Organisations(engine)
+        self._workflows: dict[str, ChatWorkflow] = {}
+        self._lock = threading.Lock()
+
+    def for_tenant(self, tenant_id: str) -> ChatWorkflow:
+        with self._lock:
+            workflow = self._workflows.get(tenant_id)
+            if workflow is None:
+                workflow = self._workflows[tenant_id] = self._build(tenant_id)
+        return workflow
+
+    def _build(self, tenant_id: str) -> ChatWorkflow:
+        profile = config.tenant if tenant_id == config.TENANT_ID else self.organisations.get(tenant_id)
+        if profile is None:
+            raise OrganisationUnavailable(tenant_id)
+        rag = RagService(PolicyIndex(self.store, tenant_id), self.llm, self.reranker, profile=profile)
+        workflow = ChatWorkflow(rag, self.llm, self.engine, self.checkpointer, tenant_id=tenant_id)
+        workflow.run_maintenance(force=True)
+        return workflow
+
+    def close(self) -> None:
+        self.checkpointer.conn.close()
+
+
+def create_registry() -> WorkflowRegistry:
+    uri = get_database_uri()
+    registry = WorkflowRegistry(get_store(), get_chat_model(), get_engine(uri), create_checkpointer(uri),
+                                get_reranker())
+    registry.for_tenant(config.TENANT_ID)  # checks the index and settings at startup, not on the first question
+    return registry

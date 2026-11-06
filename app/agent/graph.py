@@ -19,17 +19,17 @@ from pydantic import ValidationError
 from app import config
 from app.agent.hrms import HRMSRejected
 from app.agent.prompts import (
-    CATEGORIES,
     CLARIFY_ANSWER,
-    NEEDS_IDENTITY_ANSWER,
-    OUT_OF_SCOPE_ANSWER,
     Understanding,
     build_retry_messages,
     build_tool_messages,
     build_understanding_messages,
+    categories_of,
+    needs_identity_answer,
+    out_of_scope_answer,
 )
 from app.agent.tools import TOOLS, ToolContext, ToolRunner, langchain_tools
-from app.rag.prompt import FALLBACK_ANSWER, GREETING_ANSWER
+from app.rag.prompt import fallback_answer, greeting_answer
 from app.rag.retrieval import SearchFilters
 from app.rag.service import GREETING, RagAnswer, RagService
 
@@ -86,6 +86,7 @@ def _say(state: WorkflowState, text: str, **fields) -> dict:
 
 
 def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, checkpointer):
+    profile = rag.profile
     known_tools = langchain_tools()
 
     def understand(state: WorkflowState) -> dict:
@@ -95,7 +96,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
             return {"intent": "greeting", "standalone": question, "category": ""}
         try:
             result = llm.with_structured_output(Understanding).invoke(
-                build_understanding_messages(question, state.get("summary", ""), state.get("history", [])))
+                build_understanding_messages(question, state.get("summary", ""), state.get("history", []), profile))
         except Exception:
             # The policy path is the safest default: it can still abstain
             logger.exception("Understanding a message failed, so it was treated as a policy question")
@@ -104,7 +105,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         if not standalone or len(standalone) > config.MAX_QUESTION_CHARS:
             standalone = question
         return {"intent": result.intent, "standalone": standalone, "asks_about_past": result.asks_about_past,
-                "category": result.category if result.category in CATEGORIES else ""}
+                "category": result.category if result.category in categories_of(profile) else ""}
 
     def route_intent(state: WorkflowState) -> str:
         intent = state["intent"]
@@ -117,7 +118,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return "retrieve"
 
     def greet(state: WorkflowState) -> dict:
-        return _say(state, GREETING_ANSWER, answered=True)
+        return _say(state, greeting_answer(profile), answered=True)
 
     def confirm_out_of_scope(state: WorkflowState) -> dict:
         """Check the label against the policies, since wrongly refusing a real question is costly."""
@@ -131,10 +132,10 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return "refuse" if state["intent"] == "out_of_scope" else "retrieve"
 
     def refuse(state: WorkflowState) -> dict:
-        return _say(state, OUT_OF_SCOPE_ANSWER, answered=False, abstain_reason="out_of_scope")
+        return _say(state, out_of_scope_answer(profile), answered=False, abstain_reason="out_of_scope")
 
     def needs_identity(state: WorkflowState) -> dict:
-        return _say(state, NEEDS_IDENTITY_ANSWER, answered=False, abstain_reason="needs_identity")
+        return _say(state, needs_identity_answer(profile), answered=False, abstain_reason="needs_identity")
 
     def retrieve(state: WorkflowState) -> dict:
         given = state.get("filters") or {}
@@ -144,7 +145,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
                                 include_history=bool(state.get("asks_about_past")))
         # Narrow by topic the first time only. FAQ and glossary chunks are "general", so they stay in.
         if config.USE_CATEGORY_ROUTING and state.get("category") and not filters.category and not state.get("retried"):
-            filters.categories = [state["category"], config.tenant.default_category]
+            filters.categories = [state["category"], profile.default_category]
         chunks, confidence = rag.search(state.get("search_query") or state["standalone"], filters)
         found = {"chunks": [{"id": c.id, "page_content": c.page_content, "metadata": c.metadata} for c in chunks],
                  "confidence": confidence}
@@ -171,7 +172,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
                 "first_search": {"chunks": state["chunks"], "confidence": state["confidence"]}}
 
     def abstain(state: WorkflowState) -> dict:
-        return _say(state, FALLBACK_ANSWER, answered=False, abstain_reason="no_evidence")
+        return _say(state, fallback_answer(profile), answered=False, abstain_reason="no_evidence")
 
     def generate(state: WorkflowState) -> dict:
         _status("Writing the answer")

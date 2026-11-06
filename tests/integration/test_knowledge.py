@@ -355,7 +355,7 @@ def test_a_restart_marks_unfinished_jobs_as_failed_so_they_can_be_retried(setup)
 
 def test_another_tenant_sees_no_documents_or_jobs(setup):
     upload(setup)
-    other = KnowledgeBase(setup.engine, setup.index, "other-tenant")
+    other = KnowledgeBase(setup.engine, PolicyIndex(setup.store, "other-tenant"), "other-tenant")
     assert other.jobs() == []
     assert other.current_number("Leave_Policy.md") == 0
     assert other.unanswered_report() == []

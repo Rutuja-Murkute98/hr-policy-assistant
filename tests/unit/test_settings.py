@@ -26,6 +26,11 @@ def make(**values):
     {"reranker": "cohere", "cohere_api_key": ""},
     {"max_distance": 0},
     {"llm_temperature": 3},
+    {"llm_fallback_provider": "openai"},  # needs a model too
+    {"llm_fallback_provider": "nope", "llm_fallback_model": "x"},
+    {"llm_max_tokens": 0},
+    {"llm_timeout_seconds": 0},
+    {"llm_max_retries": -1},
 ])
 def test_bad_settings_stop_the_app_at_startup(values):
     with pytest.raises(ValidationError):

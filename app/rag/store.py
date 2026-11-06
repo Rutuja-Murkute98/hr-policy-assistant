@@ -35,9 +35,21 @@ SPREAD = (
     "SELECT avg(1 - (e.embedding <=> CAST(:vector AS vector))) AS mean, "
     "stddev_pop(1 - (e.embedding <=> CAST(:vector AS vector))) AS spread "
 )
+# A chunk with no is_current value is current: only superseded copies carry it
+IS_CURRENT = "COALESCE(e.cmetadata->>'is_current', 'true') = 'true' "
 STORED_CHUNKS = text(
     "SELECT e.id, e.document, e.cmetadata FROM langchain_pg_embedding e "
-    "JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = :collection"
+    f"JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = :collection AND {IS_CURRENT}"
+)
+ARCHIVE_CHUNKS = text(
+    "INSERT INTO langchain_pg_embedding (id, collection_id, embedding, document, cmetadata) "
+    "SELECT e.id || ' @v' || :version, e.collection_id, e.embedding, e.document, e.cmetadata || CAST(:extra AS jsonb) "
+    "FROM langchain_pg_embedding e JOIN langchain_pg_collection c ON e.collection_id = c.uuid "
+    "WHERE c.name = :collection AND e.id = ANY(:ids) ON CONFLICT (id) DO NOTHING"
+)
+DELETE_ARCHIVED = text(
+    "DELETE FROM langchain_pg_embedding e USING langchain_pg_collection c WHERE e.collection_id = c.uuid "
+    "AND c.name = :collection AND e.cmetadata->>'source' = :source AND e.cmetadata->>'is_current' = 'false'"
 )
 UPDATE_METADATA = text(
     "UPDATE langchain_pg_embedding SET cmetadata = CAST(:metadata AS jsonb) WHERE id = :id "
@@ -65,6 +77,10 @@ DELETE_DOCUMENT = text(
 )
 
 
+class EmbeddingModelMismatch(RuntimeError):
+    """This collection was built with another embedding model, and vectors can't be mixed."""
+
+
 @dataclass
 class DocumentRecord:
     source_file: str
@@ -74,6 +90,20 @@ class DocumentRecord:
     effective_date: str | None
     content_hash: str
     chunk_count: int
+
+
+MODEL_FOR_COLLECTION = text(
+    "SELECT provider, model, dimension FROM embedding_models "
+    "WHERE tenant_id = :tenant_id AND collection_name = :collection"
+)
+SAVE_MODEL = text(
+    "INSERT INTO embedding_models (tenant_id, collection_name, provider, model, dimension) "
+    "VALUES (:tenant_id, :collection, :provider, :model, :dimension) ON CONFLICT DO NOTHING"
+)
+EXISTING_DIMENSION = text(
+    "SELECT vector_dims(e.embedding) FROM langchain_pg_embedding e "
+    "JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = :collection LIMIT 1"
+)
 
 
 def embedded_database_uri() -> str:
@@ -112,12 +142,19 @@ def get_store(collection_name: str = config.COLLECTION_NAME, database_uri: str |
     )
 
 
+def forget_embedding_model(collection_name: str, database_uri: str | None = None) -> None:
+    """Clear a collection's recorded model, after a rebuild removes its vectors."""
+    with psycopg.connect(database_uri or get_database_uri()) as conn:
+        if conn.execute("SELECT to_regclass('embedding_models')").fetchone()[0]:  # type: ignore[index]
+            conn.execute("DELETE FROM embedding_models WHERE collection_name = %s", (collection_name,))
+
+
 def count_chunks(collection_name: str = config.COLLECTION_NAME, database_uri: str | None = None) -> int:
     """Count stored chunks. Makes no API calls, so /health can use it freely."""
     with psycopg.connect(database_uri or get_database_uri()) as conn:
         row = conn.execute(
             "SELECT count(*) FROM langchain_pg_embedding e "
-            "JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = %s",
+            f"JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = %s AND {IS_CURRENT}",
             (collection_name,),
         ).fetchone()
     return row[0] if row else 0
@@ -137,8 +174,12 @@ def filter_clause(filters: SearchFilters) -> tuple[str, dict]:
         clause += "AND e.cmetadata->>'category' = ANY(:categories) "
         params["categories"] = filters.categories
     if filters.effective_on:
-        clause += "AND e.cmetadata->>'effective_date' <= :effective_on "  # ISO dates sort as text
+        # ISO dates sort as text. A superseded copy counts until the day it was replaced.
+        clause += ("AND e.cmetadata->>'effective_date' <= :effective_on "
+                   "AND (" + IS_CURRENT + "OR e.cmetadata->>'superseded_on' > :effective_on) ")
         params["effective_on"] = filters.effective_on
+    elif not filters.include_history:
+        clause += "AND " + IS_CURRENT
     return clause, params
 
 
@@ -150,6 +191,44 @@ class PolicyIndex:
         with store.session_maker() as session:
             session.execute(SEARCH_INDEX)
             session.commit()
+        self._check_embedding_model()
+
+    def _check_embedding_model(self) -> None:
+        """Refuse to run on a collection built with another embedding model."""
+        with self.store.session_maker() as session:
+            if not session.execute(text("SELECT to_regclass('embedding_models')")).scalar():
+                return  # migrations haven't created the table yet, as in the first indexing run
+            row = session.execute(MODEL_FOR_COLLECTION, {"tenant_id": config.TENANT_ID,
+                                                         "collection": self.store.collection_name}).first()
+            if row:
+                if (row.provider, row.model) != (config.EMBEDDING_PROVIDER, config.EMBEDDING_MODEL):
+                    raise EmbeddingModelMismatch(
+                        f"Collection {self.store.collection_name} uses {row.provider}/{row.model}, but the settings "
+                        f"ask for {config.EMBEDDING_PROVIDER}/{config.EMBEDDING_MODEL}. Change the settings back, "
+                        "or re-index with: python -m pipeline.embed_and_store --rebuild")
+                return
+            dimension = session.execute(EXISTING_DIMENSION, {"collection": self.store.collection_name}).scalar()
+            if dimension:  # built before this record existed
+                self._record_embedding_model(session, int(dimension))
+
+    def _record_embedding_model(self, session, dimension: int) -> None:
+        session.execute(SAVE_MODEL, {"tenant_id": config.TENANT_ID, "collection": self.store.collection_name,
+                                     "provider": config.EMBEDDING_PROVIDER, "model": config.EMBEDDING_MODEL,
+                                     "dimension": dimension})
+        session.commit()
+
+    def _check_dimension(self, dimension: int) -> None:
+        with self.store.session_maker() as session:
+            if not session.execute(text("SELECT to_regclass('embedding_models')")).scalar():
+                return
+            row = session.execute(MODEL_FOR_COLLECTION, {"tenant_id": config.TENANT_ID,
+                                                         "collection": self.store.collection_name}).first()
+            if not row:
+                self._record_embedding_model(session, dimension)
+            elif row.dimension != dimension:
+                raise EmbeddingModelMismatch(
+                    f"Collection {self.store.collection_name} holds {row.dimension}-dimension vectors, and this model "
+                    f"returned {dimension}. Re-index with: python -m pipeline.embed_and_store --rebuild")
 
     @property
     def embeddings(self):
@@ -169,7 +248,7 @@ class PolicyIndex:
                                           params).all()
             keyword_rows = session.execute(keyword_sql, {**params, "question": question}).all() if use_keywords else []
             # Measured across the whole tenant, so a topic filter can't make a strong chunk look weak
-            stats = session.execute(text(SPREAD + CHUNK_JOIN), {
+            stats = session.execute(text(SPREAD + CHUNK_JOIN + "AND " + IS_CURRENT), {
                 "vector": params["vector"], "collection": params["collection"],
                 "tenant_id": filter_params["tenant_id"], "default_tenant": filter_params["default_tenant"],
             }).one()
@@ -189,7 +268,7 @@ class PolicyIndex:
         results = list(found.values())
         if results:
             similarities = np.array([1 - candidate.distance for candidate in results])
-            scores = evidence_scores(similarities, float(stats.mean), float(stats.spread or 0))
+            scores = evidence_scores(similarities, float(stats.mean or 0), float(stats.spread or 0))
             for candidate, score in zip(results, scores, strict=True):
                 candidate.confidence = float(score)
         return results
@@ -203,7 +282,24 @@ class PolicyIndex:
 
     def add(self, chunks: list[Document]) -> None:
         """Embed and store the chunks. A chunk whose id is already stored is replaced."""
-        self.store.add_documents(chunks, ids=[chunk.id for chunk in chunks])
+        vectors = self.store.embeddings.embed_documents([chunk.page_content for chunk in chunks])
+        self._check_dimension(len(vectors[0]))
+        self.store.add_embeddings(texts=[chunk.page_content for chunk in chunks], embeddings=vectors,
+                                  metadatas=[chunk.metadata for chunk in chunks],
+                                  ids=[str(chunk.id) for chunk in chunks])
+
+    def archive_chunks(self, ids: list[str], version_number: int, superseded_on: str) -> None:
+        """Copy chunks as a superseded version, with their embeddings, so no quota is used."""
+        extra = json.dumps({"is_current": "false", "version_number": version_number, "superseded_on": superseded_on})
+        with self.store.session_maker() as session:
+            session.execute(ARCHIVE_CHUNKS, {"ids": ids, "version": version_number, "extra": extra,
+                                             "collection": self.store.collection_name})
+            session.commit()
+
+    def delete_archived(self, source_file: str) -> None:
+        with self.store.session_maker() as session:
+            session.execute(DELETE_ARCHIVED, {"collection": self.store.collection_name, "source": source_file})
+            session.commit()
 
     def update_metadata(self, chunks: list[Document]) -> None:
         """Change stored details without embedding anything again."""

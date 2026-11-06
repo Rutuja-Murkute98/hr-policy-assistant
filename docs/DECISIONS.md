@@ -153,6 +153,42 @@ One short entry per technology or design choice. A technology is added here befo
 - **Reason:** those questions scored 6.48 and 4.75, while eight off-topic examples scored at most 3.81.
 - **Trade-off:** an off-topic question that happens to match a policy reaches the answer step, which can still refuse it.
 
+## D20. Reading uploads: pypdf, python-docx and the standard library
+
+- **Problem:** HR's documents arrive as PDF, DOCX, TXT, HTML and Markdown, and Render has 512 MB.
+- **Options:** `unstructured` or `docling` (heavy, with large models), `pdfplumber`, or small single-purpose libraries.
+- **Choice:** `pypdf` and `python-docx`, with Python's own HTML parser. Everything becomes Markdown for the existing chunker.
+- **Reason:** they're small and need no PyTorch. DOCX keeps real headings and tables.
+- **Trade-off:** PDF headings are guessed from numbering and capitals, and PDF tables come out as plain lines. OCR isn't included, so scanned PDFs are refused with a clear message.
+
+## D21. Versions keep old chunks in place, marked as superseded
+
+- **Problem:** the bot must answer "what was the policy before?" without paying to embed old text again.
+- **Options:** a separate history table and search, re-embedding old versions, or copying the old rows.
+- **Choice:** copy changed and removed chunks, with their embeddings, into the same table, marked `is_current: false`. Normal searches skip them.
+- **Reason:** no extra embedding quota and one search path, and full text of each version stays in `document_versions`.
+- **Trade-off:** the table grows with each edit. A section that didn't change has only a current copy, which is also what applied before.
+
+## D22. Indexing jobs run in the API process
+
+- **Problem:** indexing can take minutes, and Render has no free background workers.
+- **Options:** Celery + Redis, or FastAPI background tasks with a job table.
+- **Choice:** background tasks and an `indexing_jobs` table, as the brief prefers.
+- **Reason:** free, simple, and each job's progress can be seen and retried.
+- **Trade-off:** a restart stops a running job. It's marked failed at startup, and a retry carries on from what's stored. If Render sleeps mid-job, that's when this applies.
+
+## D23. Unanswered questions store no user
+
+- **Problem:** HR needs to see gaps in the policies, but not who asked what.
+- **Choice:** record the question and reason only, and apply the conversation retention period.
+- **Trade-off:** a question can still contain personal details, because its text is kept as typed. Phase 4 adds masking.
+
+## D24. A provider fallback is off unless set
+
+- **Problem:** the main provider can fail or run out of quota, but sending HR text to another company should be a decision.
+- **Choice:** `LLM_FALLBACK_PROVIDER` and `LLM_FALLBACK_MODEL`, unset by default. A fallback is only used if the main model fails before any text is written.
+- **Trade-off:** a failure partway through an answer still fails, because half an answer from each model would be wrong.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

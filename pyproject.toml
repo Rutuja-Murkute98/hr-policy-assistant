@@ -14,6 +14,11 @@ select = ["E", "F", "I", "B", "UP"]
 [tool.ruff.lint.per-file-ignores]
 "evaluation/test_set.py" = ["E501"]
 "tests/**" = ["E501"]
+"app/knowledge.py" = ["E501"]
+"migrations/**" = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.File", "fastapi.Form"]
 
 [tool.mypy]
 python_version = "3.13"

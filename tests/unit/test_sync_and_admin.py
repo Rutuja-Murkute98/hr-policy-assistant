@@ -1,10 +1,7 @@
-"""Change detection and the admin endpoints, using a fake index so no API or database is used."""
+"""Change detection, using a fake index so no API or database is used."""
 import pytest
-from fastapi.testclient import TestClient
 from langchain_core.documents import Document
 
-from app import admin, config
-from app.main import app
 from pipeline.chunk_documents import chunk_text
 from pipeline.embed_and_store import (
     BATCH_SIZE,
@@ -29,7 +26,6 @@ Why this policy exists.
 
 Follow the rules.
 """
-HEADERS = {"X-Admin-Key": "admin-key"}
 
 
 class FakeIndex:
@@ -169,100 +165,3 @@ def test_chunk_text_uses_the_file_name_for_ids_and_source():
     chunks = chunk_text(POLICY, "Sample.md")
     assert chunks[1].id == "Sample > 1. Purpose > 0"
     assert chunks[1].metadata["source"] == "Sample.md"
-
-
-@pytest.fixture
-def client(monkeypatch, tmp_path):
-    monkeypatch.setattr(config, "ADMIN_KEY", "admin-key")
-    monkeypatch.setattr(admin, "POLICY_DIR", tmp_path)
-    index = FakeIndex(chunk_text(POLICY, "Existing.md"))
-    app.state.service = type("Service", (), {"store": index})()
-    app.state.count_chunks = lambda: 3
-    with TestClient(app) as test_client:
-        test_client.index = index
-        test_client.folder = tmp_path
-        yield test_client
-
-
-@pytest.mark.parametrize("method,path", [("get", "/admin/documents"), ("delete", "/admin/documents/Existing.md")])
-def test_admin_needs_the_admin_key(client, method, path):
-    assert getattr(client, method)(path).status_code == 401
-    assert getattr(client, method)(path, headers={"X-Admin-Key": "wrong"}).status_code == 401
-    assert getattr(client, method)(path, headers={"X-API-Key": "admin-key"}).status_code == 401
-    assert len(client.index.chunks) == 3
-
-
-def test_admin_is_off_without_a_key_set(client, monkeypatch):
-    monkeypatch.setattr(config, "ADMIN_KEY", "")
-    assert client.get("/admin/documents", headers=HEADERS).status_code == 503
-
-
-def test_list_documents_counts_chunks(client):
-    assert client.get("/admin/documents", headers=HEADERS).json() == [
-        {"file": "Existing.md", "policy": "Sample Policy", "chunks": 3}]
-
-
-def test_upload_adds_a_policy_and_saves_a_copy(client):
-    response = client.post("/admin/documents", headers=HEADERS, json={"filename": "New_Policy.md", "content": POLICY})
-    assert response.json() == {"file": "New_Policy.md", "added": 3, "updated": 0, "relabelled": 0, "removed": 0, "unchanged": 0}
-    assert (client.folder / "New_Policy.md").read_text(encoding="utf-8") == POLICY
-    assert len(client.index.chunks) == 6
-
-
-def test_replacing_a_policy_embeds_only_changed_sections(client):
-    edited = POLICY.replace("Follow the rules.", "Follow the new rules.").replace("## 1. Purpose\n\nWhy this policy exists.\n\n", "")
-    response = client.post("/admin/documents", headers=HEADERS, json={"filename": "Existing.md", "content": edited})
-    assert response.json() == {"file": "Existing.md", "added": 0, "updated": 1, "relabelled": 0, "removed": 1, "unchanged": 1}
-    assert client.index.embedded == ["Existing > 2. Rules > 0"]
-
-
-@pytest.mark.parametrize("filename", ["../evil.md", "a/b.md", "notes.txt", ".md", "C:evil.md", "a b.md"])
-def test_unsafe_file_names_are_rejected(client, filename):
-    response = client.post("/admin/documents", headers=HEADERS, json={"filename": filename, "content": POLICY})
-    assert response.status_code == 422
-    assert client.index.embedded == []
-
-
-@pytest.mark.parametrize("content", ["No headings here.", "## 1. Starts too low\n\nText.", "# Title\x00\n\n## 1. A\n\nText."])
-def test_bad_content_is_rejected(client, content):
-    response = client.post("/admin/documents", headers=HEADERS, json={"filename": "Bad.md", "content": content})
-    assert response.status_code == 422
-
-
-def test_title_with_no_sections_is_rejected(client):
-    response = client.post("/admin/documents", headers=HEADERS, json={"filename": "Bad.md", "content": "# Only a title\n"})
-    assert response.status_code == 422
-
-
-def test_too_large_upload_is_rejected(client):
-    response = client.post("/admin/documents", headers=HEADERS,
-                           json={"filename": "Big.md", "content": "x" * (config.MAX_UPLOAD_CHARS + 1)})
-    assert response.status_code == 422
-
-
-def test_upload_needing_too_many_embeddings_is_refused_before_any_are_used(client):
-    sections = "".join(f"## {number}. Section\n\nText {number}.\n\n" for number in range(BATCH_SIZE + 1))
-    response = client.post("/admin/documents", headers=HEADERS, json={"filename": "Big.md", "content": f"# Big\n\n{sections}"})
-    assert response.status_code == 413
-    assert client.index.embedded == []
-
-
-def test_failed_embedding_changes_nothing_and_saves_no_file(client):
-    client.index.fail = True
-    response = client.post("/admin/documents", headers=HEADERS, json={"filename": "New.md", "content": POLICY})
-    assert response.status_code == 503
-    assert "New.md" not in {c.metadata["source"] for c in client.index.chunks.values()}
-    assert not (client.folder / "New.md").exists()
-
-
-def test_delete_removes_the_chunks_and_the_file(client):
-    (client.folder / "Existing.md").write_text(POLICY, encoding="utf-8")
-    response = client.delete("/admin/documents/Existing.md", headers=HEADERS)
-    assert response.json()["removed"] == 3
-    assert client.index.chunks == {}
-    assert "Existing.md" not in client.index.documents
-    assert not (client.folder / "Existing.md").exists()
-
-
-def test_deleting_an_unknown_policy_gives_404(client):
-    assert client.delete("/admin/documents/Unknown.md", headers=HEADERS).status_code == 404

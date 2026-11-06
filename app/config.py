@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     llm_temperature: float | None = Field(default=None, ge=0, le=2)  # None = the model's default
     embedding_provider: Literal["google", "openai", "ollama"] = "google"
     embedding_model: str = ""
+    llm_max_tokens: int | None = Field(default=None, ge=1)
+    llm_timeout_seconds: float | None = Field(default=None, gt=0)
+    llm_max_retries: int | None = Field(default=None, ge=0)
+    # A fallback is only used if it's set here: sending text to a second provider is a real decision
+    llm_fallback_provider: Literal["", "google", "anthropic", "openai", "ollama"] = ""
+    llm_fallback_model: str = ""
 
     # Search. See docs/DECISIONS.md for how these were chosen.
     hybrid_search: bool = True
@@ -89,6 +95,8 @@ class Settings(BaseSettings):
     max_history_messages: int = Field(default=6, ge=0)
     max_message_chars: int = Field(default=2000, ge=1)
     max_upload_chars: int = Field(default=60_000, ge=1)
+    max_upload_bytes: int = Field(default=5_000_000, ge=1)
+    embedding_wait_seconds: int = Field(default=65, ge=0)
 
     @model_validator(mode="after")
     def check_combinations(self) -> "Settings":
@@ -96,6 +104,8 @@ class Settings(BaseSettings):
             raise ValueError("RETRIEVE_K can't be larger than FETCH_K")
         if self.rate_limit_per_minute > self.rate_limit_total_per_minute:
             raise ValueError("RATE_LIMIT_PER_MINUTE can't be larger than RATE_LIMIT_TOTAL_PER_MINUTE")
+        if self.llm_fallback_provider and not self.llm_fallback_model:
+            raise ValueError("LLM_FALLBACK_PROVIDER needs LLM_FALLBACK_MODEL")
         if self.reranker == "cohere" and not self.cohere_api_key:
             raise ValueError("RERANKER=cohere needs COHERE_API_KEY")
         return self
@@ -130,6 +140,11 @@ PGDATA_DIR = PROJECT_ROOT / "pgdata"
 LLM_PROVIDER: str = settings.llm_provider
 CHAT_MODEL = settings.llm_model or DEFAULT_CHAT_MODELS.get(LLM_PROVIDER, "")
 LLM_TEMPERATURE = settings.llm_temperature
+LLM_MAX_TOKENS = settings.llm_max_tokens
+LLM_TIMEOUT_SECONDS = settings.llm_timeout_seconds
+LLM_MAX_RETRIES = settings.llm_max_retries
+LLM_FALLBACK_PROVIDER: str = settings.llm_fallback_provider
+LLM_FALLBACK_MODEL = settings.llm_fallback_model
 EMBEDDING_PROVIDER: str = settings.embedding_provider
 EMBEDDING_MODEL = settings.embedding_model or DEFAULT_EMBEDDING_MODELS.get(EMBEDDING_PROVIDER, "")
 
@@ -179,3 +194,5 @@ MAX_QUESTION_CHARS = settings.max_question_chars
 MAX_HISTORY_MESSAGES = settings.max_history_messages
 MAX_MESSAGE_CHARS = settings.max_message_chars
 MAX_UPLOAD_CHARS = settings.max_upload_chars
+MAX_UPLOAD_BYTES = settings.max_upload_bytes
+EMBEDDING_WAIT_SECONDS = settings.embedding_wait_seconds

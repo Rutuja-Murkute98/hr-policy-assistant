@@ -66,10 +66,15 @@ def chunk_document(file: Path) -> list[Document]:
     return chunk_text(file.read_text(encoding="utf-8"), file.name)
 
 
-def chunk_text(text: str, file_name: str) -> list[Document]:
-    """Turn the text of one policy into chunks with metadata."""
+def chunk_text(text: str, file_name: str, overrides: dict | None = None) -> list[Document]:
+    """Turn the text of one policy into chunks with metadata.
+
+    overrides can set policy, category, version and effective_date, such as from an upload form.
+    """
     stem = Path(file_name).stem
-    details = document_details(text, file_name)
+    given = {key: value for key, value in (overrides or {}).items() if value}
+    policy_title = given.pop("policy", None)
+    details = {**document_details(text, file_name), **given}
     chunks = []
     for headings, body in split_into_sections(text):
         if len(headings) == 1:
@@ -90,7 +95,7 @@ def chunk_text(text: str, file_name: str) -> list[Document]:
                 page_content=f"{heading_path}\n\n{part.strip()}",
                 metadata={
                     "source": file_name,
-                    "policy": headings[0],
+                    "policy": policy_title or headings[0],
                     "section": " > ".join(headings[1:]),
                     "chunk_id": chunk_id,
                     **details,

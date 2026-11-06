@@ -6,7 +6,14 @@ import re
 
 import pytest
 
-from pipeline.chunk_documents import MAX_SECTION_CHARS, POLICY_DIR, chunk_document, document_details, load_chunks
+from pipeline.chunk_documents import (
+    MAX_SECTION_CHARS,
+    POLICY_DIR,
+    chunk_document,
+    chunk_text,
+    document_details,
+    load_chunks,
+)
 
 SAMPLE = """# Sample Policy
 
@@ -131,3 +138,18 @@ def test_no_policy_text_is_lost(real_chunks):
         chunked = " ".join(c.page_content for c in real_chunks if c.metadata["source"] == file.name)
         missing = set(re.findall(r"\w+", body)) - set(re.findall(r"\w+", chunked))
         assert not missing, f"{file.name}: {sorted(missing)[:10]}"
+
+
+def test_upload_details_override_the_files_own_header():
+    text = "# Old Title\n\n**Version:** 1.0 | **Effective Date:** 1 April 2026 |\n\n## 1. Rules\n\nFollow the rules."
+    chunk = chunk_text(text, "Leave_Policy.md", {"policy": "New Title", "version": "2.0", "category": "exit",
+                                                  "effective_date": "2027-01-01"})[0]
+    assert (chunk.metadata["policy"], chunk.metadata["version"], chunk.metadata["category"],
+            chunk.metadata["effective_date"]) == ("New Title", "2.0", "exit", "2027-01-01")
+
+
+def test_empty_details_leave_the_files_own_values():
+    text = "# Title\n\n**Version:** 1.0 | **Effective Date:** 1 April 2026 |\n\n## 1. Rules\n\nFollow the rules."
+    chunk = chunk_text(text, "Leave_Policy.md", {"policy": None, "version": None})[0]
+    assert (chunk.metadata["policy"], chunk.metadata["version"]) == ("Title", "1.0")
+

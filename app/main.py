@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app import config
 from app.admin import router as admin_router
 from app.agent.tools import ActionNotFound, ActionNotPending
+from app.knowledge import NotFound
 from app.memory import ConversationNotFound
 from app.rag.retrieval import SearchFilters
 from app.rag.store import count_chunks, run_migrations
@@ -103,6 +104,7 @@ class AskResponse(BaseModel):
     conversation_id: str | None = None
     intent: str = ""
     pending_action: dict | None = None  # an action waiting for approval, with its id and summary
+    message_id: int | None = None  # the stored answer, for feedback
 
 
 @app.middleware("http")
@@ -178,7 +180,7 @@ def ask(body: AskRequest, request: Request, user_id: str | None = Depends(user_i
     record_ai_result(request.app, result)
     return AskResponse(answer=result.answer, sources=result.sources, request_id=request.state.request_id,
                        conversation_id=result.conversation_id, intent=result.intent,
-                       pending_action=result.pending_action)
+                       pending_action=result.pending_action, message_id=result.message_id)
 
 
 def server_sent_event(event: str, data: dict) -> str:
@@ -199,13 +201,16 @@ def ask_stream(body: AskRequest, request: Request, user_id: str | None = Depends
                                               conversation_id=body.conversation_id):
                 if kind == "token":
                     yield server_sent_event("token", {"text": value})
+                elif kind == "status":
+                    yield server_sent_event("status", {"text": value})
                 else:
                     record_ai_result(api, value)
                     # The final text can differ from the tokens if a citation check failed, so it's sent too
                     yield server_sent_event("done", {"answer": value.answer, "sources": value.sources,
                                                      "request_id": request_id, "intent": value.intent,
                                                      "conversation_id": value.conversation_id,
-                                                     "pending_action": value.pending_action})
+                                                     "pending_action": value.pending_action,
+                                                     "message_id": value.message_id})
         except ConversationNotFound:
             yield server_sent_event("error", {"detail": "Conversation not found"})
         except Exception:
@@ -220,6 +225,22 @@ def ask_stream(body: AskRequest, request: Request, user_id: str | None = Depends
 
 class Decision(BaseModel):
     approve: bool
+
+
+class Feedback(BaseModel):
+    message_id: int
+    rating: Literal[1, -1]
+    comment: str = Field(default="", max_length=1000)
+
+
+@app.post("/feedback", dependencies=[Depends(verify_api_key), Depends(rate_limit)])
+def give_feedback(body: Feedback, request: Request, user_id: str = Depends(required_user)):
+    """Rate an answer. Rating it again replaces the earlier rating."""
+    try:
+        request.app.state.service.knowledge.save_feedback(user_id, body.message_id, body.rating, body.comment)
+    except NotFound:
+        raise HTTPException(404, "Answer not found") from None
+    return {"saved": True}
 
 
 @app.get("/conversations", dependencies=[Depends(verify_api_key)])

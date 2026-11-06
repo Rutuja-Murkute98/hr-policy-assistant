@@ -21,6 +21,7 @@ from app.agent.graph import build_workflow
 from app.agent.hrms import MockHRMS
 from app.agent.tools import PendingActions, ToolRunner
 from app.db import get_engine
+from app.knowledge import KnowledgeBase
 from app.memory import ConversationStore, summarise_if_long
 from app.rag.providers import get_chat_model
 from app.rag.rerank import get_reranker
@@ -39,6 +40,7 @@ class WorkflowAnswer(RagAnswer):
     pending_action: dict | None = None
     tool: str = ""
     tool_status: str = ""
+    message_id: int | None = None  # the stored answer, which feedback refers to
 
 
 class ChatWorkflow:
@@ -51,6 +53,7 @@ class ChatWorkflow:
         self.conversations = ConversationStore(engine, tenant_id)
         self.actions = PendingActions(engine, tenant_id)
         self.runner = ToolRunner(engine, hrms or MockHRMS(engine, tenant_id))
+        self.knowledge = KnowledgeBase(engine, rag.store, tenant_id)
         self.checkpointer = checkpointer
         self.graph = build_workflow(rag, llm, self.runner, tenant_id, checkpointer)
         self._last_purge = 0.0
@@ -85,6 +88,9 @@ class ChatWorkflow:
         self._last_purge = time.monotonic()
         for run_id in self.actions.expire_old():
             self._forget_run(run_id)
+        if force:  # only at startup: anything marked as running then was cut off by the restart
+            self.knowledge.fail_interrupted()
+        self.knowledge.purge_unanswered_older_than(config.CONVERSATION_RETENTION_DAYS)
         removed = self.conversations.purge_older_than(config.CONVERSATION_RETENTION_DAYS)
         if removed:
             logger.info("Removed %s conversations past the retention period", removed)
@@ -113,7 +119,10 @@ class ChatWorkflow:
                     "filters": given, "stream_tokens": stream_tokens}
         try:
             for event in self.graph.stream(state_in, run_config, stream_mode="custom", durability="exit"):
-                yield "token", event["token"]
+                if "status" in event:
+                    yield "status", event["status"]
+                else:
+                    yield "token", event["token"]
             snapshot = self.graph.get_state(run_config)
         except Exception:
             self._forget_run(run_id)
@@ -123,8 +132,10 @@ class ChatWorkflow:
         if not snapshot.next:
             self._forget_run(run_id)
         if user_id and conversation_id:
-            self.conversations.add_message(user_id, conversation_id, "assistant", answer.answer)
+            answer.message_id = self.conversations.add_message(user_id, conversation_id, "assistant", answer.answer)
             summarise_if_long(self.conversations, self.llm, user_id, conversation_id)
+        if answer.abstain_reason in ("no_evidence", "model_abstained"):
+            self.knowledge.record_unanswered(answer.question_used or question, answer.abstain_reason)
         yield "done", answer
 
     def ask(self, question: str, history: list[dict] | None = None, filters: SearchFilters | None = None,

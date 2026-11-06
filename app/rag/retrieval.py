@@ -20,7 +20,8 @@ class SearchFilters:
     policy: str | None = None
     category: str | None = None
     categories: list[str] | None = None  # any of these, for routing by topic
-    effective_on: str | None = None  # an ISO date: only policies in effect on this date
+    effective_on: str | None = None  # an ISO date: the policies in effect on that date, including old versions
+    include_history: bool = False    # also search superseded versions
 
 
 @dataclass

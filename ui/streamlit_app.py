@@ -137,6 +137,20 @@ def decide_action(action_id: str, approve: bool) -> None:
     st.session_state.messages.append({"role": "assistant", "content": content, "sources": []})
 
 
+def send_feedback(message_id: int) -> None:
+    """Save a thumbs up or down. A rating shouldn't get in the way, so a failure is only a small note."""
+    choice = st.session_state.get(f"rating_{message_id}")
+    if choice is None:
+        return
+    try:
+        response = requests.post(f"{API_URL}/feedback", json={"message_id": message_id, "rating": 1 if choice else -1},
+                                 headers=api_headers(), timeout=30)
+        if not response.ok:
+            st.toast("Your rating couldn't be saved.")
+    except requests.RequestException:
+        st.toast("Your rating couldn't be saved.")
+
+
 def change_employee() -> None:
     start_new_chat()  # one employee must never continue another's chat
 
@@ -161,10 +175,13 @@ def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[
         for event, data in read_events(response.iter_lines(decode_unicode=True)):
             if event == "token":
                 yield data["text"]
+            elif event == "status":
+                result["on_status"](data["text"])
             elif event == "done":
                 result["sources"] = data["sources"]
                 result["answer"] = data.get("answer")
                 result["pending_action"] = data.get("pending_action")
+                result["message_id"] = data.get("message_id")
                 st.session_state.conversation_id = data.get("conversation_id")
             elif event == "error":
                 result["error"] = data["detail"]
@@ -180,6 +197,9 @@ def show_message(index: int, message: dict) -> None:
         st.markdown(link_citations(message["content"], message["sources"], index))
         if message["sources"]:
             st.markdown(sources_html(message["sources"], index), unsafe_allow_html=True)
+        if message.get("message_id"):
+            st.feedback("thumbs", key=f"rating_{message['message_id']}", on_change=send_feedback,
+                        args=(message["message_id"],))
 
 
 def queue_question(question: str) -> None:
@@ -244,14 +264,21 @@ if question:
                 yield token
 
 
-        result = {"sources": []}
+        def show_status(text: str) -> None:
+            with typing.container():
+                st.markdown(TYPING_DOTS, unsafe_allow_html=True)
+                st.caption(text)
+
+
+        result = {"sources": [], "on_status": show_status}
         streamed = st.write_stream(clear_typing_then_stream(stream_answer(question, history, result)))
     if "error" in result:
         failed = {"role": "assistant", "content": result["error"], "sources": [], "error": True}
         st.session_state.messages.append(failed)
     else:
         answer = result.get("answer") or streamed  # the API's final, checked text wins
-        st.session_state.messages.append({"role": "assistant", "content": answer, "sources": result["sources"]})
+        st.session_state.messages.append({"role": "assistant", "content": answer, "sources": result["sources"],
+                                          "message_id": result.get("message_id")})
         st.session_state.pending_action = result.get("pending_action")
     _fetch_status.clear()  # the badge should reflect how this question went
     st.rerun()  # shows the sources, links and buttons straight away

@@ -48,6 +48,7 @@ class WorkflowState(TypedDict, total=False):
     stream_tokens: bool
     intent: str
     category: str
+    asks_about_past: bool
     standalone: str     # the question the answer must address
     search_query: str   # what to search for, which a retry can reword
     first_search: dict  # the results before a retry, kept in case the retry finds less
@@ -69,6 +70,15 @@ def _to_documents(chunks: list[dict]) -> list[Document]:
             for chunk in chunks]
 
 
+TOOL_STATUS = {"get_leave_balance": "Checking leave balance", "get_latest_payslip": "Checking your payslip",
+               "apply_for_leave": "Submitting your leave request", "raise_hr_ticket": "Raising your HR ticket"}
+
+
+def _status(text: str) -> None:
+    """Say what's happening, in fixed words. Reasoning and prompts are never sent."""
+    get_stream_writer()({"status": text})
+
+
 def _say(state: WorkflowState, text: str, **fields) -> dict:
     """Finish a step with a fixed reply, sent to anyone streaming."""
     get_stream_writer()({"token": text})
@@ -79,6 +89,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
     known_tools = langchain_tools()
 
     def understand(state: WorkflowState) -> dict:
+        _status("Understanding your question")
         question = state["question"]
         if GREETING.fullmatch(question.strip()):  # needs no model call
             return {"intent": "greeting", "standalone": question, "category": ""}
@@ -92,7 +103,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         standalone = result.standalone_question.strip()
         if not standalone or len(standalone) > config.MAX_QUESTION_CHARS:
             standalone = question
-        return {"intent": result.intent, "standalone": standalone,
+        return {"intent": result.intent, "standalone": standalone, "asks_about_past": result.asks_about_past,
                 "category": result.category if result.category in CATEGORIES else ""}
 
     def route_intent(state: WorkflowState) -> str:
@@ -127,8 +138,10 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
 
     def retrieve(state: WorkflowState) -> dict:
         given = state.get("filters") or {}
+        _status("Searching policies")
         filters = SearchFilters(tenant_id=tenant_id, policy=given.get("policy"), category=given.get("category"),
-                                effective_on=given.get("effective_on"))
+                                effective_on=given.get("effective_on"),
+                                include_history=bool(state.get("asks_about_past")))
         # Narrow by topic the first time only. FAQ and glossary chunks are "general", so they stay in.
         if config.USE_CATEGORY_ROUTING and state.get("category") and not filters.category and not state.get("retried"):
             filters.categories = [state["category"], config.tenant.default_category]
@@ -161,6 +174,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return _say(state, FALLBACK_ANSWER, answered=False, abstain_reason="no_evidence")
 
     def generate(state: WorkflowState) -> dict:
+        _status("Writing the answer")
         writer = get_stream_writer()
         final: RagAnswer | None = None
         for kind, value in rag.answer_from_chunks(state["standalone"], _to_documents(state["chunks"]),
@@ -175,6 +189,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
                 "sources": final.sources}
 
     def select_tool(state: WorkflowState) -> dict:
+        _status("Choosing what to do")
         today = date.fromisoformat(state["today"])
         reply = llm.bind_tools(known_tools).invoke(
             build_tool_messages(state["question"], state.get("summary", ""), state.get("history", []), today))
@@ -229,6 +244,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return _say(state, "Okay, I've cancelled that request. Nothing was changed.", pending_action=None)
 
     def execute_tool(state: WorkflowState) -> dict:
+        _status(TOOL_STATUS.get(state["tool"], "Working on it"))
         action = state.get("pending_action") or {}
         outcome = runner.execute(_context(state), state["tool"], state.get("tool_args", {}), action.get("id"))
         return _say(state, outcome.message, answered=True, tool_status=outcome.status, pending_action=None)

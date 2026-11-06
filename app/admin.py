@@ -1,95 +1,110 @@
 """Let HR manage the policies without a developer. Every route needs the admin key.
 
-Chunks live in the database, so an uploaded policy keeps working when a hosted server
-restarts. The file saved in the policy folder is lost at that point, but it's only a copy.
+Uploading returns straight away and indexing runs as a job, which the admin screen can
+watch and retry. Chunks and versions live in the database, so they survive a hosted server
+restarting, unlike the copy saved in the policy folder.
 """
 import logging
-import re
+from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
 
 from app import config
+from app.knowledge import DuplicateDocument, JobConflict, KnowledgeBase, NotFound, UploadDetails, UploadRejected
 from app.security import verify_admin_key
-from pipeline.chunk_documents import HEADING, POLICY_DIR, chunk_text
-from pipeline.embed_and_store import BATCH_SIZE, DocumentChange, apply_documents, plan_documents, plan_sync, run_sync
+from pipeline.extract import ExtractionError
 
 logger = logging.getLogger("hr_helpdesk")
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(verify_admin_key)])
 
-SAFE_FILE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*\.md")
 
-
-class Upload(BaseModel):
-    filename: str
-    content: str = Field(min_length=1, max_length=config.MAX_UPLOAD_CHARS)
-
-
-def check_file_name(filename: str) -> None:
-    # Only letters, numbers, _ and - are allowed, so a name can't point outside the policy folder
-    if not SAFE_FILE_NAME.fullmatch(filename):
-        raise HTTPException(422, "Use a name like Leave_Policy.md: letters, numbers, _ and -, ending in .md")
-
-
-def check_content(content: str) -> None:
-    if "\x00" in content:
-        raise HTTPException(422, "The file isn't plain text")
-    first_heading = HEADING.search(content)
-    if not first_heading or len(first_heading[1]) != 1:
-        raise HTTPException(422, "The file must start with a title heading, such as: # Leave Policy")
-
-
-def policy_index(request: Request):
-    return request.app.state.service.store
+def knowledge(request: Request) -> KnowledgeBase:
+    return request.app.state.service.knowledge
 
 
 @router.get("/documents")
 def list_documents(request: Request):
-    """List the policies in the database and how many chunks each has."""
-    documents: dict[str, dict] = {}
-    for chunk in policy_index(request).stored_chunks().values():
-        file = chunk.metadata["source"]
-        entry = documents.setdefault(file, {"file": file, "policy": chunk.metadata["policy"], "chunks": 0})
-        entry["chunks"] += 1
-    return sorted(documents.values(), key=lambda entry: entry["file"])
+    """List the policies in the knowledge base, with their current version."""
+    return knowledge(request).documents()
 
 
-@router.post("/documents")
-def upload_document(body: Upload, request: Request):
-    """Add a policy or replace one with the same name. Only changed sections are embedded."""
-    check_file_name(body.filename)
-    check_content(body.content)
-    chunks = chunk_text(body.content, body.filename)
-    if not chunks:
-        raise HTTPException(422, "No sections were found under the headings in this file")
-
-    index = policy_index(request)
-    plan, changed = plan_documents(index, [DocumentChange(body.filename, body.content, chunks)])
-    if len(plan.to_embed) > BATCH_SIZE:
-        raise HTTPException(413, f"This needs {len(plan.to_embed)} sections embedded, and the limit for "
-                                 f"one upload is {BATCH_SIZE}. Use: python -m pipeline.embed_and_store")
+@router.post("/documents", status_code=202)
+def upload_document(
+    request: Request,
+    background: BackgroundTasks,
+    file: UploadFile = File(...),
+    title: str | None = Form(default=None, max_length=200),
+    category: str | None = Form(default=None, max_length=50),
+    version_label: str | None = Form(default=None, max_length=50),
+    effective_date: date | None = Form(default=None),
+    uploaded_by: str = Form(default="unknown", min_length=1, max_length=100),
+):
+    """Add a policy or a new version of one. PDF, DOCX, TXT, HTML and Markdown are accepted."""
+    # Read one byte past the limit, so a huge upload isn't held in memory to find out it's too big
+    data = file.file.read(config.MAX_UPLOAD_BYTES + 1)
+    details = UploadDetails(title or None, category or None, version_label or None, effective_date, uploaded_by)
     try:
-        apply_documents(index, plan, changed)
-    except Exception:
-        logger.exception("request_id=%s failed to index %s", request.state.request_id, body.filename)
-        raise HTTPException(503, "The AI service is unavailable right now, so nothing was changed.") from None
+        result = knowledge(request).add_upload(data, file.filename or "", details)
+    except DuplicateDocument as duplicate:
+        raise HTTPException(409, str(duplicate)) from None
+    except JobConflict as conflict:
+        raise HTTPException(409, str(conflict)) from None
+    except (ExtractionError, UploadRejected) as rejected:
+        raise HTTPException(422, str(rejected)) from None
+    if result["job_id"]:
+        background.add_task(knowledge(request).run_job, result["job_id"])
+    return result
 
+
+@router.get("/documents/{filename}/versions")
+def document_versions(filename: str, request: Request):
     try:
-        (POLICY_DIR / body.filename).write_text(body.content, encoding="utf-8")
-    except OSError:
-        logger.exception("Could not save a copy of %s", body.filename)
-    return {"file": body.filename, **plan.summary()}
+        return knowledge(request).versions(filename)
+    except NotFound:
+        raise HTTPException(404, f"{filename} isn't in the knowledge base") from None
 
 
 @router.delete("/documents/{filename}")
-def delete_document(filename: str, request: Request):
-    """Remove a policy, so the bot can no longer answer from it."""
-    check_file_name(filename)
-    index = policy_index(request)
-    plan = plan_sync(index.stored_chunks(), [], {filename})
-    if not plan.stale_ids:
-        raise HTTPException(404, f"{filename} isn't in the knowledge base")
-    run_sync(index, plan)
-    index.delete_document(filename)
-    (POLICY_DIR / filename).unlink(missing_ok=True)
-    return {"file": filename, **plan.summary()}
+def delete_document(filename: str, request: Request, purge: bool = False):
+    """Stop answering from a policy. Old versions stay as history unless purge is set."""
+    try:
+        return knowledge(request).remove(filename, purge)
+    except NotFound:
+        raise HTTPException(404, f"{filename} isn't in the knowledge base") from None
+
+
+@router.get("/jobs")
+def list_jobs(request: Request):
+    return knowledge(request).jobs()
+
+
+@router.get("/jobs/{job_id}")
+def get_job(job_id: str, request: Request):
+    try:
+        return knowledge(request).job(job_id)
+    except NotFound:
+        raise HTTPException(404, "Job not found") from None
+
+
+@router.post("/jobs/{job_id}/retry", status_code=202)
+def retry_job(job_id: str, request: Request, background: BackgroundTasks):
+    """Run a failed job again. It carries on from what's already stored."""
+    try:
+        knowledge(request).retry_job(job_id)
+    except NotFound:
+        raise HTTPException(404, "Job not found") from None
+    except JobConflict as conflict:
+        raise HTTPException(409, str(conflict)) from None
+    background.add_task(knowledge(request).run_job, job_id)
+    return {"job_id": job_id, "status": "queued"}
+
+
+@router.get("/unanswered")
+def unanswered_questions(request: Request):
+    """List what employees asked that the bot couldn't answer, most asked first."""
+    return knowledge(request).unanswered_report()
+
+
+@router.get("/feedback")
+def feedback_summary(request: Request):
+    return knowledge(request).feedback_summary()

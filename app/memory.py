@@ -43,7 +43,7 @@ class ConversationStore:
             ), self._owner(user_id, id=new_id))
             return new_id
 
-    def add_message(self, user_id: str, conversation_id: str, role: str, content: str) -> None:
+    def add_message(self, user_id: str, conversation_id: str, role: str, content: str) -> int:
         with self.engine.begin() as connection:
             updated = connection.execute(text(
                 "UPDATE conversations SET updated_at = now() "
@@ -51,10 +51,10 @@ class ConversationStore:
             ), self._owner(user_id, id=conversation_id))
             if updated.rowcount == 0:
                 raise ConversationNotFound(conversation_id)
-            connection.execute(text(
+            return connection.execute(text(
                 "INSERT INTO messages (tenant_id, user_id, conversation_id, role, content) "
-                "VALUES (:tenant_id, :user_id, :conversation_id, :role, :content)"
-            ), self._owner(user_id, conversation_id=conversation_id, role=role, content=content))
+                "VALUES (:tenant_id, :user_id, :conversation_id, :role, :content) RETURNING id"
+            ), self._owner(user_id, conversation_id=conversation_id, role=role, content=content)).scalar_one()
 
     def messages(self, user_id: str, conversation_id: str) -> list[dict]:
         self.start(user_id, conversation_id)  # checks the owner, so a stranger gets "not found"

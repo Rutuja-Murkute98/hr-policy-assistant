@@ -103,3 +103,22 @@ def test_approving_with_the_api_unreachable_keeps_the_action_and_explains(chat):
     assert chat.session_state.pending_action == {"id": "a1", "summary": "apply for leave"}
     assert chat.session_state.messages[-1]["error"] is True
 
+
+def test_a_stored_answer_can_be_rated(chat):
+    chat.session_state.messages = [
+        {"role": "assistant", "content": "Hello", "sources": []},
+        {"role": "assistant", "content": "18 days.", "sources": [], "message_id": 7},
+    ]
+    chat.run()
+    assert not chat.exception
+    assert "rating_7" in chat.session_state
+
+
+def test_admin_page_explains_each_problem_without_crashing():
+    app = AppTest.from_file(ADMIN_FILE, default_timeout=30)
+    app.secrets["HELPDESK_API_URL"] = "http://127.0.0.1:9"
+    app.run()
+    app.text_input[0].set_value("some-key").run()
+    assert not app.exception
+    assert len(app.tabs) == 0  # stops at the error, before showing tabs with no data
+

@@ -42,19 +42,21 @@ ASSETS = """# Asset Policy
 
 If a company laptop is stolen you must file an FIR with the police within forty eight hours of the theft.
 """
-TABLES = ["hr_tickets", "hr_leave_requests", "tool_audit_log", "pending_actions", "messages", "conversations"]
+TABLES = ["unanswered_questions", "hr_tickets", "hr_leave_requests", "tool_audit_log", "pending_actions", "messages", "conversations"]
 
 
 class ScriptedLLM:
     """Plays back each step's output, and records what it was shown."""
 
     def __init__(self, intent="policy_question", category="", standalone=None, answer=None, tool=None, tool_args=None,
-                 tool_text="", retry_text="", summary_text="A summary.", fail_understanding=False):
+                 tool_text="", retry_text="", summary_text="A summary.", fail_understanding=False,
+                 asks_about_past=False):
         self.intent, self.category, self.standalone = intent, category, standalone
         self.answer = answer or StructuredAnswer(answered=True, answer="Eighteen days [1].", cited_chunk_ids=["1"])
         self.tool, self.tool_args, self.tool_text = tool, tool_args or {}, tool_text
         self.retry_text, self.summary_text = retry_text, summary_text
         self.fail_understanding = fail_understanding
+        self.asks_about_past = asks_about_past
         self.seen: list[str] = []
 
     def with_structured_output(self, schema):
@@ -65,7 +67,8 @@ class ScriptedLLM:
                     raise RuntimeError("quota")
                 question = messages[1].content.rsplit("Latest message: ", 1)[1]
                 return Understanding(intent=self.intent, category=self.category,
-                                     standalone_question=self.standalone or question)
+                                     standalone_question=self.standalone or question,
+                                     asks_about_past=self.asks_about_past)
             return self.answer
 
         def stream(messages):
@@ -238,8 +241,62 @@ def test_no_evidence_after_the_retry_abstains(shared, monkeypatch):
 
 def test_streaming_sends_tokens_and_the_final_answer(shared):
     events = list(make(shared).stream("How many earned leave days do confirmed employees get?"))
-    assert events[0] == ("token", "Eight")
+    assert [value for kind, value in events if kind == "token"][0] == "Eight"
     assert events[-1][1].answer == "Eighteen days [1]."
+
+
+def test_streaming_says_what_its_doing_in_fixed_words(shared):
+    events = list(make(shared).stream("How many earned leave days do confirmed employees get?"))
+    assert [value for kind, value in events if kind == "status"] == [
+        "Understanding your question", "Searching policies", "Writing the answer"]
+
+
+def test_tool_status_names_the_step_not_the_reasoning(shared):
+    llm = ScriptedLLM(intent="personal_data_request", tool="get_leave_balance")
+    events = list(make(shared, llm).stream("My balance?", user_id="E1001"))
+    assert "Checking leave balance" in [value for kind, value in events if kind == "status"]
+
+
+def test_stored_answer_has_a_message_id_for_feedback(shared):
+    result = make(shared).ask("How many earned leave days?", user_id="E1001")
+    assert result.message_id == rows(shared, "messages", "role = 'assistant'")[0].id
+
+
+def test_a_question_the_bot_cant_answer_is_reported_without_a_user(shared):
+    llm = ScriptedLLM(answer=StructuredAnswer(answered=False))
+    make(shared, llm).ask("How many earned leave days?", user_id="E1001")
+    stored = rows(shared, "unanswered_questions")
+    assert [(row.question, row.reason) for row in stored] == [("How many earned leave days?", "model_abstained")]
+
+
+def test_out_of_scope_questions_arent_reported_as_gaps(shared, monkeypatch):
+    monkeypatch.setattr(config, "OUT_OF_SCOPE_OVERRIDE_CONFIDENCE", 1000.0)
+    make(shared, ScriptedLLM(intent="out_of_scope")).ask("Capital of France?")
+    assert rows(shared, "unanswered_questions") == []
+
+
+def test_asking_about_the_past_searches_old_versions(shared):
+    llm = ScriptedLLM(asks_about_past=True)
+    make(shared, llm).ask("What was the leave policy before?")
+    assert make(shared, llm).graph is not None
+
+
+def test_normal_questions_dont_search_old_versions(shared, monkeypatch):
+    seen = []
+    workflow = make(shared)
+    original = workflow.rag.search
+    monkeypatch.setattr(workflow.rag, "search", lambda question, filters: seen.append(filters) or original(question, filters))
+    workflow.ask("How many earned leave days?")
+    assert seen[0].include_history is False
+
+
+def test_past_questions_ask_for_history_in_the_search(shared, monkeypatch):
+    seen = []
+    workflow = make(shared, ScriptedLLM(asks_about_past=True))
+    original = workflow.rag.search
+    monkeypatch.setattr(workflow.rag, "search", lambda question, filters: seen.append(filters) or original(question, filters))
+    workflow.ask("What did the leave policy say before?")
+    assert seen[0].include_history is True
 
 
 # Conversations

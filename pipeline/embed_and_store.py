@@ -12,7 +12,7 @@ run it again: it carries on from the sections not stored yet.
 import argparse
 import hashlib
 import time
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 
 from langchain_core.documents import Document
@@ -61,7 +61,8 @@ def plan_sync(stored: dict[str, Document], chunks: list[Document], sources: Iter
     return plan
 
 
-def run_sync(index, plan: SyncPlan, wait_seconds: int = WAIT_SECONDS) -> None:
+def run_sync(index, plan: SyncPlan, wait_seconds: int = WAIT_SECONDS,
+             progress: Callable[[int], None] | None = None) -> None:
     """Apply a plan. New text is stored first, so a failure can't lose what's already there."""
     to_embed = plan.to_embed
     for start in range(0, len(to_embed), BATCH_SIZE):
@@ -71,6 +72,8 @@ def run_sync(index, plan: SyncPlan, wait_seconds: int = WAIT_SECONDS) -> None:
         batch = to_embed[start:start + BATCH_SIZE]
         index.add(batch)
         print(f"Embedded {start + len(batch)}/{len(to_embed)}", flush=True)
+        if progress:
+            progress(start + len(batch))
     if plan.relabelled:
         index.update_metadata(plan.relabelled)
     if plan.stale_ids:
@@ -124,7 +127,9 @@ def sources_without_a_file(stored: dict[str, Document], chunks: list[Document]) 
 
 def main() -> None:
     from app import config
-    from app.rag.store import PolicyIndex, get_store, run_migrations
+    from app.db import get_engine
+    from app.knowledge import KnowledgeBase
+    from app.rag.store import PolicyIndex, forget_embedding_model, get_store, run_migrations
     from pipeline.chunk_documents import POLICY_DIR, chunk_text
 
     parser = argparse.ArgumentParser(description="Index the HR policies into pgvector")
@@ -139,8 +144,10 @@ def main() -> None:
     if args.rebuild:
         vector_store.delete_collection()
         vector_store.create_collection()
+        forget_embedding_model(vector_store.collection_name)
 
     index = PolicyIndex(vector_store)
+    knowledge = KnowledgeBase(get_engine(), index, config.TENANT_ID)
     documents = []
     for file in sorted(POLICY_DIR.glob("*.md")):
         text = file.read_text(encoding="utf-8")
@@ -157,7 +164,11 @@ def main() -> None:
     elif orphans:
         stored = index.stored_chunks()
         plan.stale_ids += [chunk_id for chunk_id, chunk in stored.items() if chunk.metadata["source"] in orphans]
+    knowledge.archive_before_change(plan, index.stored_chunks())
     apply_documents(index, plan, changed)
+    for document in documents:  # gives each policy a version, which uses no embeddings
+        if document in changed or not knowledge.current_number(document.source_file):
+            knowledge.record_baseline(document.source_file, document.chunks, document.text)
     if args.prune:
         for orphan in orphans:
             index.delete_document(orphan)

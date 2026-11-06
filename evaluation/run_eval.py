@@ -235,7 +235,8 @@ def run_answers(args) -> None:
     saved = load_json(progress_file)
     missing = [item["id"] for item in items if item["id"] not in saved]
     if missing and args.judge_only:
-        raise SystemExit(f"{len(missing)} answers are missing from {progress_file.name}, and --judge-only won't add them")
+        raise SystemExit(f"{len(missing)} answers are missing from {progress_file.name}, "
+                         "and --judge-only won't add them")
     for number, item in enumerate(items, start=1):
         if item["id"] in saved:
             continue

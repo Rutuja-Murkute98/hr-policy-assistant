@@ -39,14 +39,14 @@ The knowledge base is a set of 33 sample HR policy documents for a company calle
 | 🔍 | **Careful retrieval** | Combines vector and keyword search, uses MMR for relevant but varied results, ignores chunks too far in meaning, and removes duplicates. A local reranker is optional |
 | 🛡️ | **Grounded answers** | A strict prompt limits answers to the retrieved policy text and includes conditions and exceptions |
 | 🙅 | **Honest refusals** | Off-topic and unknown questions get a fixed reply pointing to the HR helpdesk |
-| 📚 | **Policy references** | Each answer lists the policy sections that were checked |
+| 📚 | **Checked citations** | Answers cite the excerpts they used, and only citations of retrieved text are kept |
 | 💭 | **Follow-up questions** | Understands questions like "what about on probation?" from the chat so far, without treating earlier answers as policy facts |
 | ⚡ | **Web API** | FastAPI backend with streaming answers, API key check, rate limiting, request IDs and a health check |
 | 🗂️ | **Policy admin screen** | HR can add, replace or remove a policy, and only the sections that changed use embedding quota |
 | 🔀 | **Swappable models** | Choose Gemini, Claude, OpenAI or local Ollama models with settings instead of code changes |
 | 💬 | **Slack bot** | Employees can ask in Slack, using the same API as the chat screen |
 | 🎨 | **Branded chat screen** | Welcome message, popular questions, typing animation and live online status, on desktop or phone |
-| 📊 | **Measured quality** | A 25-question evaluation with RAGAS scores, a retrieval benchmark, and 116 automated tests that run on every push |
+| 📊 | **Measured quality** | A draft 123-question evaluation with chunk-level labels and a separate judge model, plus 199 automated tests |
 | 🔁 | **Smart indexing** | Embeds only what changed, stays within free-tier limits and carries on where it stopped if interrupted |
 
 ## 🧠 How it works
@@ -207,7 +207,7 @@ venv\Scripts\python -m pytest tests -q
 venv\Scripts\python -m evaluation.rag_evaluation --ragas
 ```
 
-The first command runs 116 offline tests that make no API calls, and GitHub Actions runs them on every push. The second calls Gemini many times, so it uses your quota.
+The first command runs 199 tests that make no model API calls, including some on a temporary PostgreSQL. GitHub Actions is set up to run them on every push, but it hasn't run yet. The second calls Gemini many times, so it uses your quota.
 
 ## 🔧 Settings
 

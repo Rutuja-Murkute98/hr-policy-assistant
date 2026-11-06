@@ -45,7 +45,7 @@ Commands below are shown for Windows. On Linux or macOS, use `venv/bin/` in plac
 4. Wait for the deploy to finish, then copy the URL shown at the top of your service's page. Render may add extra characters to the name, so always copy it rather than typing it.
 5. Open that URL with `/health` on the end. If it doesn't show your chunk count, it isn't your service, so don't use it. You should see:
    ```json
-   {"status":"ok","chunks_indexed":539,"ai":"ok"}
+   {"status":"ok","chunks_indexed":539}
    ```
 
 ## Step 3: Deploy the chat screen on Streamlit Community Cloud

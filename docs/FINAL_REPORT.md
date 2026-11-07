@@ -135,6 +135,10 @@ The full reasoning, with options and trade-offs, is in [DECISIONS.md](DECISIONS.
 **Passing tests didn't catch everything.** Real runs found bugs that tests with a fake model passed: usage counting broke every
 question in Phase 5, and earlier phases had similar cases. That's why each phase also ran on the real model.
 
+**The upgrade was rehearsed locally.** On PostgreSQL 16, with a non-superuser owner as on Neon, a database built by the old code
+upgraded with 0 embeddings, the API worked with Row-Level Security in force, and the old code still worked afterwards, so going
+back doesn't need a restore. 251 database tests also passed as that user. It's not the same as running on Neon.
+
 **The first CI run also found a real bug.** A restore failed when the PostgreSQL client tools were newer than the database,
 which didn't show on this PC, where they match. It could have happened on Neon at the worst time, during a recovery. It's fixed.
 
@@ -273,8 +277,8 @@ contact, breach handling and a full data export aren't. **No lawyer has reviewed
 2. Decide the five policy contradictions.
 
 **2. Deploy and test it**
-3. Take a backup of the live database, then merge into `main`. **That deploys to Render, and turns on the new security on Neon.**
-4. Check the database role, the upgrade, memory and speed on the deployment. It stays in demo mode until step 6.
+3. Follow "Upgrading a running deployment" in [DEPLOY.md](../DEPLOY.md): back up, update the database, check, then merge into `main`.
+4. Check memory and speed on the deployment. It stays in demo mode until step 6.
 5. Run a backup and restore on Neon, and a small load test against the deployment.
 6. Create a sign-in client, and try real sign-in with `AUTH_MODE=oidc`.
 

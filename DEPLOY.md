@@ -80,12 +80,46 @@ free services, see [the AWS and GCP guide](docs/DEPLOY_CLOUD.md).
 
 ## Upgrading a running deployment
 
-Pushing to `main` redeploys, and the API updates its own database tables when it starts. **Back up first**, using
-[OPERATIONS.md](docs/OPERATIONS.md). The upgrade to this version:
+Do these in order. Steps 1 to 3 change the database, but the running app keeps working, because the old code connects as the
+tables' owner, and Row-Level Security doesn't apply to an owner. So a problem shows up here, before anyone is affected.
 
-- adds the app's database role and turns on Row-Level Security, so check the Render log after the first start.
-- adds a stored `search_text` column to the chunks table. This uses no embedding quota, and only takes a moment at this size.
-- keeps demo mode, unless you set `AUTH_MODE=oidc`.
+Run the commands from a checkout of the branch you're about to merge, with `DATABASE_URL` set to Neon's **direct** connection
+string, not the pooled one, and your Gemini key in `.env`. Don't paste either one into a chat.
+
+1. **Back up.** The tools come with this project's local database package, so nothing else needs installing on Windows:
+   ```bash
+   venv\Scripts\python -m ops.backup create backups/before-upgrade.dump
+   ```
+2. **Update the database.** This creates the new tables and the app's database role, turns on Row-Level Security, and adds
+   details to the stored chunks. In the rehearsal below, it used **no embedding quota**:
+   ```bash
+   venv\Scripts\python -m pipeline.embed_and_store
+   ```
+   If it stops with `permission denied`, your database user can't create the role. Fix that before going on. See "The database role".
+3. **Check the live app still answers.** Ask it a question.
+4. **Merge into `main`.** This redeploys the API and the chat screen.
+5. **Check the new version:**
+   - Open `/health` on the API: `chunks_indexed` should be the same as before, and `status` should be `ok`.
+   - Ask a question, and check it has a citation.
+   - In Render's logs, look for JSON lines, and any `error_type`.
+   - Watch Render's memory for the first few questions. It's limited to 512 MB.
+
+**What this release changes for people using it:**
+
+- Each question now uses about 2 model calls, so the free daily limit covers about half as many questions, and answers take longer.
+- Chats are stored for 90 days, with personal data masked. The chat screen shows a demo employee picker, and the self-service tools
+  work on fake employees. To turn the tools off, set `SELF_SERVICE_ENABLED=false`.
+- On the free tier, consider setting `RATE_LIMIT_TOTAL_PER_MINUTE` to about half your model's per-minute limit.
+
+**To go back:** on GitHub, revert the merge, which redeploys the old code. **The database doesn't need restoring,** as the old code
+works on the upgraded database. Only restore the backup if the data itself is damaged, as that loses anything added since.
+
+**Rehearsed, not yet done for real.** On a local PostgreSQL 16, with a non-superuser owner that can create roles and databases as
+Neon's does, and a database built by the old code: the update planned 0 embeddings and relabelled 539 chunks, and the API then worked
+with Row-Level Security in force. The old code still read, wrote and answered on the upgraded database, and the new code worked again
+after that. 251 database tests also passed as that user. **This isn't Neon.** Its connection pooler, its permissions and Render's
+memory limit can only be tested there. The rehearsal used fake embeddings and a scripted model, and made the `vector` extension
+as a superuser, because that's the one step a local non-superuser can't do.
 
 ## Updating a database from before Phase 1
 

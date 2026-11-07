@@ -67,6 +67,9 @@ Commands below are shown for Windows. On Linux or macOS, use `venv/bin/` in plac
    Your Gemini key isn't needed here, because only the API talks to Gemini.
 4. Choose **Deploy**, then open your app's link and ask a question.
 
+After it's running, see [OPERATIONS.md](docs/OPERATIONS.md) for logs, metrics, backups and restoring. If you outgrow the
+free services, see [the AWS and GCP guide](docs/DEPLOY_CLOUD.md).
+
 ## What to expect
 
 - **Slow first question:** Render's free API sleeps after 15 minutes without traffic, and Neon after 5 minutes. The first question afterwards can take a minute or two, and the screen shows **Connecting** until the API responds.
@@ -74,6 +77,15 @@ Commands below are shown for Windows. On Linux or macOS, use `venv/bin/` in plac
 - **Shared quota:** every question uses your Gemini quota, so heavy use can stop answers until it resets. The API allows 10 questions a minute per chat and 30 in total, but those counts reset whenever it restarts.
 - **Sample data only:** Gemini's free tier may use submitted data to improve Google's products, so don't use real HR documents.
 - **Limits change:** check each service's current free limits when you sign up.
+
+## Upgrading a running deployment
+
+Pushing to `main` redeploys, and the API updates its own database tables when it starts. **Back up first**, using
+[OPERATIONS.md](docs/OPERATIONS.md). The upgrade to this version:
+
+- adds the app's database role and turns on Row-Level Security, so check the Render log after the first start.
+- adds a stored `search_text` column to the chunks table. This uses no embedding quota, and only takes a moment at this size.
+- keeps demo mode, unless you set `AUTH_MODE=oidc`.
 
 ## Updating a database from before Phase 1
 

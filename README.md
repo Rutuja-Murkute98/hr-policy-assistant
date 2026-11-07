@@ -199,6 +199,7 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `GET`, `POST` | `/admin/api-keys` | Lists keys, or creates one for an integration | HR admin |
 | `DELETE` | `/admin/api-keys/{id}` | Revokes a key | HR admin |
 | `GET` | `/admin/audit` | Shows what's happened in this organisation | HR admin |
+| `GET` | `/admin/metrics` | Reports requests, speed, tokens, cost, refusals, tool failures and feedback | HR admin |
 | `GET`, `POST` | `/platform/organisations` | Lists organisations, or adds one | Platform admin |
 | `PATCH` | `/platform/organisations/{id}` | Suspends or restores an organisation | Platform admin |
 
@@ -260,6 +261,9 @@ Add these to `.env` to change how it works. `.env.example` lists them all.
 | `TENANT_CONFIG_FILE` | Points to the file with the company's name, HR email, branding and policy categories |
 | `AUTH_MODE`, `OIDC_ISSUER`, `OIDC_CLIENT_ID` | `demo` (default) or `oidc` for real sign-in. See [DEPLOY.md](DEPLOY.md) |
 | `PLATFORM_ADMIN_EMAILS` | The first platform admins, who can add organisations |
+| `LOG_FORMAT`, `LOG_LEVEL` | `json` (default) or `text`. See [OPERATIONS.md](docs/OPERATIONS.md) |
+| `LLM_PRICE_INPUT_PER_MILLION`, `LLM_PRICE_OUTPUT_PER_MILLION` | Prices for the cost estimate. 0 by default, for a free tier |
+| `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` | Sends model calls to Langfuse. Off unless both are set, because it shares prompts |
 | `REDIS_URL` | Counts rate limits in Redis instead of PostgreSQL. Needs `requirements-redis.txt` |
 | `AUDIT_RETENTION_DAYS` | How long audit entries are kept: 365 by default |
 | `HELPDESK_ADMIN_KEY` | Turns on the admin endpoints and the screen at `/admin` on the chat screen's address |
@@ -280,6 +284,8 @@ hr-policy-assistant/
 │   ├── accounts.py           # Endpoints for sign-in, people, keys and organisations
 │   ├── tenancy.py            # Row-Level Security: keeps each organisation's data apart
 │   ├── pii.py                # Masks personal data in text and logs
+│   ├── observability.py      # JSON logs, usage counting and optional tracing
+│   ├── metrics.py            # Per-answer metrics and reports
 │   ├── guards.py             # Prompt injection defences
 │   ├── config.py             # Settings, checked at startup
 │   └── rag/

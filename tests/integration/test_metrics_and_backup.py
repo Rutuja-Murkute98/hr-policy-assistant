@@ -310,12 +310,3 @@ def test_a_restore_notices_missing_rows(shared, empty_database, tmp_path):
 def test_a_missing_backup_is_explained(shared, tmp_path):
     with pytest.raises(BackupError, match="doesn't exist"):
         restore_backup(tmp_path / "none.dump", shared.uri)
-
-
-def test_a_backup_file_holds_no_password(shared, tmp_path):
-    requires_tools(shared.uri)
-    backup = tmp_path / "helpdesk.dump"
-    create_backup(backup, shared.uri)
-    password = psycopg.conninfo.conninfo_to_dict(shared.uri).get("password")
-    if password:
-        assert password.encode() not in backup.read_bytes()

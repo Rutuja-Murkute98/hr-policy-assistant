@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -23,6 +24,9 @@ from sqlalchemy import create_engine, text
 from app import config
 from app.rag.store import get_database_uri, sqlalchemy_url
 from app.tenancy import grant_app_role, verify_tenant_policies
+
+
+HARMLESS_RESTORE_ERROR = "unrecognized configuration parameter"
 
 
 class BackupError(Exception):
@@ -76,9 +80,18 @@ def _tool_arguments(uri: str) -> tuple[str, dict]:
     return urlunsplit((parts.scheme, host_part, parts.path, parts.query, "")), environment
 
 
-def _run(arguments: list[str], environment: dict, what: str, password: str | None) -> None:
+def restore_failed(returncode: int, errors: str) -> bool:
+    """Decide if a restore failed. Newer tools set options an older server doesn't have, which does no harm."""
+    if returncode == 0:
+        return False
+    problems = [line for line in errors.splitlines() if "ERROR:" in line]
+    return not problems or any(HARMLESS_RESTORE_ERROR not in line for line in problems)
+
+
+def _run(arguments: list[str], environment: dict, what: str, password: str | None,
+         failed: Callable[[int, str], bool] = lambda returncode, errors: returncode != 0) -> None:
     result = subprocess.run(arguments, capture_output=True, text=True, env=environment)
-    if result.returncode != 0:
+    if failed(result.returncode, result.stderr):
         detail = result.stderr[-2000:]
         raise BackupError(f"{what} failed: {detail.replace(password, '***') if password else detail}")
 
@@ -122,8 +135,9 @@ def restore_backup(backup: Path, uri: str) -> dict[str, int]:
         ))
         connection.execute(text("GRANT helpdesk_app TO CURRENT_USER"))
     address, environment = _tool_arguments(uri)
-    _run([find_tool("pg_restore", uri), "--no-owner", "--no-privileges", "--exit-on-error", f"--dbname={address}",
-          str(backup)], environment, "The restore", urlsplit(uri).password)
+    # It carries on past an error so a harmless one can't stop it. Anything else fails here, and missing data fails below.
+    _run([find_tool("pg_restore", uri), "--no-owner", "--no-privileges", f"--dbname={address}", str(backup)],
+         environment, "The restore", urlsplit(uri).password, restore_failed)
     with engine.begin() as connection:
         grant_app_role(connection)
     with engine.begin() as connection:

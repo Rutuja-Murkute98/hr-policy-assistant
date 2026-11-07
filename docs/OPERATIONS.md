@@ -57,7 +57,7 @@ Nothing runs backups automatically, because the free stack has no background wor
 venv\Scripts\python -m ops.backup create backups/helpdesk.dump
 ```
 
-It needs the PostgreSQL client tools, at least as new as the server. Set `PG_BIN_DIR` if they aren't on your `PATH`. Your
+It needs the PostgreSQL client tools, at least as new as the server. Tools newer than the server work: a restore ignores a setting the older server doesn't have, and checks everything else. Set `PG_BIN_DIR` if they aren't on your `PATH`. Your
 host may also keep its own history, so check what your plan includes.
 
 **How often:** after any batch of policy changes, and before any upgrade. With sample data, that's enough. With real

@@ -15,10 +15,7 @@ from app.rag.prompt import (
     fallback_answer,
     greeting_answer,
 )
-from app.rag.providers import get_chat_model
-from app.rag.rerank import get_reranker
 from app.rag.retrieval import Candidate, SearchFilters, keep_usable, select_chunks
-from app.rag.store import PolicyIndex, get_store
 
 logger = logging.getLogger("hr_helpdesk")
 
@@ -197,8 +194,3 @@ class RagService:
 
         yield "done", RagAnswer(fallback_answer(self.profile), chunks=chunks, question_used=standalone, answered=False,
                                 abstain_reason=reason)
-
-
-def create_service() -> RagService:
-    """The answering pipeline alone, without the workflow. The evaluation can use it directly."""
-    return RagService(PolicyIndex(get_store()), get_chat_model(), get_reranker())

@@ -42,7 +42,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Golden set of 100+ with chunk labels | Partial | 123 drafted, none approved yet |
 | Retrieval metrics | Implemented and tested | Recall, precision, MRR, NDCG and latency |
 | Answer metrics with a different judge | Implemented and tested | The judge is from the same vendor |
-| Baseline vs new report | Implemented and tested | `evaluation/reports/phase1_report.md` |
+| Baseline vs new report | Implemented and tested | `evaluation/reports/history/phase1_report.md` |
 | CI quality gate | Implemented and tested | Passing on GitHub. It reads a committed result, and doesn't run the model |
 
 ## Phase 2 status

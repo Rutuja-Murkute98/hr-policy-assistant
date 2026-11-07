@@ -22,3 +22,6 @@ __pycache__/
 # Database backups are full copies of the data
 backups/
 *.dump
+
+# Local tool settings
+.claude/

@@ -2,7 +2,7 @@
 
     python loadtest/run_steps.py --host http://127.0.0.1:8031 --server-port 8031 --name simulated --users 1,5,10,20,40
 
-Needs only the separate Locust environment: pip install -r requirements-loadtest.txt
+Needs only the separate Locust environment: pip install -r loadtest/requirements.txt
 """
 import argparse
 import csv

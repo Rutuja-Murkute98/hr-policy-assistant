@@ -1,6 +1,6 @@
 """Behave like employees using the helpdesk. Set HELPDESK_API_KEY, and run with loadtest/run_steps.py or Locust itself.
 
-Installed separately: pip install -r requirements-loadtest.txt
+Installed separately: pip install -r loadtest/requirements.txt
 """
 import json
 import os

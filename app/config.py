@@ -30,7 +30,7 @@ class Settings(BaseSettings):
 
     # Tenant and database
     tenant_config_file: Path = PROJECT_ROOT / "config" / "tenant.toml"
-    policy_dir: Path = PROJECT_ROOT / "policies" / "policies"
+    policy_dir: Path = PROJECT_ROOT / "policies"
     database_url: str = ""  # empty = run PostgreSQL locally, in pgdata
 
     # Models. An empty model name means the provider's default, where it has one.

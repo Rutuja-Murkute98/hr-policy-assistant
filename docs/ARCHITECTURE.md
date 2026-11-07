@@ -77,9 +77,9 @@ flowchart TB
 | Exact-string refusal | Replace | Structured output is more reliable |
 | Sources list | Replace | Only validated citations should appear |
 | `app/config.py` constants | Refactor | Validated with Pydantic Settings, and the rest of the code keeps its names |
-| Keyword evaluation and RAGAS | Keep, extend | Still useful, but too weak alone |
-| `mini_rag.py` | Keep | Small, and documents how the project started. Not used by the app |
-| Intern guide | Keep | Historical build guide. Marked as such in the README |
+| Keyword evaluation and RAGAS | Replaced | Too weak alone, so `evaluation/run_eval.py` took over. The old files are in git history |
+| `mini_rag.py` | Removed | Documented how the project started, and the app didn't use it. It's in git history |
+| Intern guide | Removed | It described the first version. It's in git history |
 
 ## Target architecture
 

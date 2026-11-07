@@ -49,7 +49,10 @@ The knowledge base is a set of 33 sample HR policy documents for a company calle
 | 🔀 | **Swappable models** | Choose Gemini, Claude, OpenAI or local Ollama models with settings instead of code changes |
 | 💬 | **Slack bot** | Employees can ask in Slack, using the same API as the chat screen |
 | 🎨 | **Branded chat screen** | Welcome message, popular questions, typing animation and live online status, on desktop or phone |
-| 📊 | **Measured quality** | A draft 123-question evaluation with chunk-level labels and a separate judge model, plus 397 automated tests |
+| 📊 | **Measured quality** | A draft 123-question evaluation with chunk-level labels and a separate judge model, plus 614 automated tests |
+| 🏢 | **Multiple organisations** | Row-Level Security keeps each company's documents, chats and accounts apart, with roles, sign-in and per-company API keys |
+| 🔒 | **Privacy and security** | Personal data is masked before storage, logs and the model. Rate limits survive restarts, and an audit log records who did what |
+| 📡 | **Running it** | JSON logs, usage metrics, optional tracing, a load test, and tested database backup and restore |
 | 🔁 | **Smart indexing** | Embeds only what changed, stays within free-tier limits and carries on where it stopped if interrupted |
 
 ## 🧠 How it works
@@ -81,17 +84,20 @@ Measured on 123 questions in [`evaluation/data/golden_set.json`](evaluation/data
 
 > **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 3 report](evaluation/reports/phase3_report.md).
 
-| Check | Result | What it measures |
-|---|---:|---|
-| **Recall@5** | **0.943** | Whether search finds the labelled chunks |
-| **Expected facts in answers** | **0.943** | Keyword check against known answers |
-| **Correct refusals** | **0.962** | Off-topic, unknown and "ignore your rules" questions. One of these is a likely wrong label |
-| **Wrongly refused** | **0.031** | Answerable questions the bot refused |
-| **Citations valid** | **1.000** | Citations point to chunks that were retrieved |
-| **Judge: correct** | **0.979** | Judged by a different Gemini model, using only the retrieved text |
-| **p95 seconds per answer** | **8.08** | Still above the 6 second target |
+| Check | Result | Target | What it measures |
+|---|---:|---:|---|
+| **Recall@5** | **0.938** | 0.90 or more | Whether search finds the labelled chunks |
+| **Expected facts in answers** | **0.966** | | Keyword check against known answers |
+| **Correct refusals** | **0.923** | 100%: **not met** | Off-topic, unknown and "ignore your rules" questions. One miss is a likely wrong label |
+| **Wrongly refused** | **0.031** | | Answerable questions the bot refused |
+| **Citations valid** | **1.000** | 95% or more | Citations point to chunks that were retrieved |
+| **Judge: correct** | **1.000** | | Judged by a different Gemini model, using only the retrieved text |
+| **p95 seconds per answer** | **10.78** | Under 6: **not met** | Mostly model time, on the free tier, for answers that succeeded |
+| **Cross-tenant leaks in tests** | **0** | 0 | Isolation tests at the database, store and API levels |
 
 **Agent test:** intent, routing, tool selection, tool success and approval compliance all scored 1.000 on 58 clear-cut questions.
+
+**This isn't proof of production readiness.** These were measured on one PC with sample data. See [the final report](docs/FINAL_REPORT.md).
 
 ## 🚀 Quick start
 
@@ -236,10 +242,10 @@ venv\Scripts\python -m pytest tests -q
 ```
 
 ```bash
-venv\Scripts\python -m evaluation.rag_evaluation --ragas
+venv\Scripts\python -m evaluation.run_eval answers --name mine --workflow
 ```
 
-The first command runs 397 tests that make no model API calls, including some on a temporary PostgreSQL. GitHub Actions is set up to run them on every push, but it hasn't run yet. The second calls Gemini many times, so it uses your quota.
+The first command runs 614 tests that make no model API calls, including some on a temporary PostgreSQL. GitHub Actions is set up to run them on every push, but it hasn't run yet. The second calls Gemini many times, so it uses your quota.
 
 ## 🔧 Settings
 
@@ -272,60 +278,57 @@ Add these to `.env` to change how it works. `.env.example` lists them all.
 
 ```text
 hr-policy-assistant/
-├── app/
-│   ├── main.py               # FastAPI: /ask, /ask/stream, /health, request logging
-│   ├── admin.py              # Admin endpoints for managing policies
-│   ├── knowledge.py          # Versions, indexing jobs and reports
-│   ├── workflow.py           # Runs the graph, and saves chats and approvals
-│   ├── memory.py             # Stored conversations
-│   ├── agent/                # LangGraph workflow, tools and mock HR system
-│   ├── security.py           # Who's calling, and lasting rate limits
-│   ├── identity.py           # Organisations, users, API keys, sign-in tokens and audit log
-│   ├── accounts.py           # Endpoints for sign-in, people, keys and organisations
-│   ├── tenancy.py            # Row-Level Security: keeps each organisation's data apart
-│   ├── pii.py                # Masks personal data in text and logs
-│   ├── observability.py      # JSON logs, usage counting and optional tracing
-│   ├── metrics.py            # Per-answer metrics and reports
-│   ├── guards.py             # Prompt injection defences
-│   ├── config.py             # Settings, checked at startup
-│   └── rag/
-│       ├── service.py        # Answers, streaming and follow-up questions
-│       ├── retrieval.py      # Scoring, filtering and MMR
-│       ├── rerank.py         # Optional local reranker
-│       ├── providers.py      # Choosing the chat and embedding models
-│       ├── prompt.py         # Strict prompt and refusal message
-│       └── store.py          # Vector database connection
-├── pipeline/
-│   ├── extract.py            # Reads PDF, DOCX, TXT, HTML and Markdown
-│   ├── chunk_documents.py    # Heading-based chunking
-│   ├── embed_and_store.py    # Embeds only what changed, and can resume
-│   └── copy_to_cloud.py      # Copy chunks to a hosted database
-├── ui/
-│   ├── streamlit_app.py      # Chat screen
-│   ├── pages/admin.py        # Policy admin screen
-│   └── style.css             # Branding and animations
+├── app/                       # The API
+│   ├── main.py                # /ask, /ask/stream, /health and chats
+│   ├── admin.py               # HR admin: policies, jobs and reports
+│   ├── accounts.py            # Sign-in, people, API keys, audit and organisations
+│   ├── workflow.py            # Runs the graph, and saves chats and approvals
+│   ├── memory.py              # Stored conversations
+│   ├── knowledge.py           # Versions, indexing jobs and reports
+│   ├── identity.py            # Organisations, users, API keys, tokens and audit log
+│   ├── security.py            # Who's calling, and lasting rate limits
+│   ├── tenancy.py             # Row-Level Security: keeps each organisation's data apart
+│   ├── pii.py                 # Masks personal data in text and logs
+│   ├── guards.py              # Prompt injection defences
+│   ├── observability.py       # JSON logs, usage counting and optional tracing
+│   ├── metrics.py             # Per-answer metrics and reports
+│   ├── config.py              # Settings, checked at startup
+│   ├── db.py                  # Database connection
+│   ├── agent/                 # LangGraph workflow, tools and mock HR system
+│   └── rag/                   # Search, reranking, prompts, models and answers
+├── pipeline/                  # Reading, chunking and indexing policies
+├── ui/                        # Chat screen, and the admin screen at /admin
+├── integrations/              # Slack bot
+├── migrations/                # Database changes, run by Alembic at startup
+├── policies/                  # 33 sample HR policy documents
+├── config/                    # Company details, and the mock HR system's fake employees
 ├── evaluation/
-│   ├── test_set.py           # 25 hand-checked questions
-│   ├── rag_evaluation.py     # Simple checks and RAGAS
-│   ├── run_eval.py           # Compares search settings and measures answers
-│   ├── metrics.py            # Recall, precision, MRR, NDCG and fact checks
-│   ├── quality_gate.py       # Fails CI if results are stale or too low
-│   ├── run_agent_eval.py     # Measures intent, routing, tools and approvals
-│   ├── data/golden_set.json  # 123 draft questions with chunk labels
-│   ├── reports/              # Baseline vs new results
-│   └── results/              # Saved answers and scores
-├── integrations/slack_bot.py # Slack bot
-├── tests/unit/               # Automated tests
-├── .github/workflows/ci.yml  # Runs the tests on every push
-├── policies/policies/        # 33 HR policy documents
-├── config/tenant.toml        # Company details and policy categories
-├── migrations/               # Database changes, run by Alembic at startup
-├── docs/                     # Architecture, decisions and status
-├── docker-compose.yml        # API, chat screen and PostgreSQL for local use
-├── render.yaml               # API settings for Render
-├── DEPLOY.md                 # Step-by-step deploy guide
-├── mini_rag.py               # The first one-file version
-└── INTERN_RAG_BUILD_GUIDE.md # The guide this project follows
+│   ├── data/                  # 123 golden and 58 agent questions, with draft labels
+│   ├── reports/               # Latest results and the Phase 5 report
+│   │   └── history/           # Reports from earlier phases
+│   ├── run_eval.py            # Compares search settings and measures answers
+│   ├── run_agent_eval.py      # Measures intent, routing, tools and approvals
+│   ├── metrics.py             # Recall, precision, MRR, NDCG and fact checks
+│   ├── agent_metrics.py       # Scores for the agent test
+│   ├── golden.py              # Loads the golden set
+│   └── quality_gate.py        # Fails CI if results are stale or too low
+├── loadtest/                  # Locust load test
+├── ops/                       # Database backup and restore
+├── tests/                     # unit/ and integration/
+├── docs/                      # Final report, architecture, decisions, status, operations and DPDP notes
+├── .github/workflows/ci.yml   # Tests, code checks and image builds on every push
+├── .streamlit/                # Chat screen theme
+├── DEPLOY.md                  # Step-by-step deploy and upgrade guide
+├── render.yaml                # API settings for Render
+├── docker-compose.yml         # API, chat screen and PostgreSQL for local use
+├── Dockerfile.api, Dockerfile.ui
+├── requirements-api.txt       # What the hosted API needs
+├── requirements.txt           # Everything for your own PC
+├── requirements-dev.txt       # Tests and code checks
+├── requirements-redis.txt     # Optional: rate limits in Redis
+├── requirements-tracing.txt   # Optional: tracing with Langfuse
+├── alembic.ini, pyproject.toml, .python-version
+└── .env.example               # Every setting, with notes
 ```
 
 ## 🛠️ Tech stack
@@ -340,7 +343,7 @@ hr-policy-assistant/
 | Vector database | PostgreSQL + pgvector: embedded with `pixeltable-pgserver` on your PC, Neon when hosted |
 | Backend | FastAPI + Uvicorn |
 | Frontend | Streamlit with custom CSS, plus a Slack bot (Bolt for Python) |
-| Evaluation | RAGAS + custom checks |
+| Evaluation | Chunk-level metrics, plus a separate judge model |
 | Testing | pytest, ruff, mypy, pip-audit and GitHub Actions |
 | Configuration | Pydantic Settings and a tenant file |
 | Migrations | Alembic |

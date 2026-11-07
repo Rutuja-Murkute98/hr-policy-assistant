@@ -26,7 +26,7 @@ before trying them again, and its stopwatch includes that. The app's own metrics
 succeeded, give a p50 of 4.17 s and a **p95 of 10.78 s**. That's still worse than Phase 4 and over the target of 6 s.
 
 **This is mostly Google's service, not this code, but one run can't prove that.** Google was returning "high demand" errors
-that day. The first attempt at this run was so affected that it's kept separately in `answers_phase5_busy_provider.json`:
+that day. The first attempt at this run was so affected that it's kept separately in `history/answers_phase5_busy_provider.json`:
 its p95 was 15.4 s, and one answer took 312 s, which led to the new time limit. The code added in this phase is a small
 amount of timing around existing steps and one database write, which is included in the "everything else" row below.
 
@@ -134,6 +134,13 @@ Tests check that a question's text never reaches the logs, on success or failure
 - **A busy judge model could stall the evaluation with no error.** It now has a time limit too.
 - **Phase 4's report and my summary gave the wrong recall target**: 0.85, which is the quality gate's floor. The target is 0.90.
   It's corrected, and the result still meets it.
+
+## After this report
+
+The project's files were tidied after these runs. `policies/policies/` became `policies/`, which changed one default path in
+`app/config.py`, and an unused function was removed from `app/rag/service.py`. All 539 chunks came out byte for byte the same, so
+the evaluation wasn't run again, and these results were re-recorded for the quality gate. **That's the one time the gate's check
+was updated without a new evaluation run.**
 
 ## Tests
 

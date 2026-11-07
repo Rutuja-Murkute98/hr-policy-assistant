@@ -12,7 +12,6 @@ extend-exclude = ["venv", "pgdata"]
 select = ["E", "F", "I", "B", "UP"]
 
 [tool.ruff.lint.per-file-ignores]
-"evaluation/test_set.py" = ["E501"]
 "tests/**" = ["E501"]
 "app/knowledge.py" = ["E501"]
 "migrations/**" = ["E501"]

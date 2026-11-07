@@ -1,5 +1,5 @@
 {
- "fingerprint": "0d3b8057b541bb8b80eff35c6c55fdd0ea04d313d84727943ec9c90865cd1042",
+ "fingerprint": "8a74fb90682acfb4b26131b9ecc69e1ac90c5e0bc15b18fcd40a64af902f8212",
  "metrics": {
   "recall_at_5": 0.938,
   "facts_correct": 0.966,

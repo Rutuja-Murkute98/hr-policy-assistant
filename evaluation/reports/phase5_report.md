@@ -135,6 +135,11 @@ Tests check that a question's text never reaches the logs, on success or failure
 - **Phase 4's report and my summary gave the wrong recall target**: 0.85, which is the quality gate's floor. The target is 0.90.
   It's corrected, and the result still meets it.
 
+## Tests
+
+604 tests pass on a clean copy of the branch, up from 566 in Phase 4: 347 unit tests and 257 on a real PostgreSQL. Ruff, mypy and
+the quality gate also pass. GitHub Actions and Docker have still never run.
+
 ## Success targets
 
 | Target | Goal | Result | Met? |

@@ -8,6 +8,7 @@ from ops.backup import BackupError, _run, _tool_arguments, restore_failed
 
 TIMEOUT_ERROR = 'pg_restore: error: could not execute query: ERROR:  unrecognized configuration parameter "transaction_timeout"'
 REAL_ERROR = 'pg_restore: error: could not execute query: ERROR:  relation "users" already exists'
+IGNORED_NOTE = "pg_restore: warning: errors ignored on restore: 1"
 
 
 def test_a_password_only_goes_in_the_private_environment():
@@ -35,11 +36,9 @@ def test_a_failure_message_never_shows_the_password(monkeypatch):
     (0, "", False),
     (0, "pg_restore: warning: something minor", False),
     (1, TIMEOUT_ERROR, False),  # newer tools on an older server: seen on PostgreSQL 16 with newer client tools
-    (1, f"{TIMEOUT_ERROR}
-pg_restore: warning: errors ignored on restore: 1", False),
+    (1, "\n".join([TIMEOUT_ERROR, IGNORED_NOTE]), False),
     (1, REAL_ERROR, True),
-    (1, f"{TIMEOUT_ERROR}
-{REAL_ERROR}", True),
+    (1, "\n".join([TIMEOUT_ERROR, REAL_ERROR]), True),
     (1, "pg_restore: error: connection to server failed", True),  # no query ran at all
     (1, "", True),
 ])

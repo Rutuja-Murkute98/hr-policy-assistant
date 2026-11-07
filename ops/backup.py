@@ -25,7 +25,6 @@ from app import config
 from app.rag.store import get_database_uri, sqlalchemy_url
 from app.tenancy import grant_app_role, verify_tenant_policies
 
-
 HARMLESS_RESTORE_ERROR = "unrecognized configuration parameter"
 
 
@@ -135,7 +134,7 @@ def restore_backup(backup: Path, uri: str) -> dict[str, int]:
         ))
         connection.execute(text("GRANT helpdesk_app TO CURRENT_USER"))
     address, environment = _tool_arguments(uri)
-    # It carries on past an error so a harmless one can't stop it. Anything else fails here, and missing data fails below.
+    # It carries on past an error, so a harmless one can't stop it. Anything else fails here, or in the checks below.
     _run([find_tool("pg_restore", uri), "--no-owner", "--no-privileges", f"--dbname={address}", str(backup)],
          environment, "The restore", urlsplit(uri).password, restore_failed)
     with engine.begin() as connection:

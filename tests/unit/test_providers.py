@@ -75,7 +75,14 @@ def test_model_settings_use_each_providers_own_names(fake_packages, monkeypatch)
     assert providers.provider_options("ollama") == {"temperature": 0.1, "num_predict": 500}
 
 
-def test_no_settings_means_each_providers_defaults():
+def test_model_calls_have_a_time_limit_by_default():
+    """A busy provider held one answer open for 5 minutes with its own defaults."""
+    assert providers.provider_options("google") == {"timeout": 20.0, "max_retries": 1}
+
+
+def test_clearing_the_settings_means_each_providers_defaults(monkeypatch):
+    monkeypatch.setattr(config, "LLM_TIMEOUT_SECONDS", None)
+    monkeypatch.setattr(config, "LLM_MAX_RETRIES", None)
     assert providers.provider_options("google") == {}
 
 

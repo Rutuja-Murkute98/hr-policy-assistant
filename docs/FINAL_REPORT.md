@@ -19,8 +19,8 @@ never been deployed in this form, so everything here was measured on one Windows
 
 **The most useful next step is to deploy what's built and test it on Render and Neon,** not to add features.
 
-Nothing here has been pushed. The live app still runs the old code from `main`, and all this work is on the branch
-`phase-5-observability`, which holds every phase.
+All this work is on the branch `phase-5-observability`, which is on GitHub and holds every phase, and **CI passes there**. It
+hasn't been merged, so the live app still runs the old code from `main`.
 
 ## Original and new architecture
 
@@ -84,13 +84,13 @@ From [ROADMAP_AND_STATUS.md](ROADMAP_AND_STATUS.md), which has the evidence for 
 
 | Phase | Implemented and tested | Implemented, not tested | Partial | Planned |
 |---|---:|---:|---:|---:|
-| 1. Foundation and retrieval | 16 | 3 | 3 | 1 |
+| 1. Foundation and retrieval | 18 | 2 | 2 | 1 |
 | 2. Memory and agent workflow | 15 | 0 | 1 | 0 |
 | 3. Knowledge management and models | 16 | 3 | 3 | 1 |
 | 4. Tenancy and security | 9 | 1 | 3 | 0 |
 | 5. Observability and deployment | 4 | 3 | 3 | 0 |
 | Earlier work | 3 | 1 | 2 | 0 |
-| **Total: 91 features** | **63** | **11** | **15** | **2** |
+| **Total: 91 features** | **65** | **10** | **14** | **2** |
 
 **Everything not fully tested, by reason:**
 
@@ -98,7 +98,7 @@ From [ROADMAP_AND_STATUS.md](ROADMAP_AND_STATUS.md), which has the evidence for 
 |---|---|
 | Needs a service only the owner can set up | Real sign-in, Cohere, a second model provider, Slack, Langfuse, Redis |
 | Needs a hosted deployment | Neon and Render, including restore, memory and the upgrade path |
-| Tooling not available on this PC | Docker Compose, GitHub Actions, Linux and macOS commands, the AWS and GCP guide |
+| Tooling not available on this PC | Starting the Docker containers, following the guides on Linux and macOS, the AWS and GCP guide |
 | Only partly checked in a browser | Upload form, some admin buttons, thumbs up and down, the newer admin tabs |
 | Waiting for owner review | Golden set and agent set labels |
 | Not built | OCR for scanned PDFs, which was left out on purpose to save memory, and rewording vague questions, which moved to the retry step |
@@ -127,14 +127,16 @@ The full reasoning, with options and trade-offs, is in [DECISIONS.md](DECISIONS.
 
 | Check | Result |
 |---|---|
-| Automated tests | **604 pass** on a clean copy: 347 unit and 257 on a real PostgreSQL. The audit started at 116 |
-| Ruff, mypy, quality gate | Pass |
-| pip-audit, including optional requirements | No known vulnerabilities |
-| GitHub Actions | **Never run.** Nothing has been pushed |
-| Docker build | **Never run.** This PC has no Docker |
+| Automated tests | **614 pass** on GitHub, on Linux with PostgreSQL 16, and on Windows. The audit started at 116 |
+| Ruff, mypy, quality gate | Pass on GitHub |
+| pip-audit | No known vulnerabilities, including the optional requirements when run locally |
+| Docker | **The images build on GitHub.** The containers have never been started |
 
 **Passing tests didn't catch everything.** Real runs found bugs that tests with a fake model passed: usage counting broke every
 question in Phase 5, and earlier phases had similar cases. That's why each phase also ran on the real model.
+
+**The first CI run also found a real bug.** A restore failed when the PostgreSQL client tools were newer than the database,
+which didn't show on this PC, where they match. It could have happened on Neon at the worst time, during a recovery. It's fixed.
 
 ## Evaluation results
 
@@ -244,7 +246,7 @@ contact, breach handling and a full data export aren't. **No lawyer has reviewed
 ## Known limitations
 
 **Not proven:**
-- It has never run on Render or Neon, with GitHub Actions or Docker, or with a real sign-in provider.
+- It has never run on Render or Neon, in running Docker containers, or with a real sign-in provider.
 - Results come from one PC, and a load test here doesn't predict a 512 MB server.
 - Labels are unreviewed, so every quality number is provisional.
 - The judge comes from the same vendor as the answering model, so their errors may not be independent.
@@ -271,8 +273,8 @@ contact, breach handling and a full data export aren't. **No lawyer has reviewed
 2. Decide the five policy contradictions.
 
 **2. Deploy and test it**
-3. Merge and push, so CI runs for the first time. Take a backup of the live database first.
-4. Deploy to Render and Neon in demo mode. Check the database role, the upgrade, memory and speed.
+3. Take a backup of the live database, then merge into `main`. **That deploys to Render, and turns on the new security on Neon.**
+4. Check the database role, the upgrade, memory and speed on the deployment. It stays in demo mode until step 6.
 5. Run a backup and restore on Neon, and a small load test against the deployment.
 6. Create a sign-in client, and try real sign-in with `AUTH_MODE=oidc`.
 

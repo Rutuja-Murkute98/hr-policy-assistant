@@ -24,10 +24,10 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Settings checked at startup | Implemented and tested | `tests/unit/test_settings.py` |
 | Company details in a tenant file | Implemented and tested | Includes a test that no company details remain in the code |
 | Alembic migrations with `tenant_id` | Implemented and tested | Run on a real PostgreSQL in integration tests |
-| Docker Compose | Implemented, not tested | This PC has no Docker. CI will build it on the first push |
-| GitHub Actions: tests, ruff, mypy, pip-audit | Partial | All pass locally, but the workflow has never run on GitHub |
+| Docker Compose | Partial | CI checks the file and builds the images, but the containers have never been started |
+| GitHub Actions: tests, ruff, mypy, pip-audit | Implemented and tested | Passing on GitHub, on Linux with PostgreSQL 16 |
 | All dependencies pinned | Implemented and tested | Direct dependencies are pinned, and CI's install was last tried before the newest pins |
-| Linux and macOS commands | Implemented, not tested | No Linux machine was available |
+| Linux and macOS commands | Implemented, not tested | The tests pass on Linux in CI, but the setup commands in the guides haven't been followed there |
 | Hybrid search | Implemented and tested | Integration tests, and measured on the golden set |
 | Reciprocal Rank Fusion | Implemented and tested | Measured worse here, so it's off by default |
 | FlashRank reranking | Implemented and tested | Measured for retrieval, not in a full answer run |
@@ -43,7 +43,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Retrieval metrics | Implemented and tested | Recall, precision, MRR, NDCG and latency |
 | Answer metrics with a different judge | Implemented and tested | The judge is from the same vendor |
 | Baseline vs new report | Implemented and tested | `evaluation/reports/phase1_report.md` |
-| CI quality gate | Partial | Works locally on a clean copy, but hasn't run on GitHub |
+| CI quality gate | Implemented and tested | Passing on GitHub. It reads a committed result, and doesn't run the model |
 
 ## Phase 2 status
 
@@ -142,7 +142,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 
 See [the Phase 5 report](../evaluation/reports/phase5_report.md). The Phase 3 summary was: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
 
-**The CI quality gate passes locally**, but partly because one likely wrong label now counts in its favour, so the owner's review may change that.
+**The CI quality gate passes on GitHub**, but partly because one likely wrong label now counts in its favour, so the owner's review may change that.
 
 ## What the owner must set up or decide
 
@@ -155,5 +155,4 @@ See [the Phase 5 report](../evaluation/reports/phase5_report.md). The Phase 3 su
 - On the free tier, consider lowering `RATE_LIMIT_TOTAL_PER_MINUTE`, as 3 active people hit the model's limit in testing.
 - For real sign-in: create an OIDC client and follow "Signing in" in `DEPLOY.md`.
 - Before real employee data: work through the list at the end of `docs/DPDP_NOTES.md`, including legal advice.
-- Push the branch, so CI runs for the first time.
 - Add a Cohere key, Slack tokens or other provider keys only if those options are wanted.

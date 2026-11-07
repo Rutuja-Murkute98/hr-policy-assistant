@@ -138,7 +138,7 @@ Tests check that a question's text never reaches the logs, on success or failure
 ## Tests
 
 604 tests pass on a clean copy of the branch, up from 566 in Phase 4: 347 unit tests and 257 on a real PostgreSQL. Ruff, mypy and
-the quality gate also pass. GitHub Actions and Docker have still never run.
+the quality gate also pass. After this report, the branch was pushed, and CI passes on GitHub: see the final report.
 
 ## Success targets
 

@@ -138,7 +138,7 @@ On the admin screen's **API keys** tab, create a key for an integration, such as
 
 ## About the self-service tools
 
-The chat screen lets anyone choose a demo employee, and the tools run on the mock HR system's **fake** employees. Don't connect real employee data until real sign-in arrives in Phase 4. To turn the tools off, set `SELF_SERVICE_ENABLED=false` on Render.
+The chat screen lets anyone choose a demo employee, and the tools run on the mock HR system's **fake** employees. Don't connect real employee data in demo mode, and read [the DPDP notes](docs/DPDP_NOTES.md) first. To turn the tools off, set `SELF_SERVICE_ENABLED=false` on Render.
 
 Each policy question now uses two model calls, or three if the search is weak, so the free daily limit covers fewer questions.
 

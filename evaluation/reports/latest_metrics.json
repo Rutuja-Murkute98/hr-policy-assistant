@@ -1,19 +1,19 @@
 {
- "fingerprint": "78775fe3ed43196c5a6de31de7a9def5c533be6e54b48a1b493a2969861669a5",
+ "fingerprint": "d03184fa78716fdd11bdd64338def2eb17c2215ac786c7dcc6bdce8ee460ad44",
  "metrics": {
   "recall_at_5": 0.943,
-  "facts_correct": 0.943,
+  "facts_correct": 0.954,
   "facts_checked": 87,
-  "refused_when_it_should": 0.962,
+  "refused_when_it_should": 0.923,
   "refusal_checked": 26,
   "false_refusals": 0.031,
   "citations_valid": 1.0,
   "citations_on_target": 0.968,
   "citations_checked": 94,
-  "seconds_p50": 3.82,
-  "seconds_p95": 8.08,
+  "seconds_p50": 3.58,
+  "seconds_p95": 7.29,
   "judge_faithful": 1.0,
   "judge_correct": 0.979,
-  "judged": 95
+  "judged": 96
  }
 }

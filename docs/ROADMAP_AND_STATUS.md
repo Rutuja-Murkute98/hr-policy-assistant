@@ -11,7 +11,7 @@ A feature is only marked as implemented after checking the code and running it.
 | 1 | Foundation, advanced retrieval, evaluation upgrade | Built, waiting for owner review of the golden set |
 | 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Built, waiting for owner review |
 | 3 | Document management, admin page, model settings, UI improvements | Built, waiting for owner review |
-| 4 | Multi-tenancy, login, Row-Level Security, security hardening | Waiting for approval |
+| 4 | Multi-tenancy, login, Row-Level Security, security hardening | Built, agent test not finished, waiting for owner review |
 | 5 | Observability, load test, deployment guides, backups | Waiting for approval |
 | 6 | Optional advanced features | Only after Phases 1 to 5 |
 
@@ -92,6 +92,24 @@ A feature is only marked as implemented after checking the code and running it.
 | Thumbs up/down per answer | Partial | Shown in a browser and saved through the API, but not clicked |
 | Workflow status messages | Implemented and tested | Fixed wording, so no reasoning or prompts are shown |
 
+## Phase 4 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Organisations, users and roles | Implemented and tested | Real PostgreSQL through the API. The new admin tabs weren't opened in a browser |
+| OIDC login for the UI | Partial | Token checks tested against a fake provider, and the screens with a pretend sign-in. Never run with a real provider, which needs a client from the owner |
+| API keys per tenant | Implemented and tested | Hashed, revocable and limited to their organisation. The Slack bot hasn't been run with one |
+| Row-Level Security on all tenant tables | Implemented and tested | 20 tables, on embedded PostgreSQL. Not run on Neon, which needs its role permission checked |
+| Application checks as well | Implemented and tested | Stores refuse another tenant's data, and the tenant comes only from the caller's identity |
+| Isolation tests, including crafted prompts | Implemented and tested | Scripted model, showing what it's given. Not two real organisations on a live model |
+| Rate limits that survive restarts and multiple workers | Implemented and tested | PostgreSQL, with 15 requests at once against a limit of 5. Not load tested |
+| Rate limits in Redis | Implemented, not tested | Only against a fake client, because there's no Redis here |
+| Prompt injection defences | Partial | Tools never see retrieved text, excerpts are fenced, and uploads are flagged. Poisoned documents were only tested with a scripted model. Pattern checks can be reworded around |
+| PII detection and masking | Implemented and tested | Before the model and storage, and in logs. Names and free-text addresses aren't caught |
+| Audit log | Implemented and tested | Logins, document changes, approvals, people, keys and chat deletions. The app's role can't change entries |
+| DPDP Act | Partial | Documented in `docs/DPDP_NOTES.md`. Several requirements aren't built, and there's been no legal review |
+| Agent evaluation on Phase 4 code | Partial | 1 of 58 ran before Gemini's daily limit |
+
 ## Earlier work
 
 | Feature | Status | Evidence or gap |
@@ -105,7 +123,7 @@ A feature is only marked as implemented after checking the code and running it.
 
 ## Success targets
 
-See [the Phase 3 report](../evaluation/reports/phase3_report.md). In short: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
+See [the Phase 4 report](../evaluation/reports/phase4_report.md). The Phase 3 summary was: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
 
 **The CI quality gate passes locally**, but partly because one likely wrong label now counts in its favour, so the owner's review may change that.
 
@@ -114,6 +132,8 @@ See [the Phase 3 report](../evaluation/reports/phase3_report.md). In short: reca
 - Review the golden set in `evaluation/data/golden_set.json`, and the agent set in `evaluation/data/agent_set.json`, and set each item to `approved` or `rejected`.
 - Decide whether `adversarial-004` should count as correct, since it rejected the false claim and gave the true figure.
 - Decide the five policy contradictions listed in the report.
-- Decide whether `unanswerable-009` should be corrected, since the policy appears to answer it.
+- Decide whether `unanswerable-009` should be corrected, since the policy appears to answer it. It now lowers the refusal score.
+- For real sign-in: create an OIDC client and follow "Signing in" in `DEPLOY.md`.
+- Before real employee data: work through the list at the end of `docs/DPDP_NOTES.md`, including legal advice.
 - Push the branch, so CI runs for the first time.
 - Add a Cohere key, Slack tokens or other provider keys only if those options are wanted.

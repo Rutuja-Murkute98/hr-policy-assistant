@@ -320,6 +320,17 @@ applied again on restore. Without that, Row-Level Security would be in place but
 **Trade-offs:** A dump is a full copy of the data, unencrypted, so where it's kept is up to the owner. Restoring loses
 anything since the last backup. Nothing schedules backups, as the free stack has no background workers.
 
+## D35. Model calls have a time limit by default
+
+**Decision:** Each chat model call stops after 20 seconds, and is retried once. Both are settings.
+
+**Why:** With the provider's own defaults, one answer took 312 seconds during a spike in demand, and the chat screen gives
+up at 150. A clear failure the person can retry is better than a long wait, and the workflow already handles a
+failed step.
+
+**Trade-offs:** While a provider is very busy, more questions fail rather than eventually getting through. A long answer
+from a slow model could hit the limit, so a slower provider may need a higher value.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

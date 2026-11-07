@@ -50,6 +50,7 @@ FINGERPRINT_FILES = ["app/rag/retrieval.py", "app/rag/service.py", "app/rag/prom
                      "app/config.py", "app/agent/graph.py", "app/agent/prompts.py", "app/workflow.py",
                      "evaluation/data/golden_set.json"]
 EVAL_USER = "E1001"  # a fake employee, as the chat screen would send
+JUDGE_TIMEOUT_SECONDS = 90
 DEFAULT_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL", "gemini-3.1-flash-lite")
 
 
@@ -299,7 +300,9 @@ def get_chat_model_for(model_name: str):
     from app.rag.providers import CHAT_MODELS
 
     package, class_name = CHAT_MODELS[config.LLM_PROVIDER]
-    return getattr(import_module(package), class_name)(model=model_name)
+    # A busy model can hold a call open for many minutes, which looks like a stopped run
+    timeout = {} if config.LLM_PROVIDER == "ollama" else {"timeout": JUDGE_TIMEOUT_SECONDS}
+    return getattr(import_module(package), class_name)(model=model_name, **timeout)
 
 
 def answer_metrics(items: list[dict], rows: dict[str, dict]) -> dict:

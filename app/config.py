@@ -40,8 +40,9 @@ class Settings(BaseSettings):
     embedding_provider: Literal["google", "openai", "ollama"] = "google"
     embedding_model: str = ""
     llm_max_tokens: int | None = Field(default=None, ge=1)
-    llm_timeout_seconds: float | None = Field(default=None, gt=0)
-    llm_max_retries: int | None = Field(default=None, ge=0)
+    # A busy provider held one answer open for 5 minutes with its own defaults: see docs/DECISIONS.md, D35
+    llm_timeout_seconds: float | None = Field(default=20.0, gt=0)
+    llm_max_retries: int | None = Field(default=1, ge=0)
     # A fallback is only used if it's set here: sending text to a second provider is a real decision
     llm_fallback_provider: Literal["", "google", "anthropic", "openai", "ollama"] = ""
     llm_fallback_model: str = ""

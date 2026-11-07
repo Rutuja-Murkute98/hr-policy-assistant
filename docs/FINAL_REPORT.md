@@ -127,7 +127,7 @@ The full reasoning, with options and trade-offs, is in [DECISIONS.md](DECISIONS.
 
 | Check | Result |
 |---|---|
-| Automated tests | **614 pass** on GitHub, on Linux with PostgreSQL 16, and on Windows. The audit started at 116 |
+| Automated tests | **All 614 pass on Windows, and the run passes on GitHub**, on Linux with PostgreSQL 16. GitHub hides its log without a login, so I can't see if any were skipped there. The audit started at 116 |
 | Ruff, mypy, quality gate | Pass on GitHub |
 | pip-audit | No known vulnerabilities, including the optional requirements when run locally |
 | Docker | **The images build on GitHub.** The containers have never been started |

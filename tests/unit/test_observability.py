@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from langchain_core.callbacks import CallbackManager
 from langchain_core.messages import AIMessage
 from langchain_core.outputs import ChatGeneration, LLMResult
 
@@ -162,6 +163,13 @@ def test_usage_adds_up_calls_tokens_and_time():
     usage.on_llm_end(generation(50, 10), run_id=second)
     assert (usage.llm_calls, usage.input_tokens, usage.output_tokens) == (2, 150, 30)
     assert usage.llm_ms >= 0
+
+
+def test_langchain_can_merge_usage_with_other_callbacks():
+    """A real model's structured output merges callbacks into a set, which failed on every question without this."""
+    first, second = UsageCallback(), UsageCallback()
+    merged = CallbackManager([first]).merge(CallbackManager([second]))
+    assert set(merged.handlers) == {first, second}
 
 
 def test_a_failed_call_counts_with_no_tokens():

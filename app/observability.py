@@ -68,7 +68,7 @@ def new_request_id() -> str:
     return f"r{uuid.uuid4().hex[:11]}"
 
 
-@dataclass
+@dataclass(eq=False)  # LangChain keeps callbacks in a set, so each must be hashable
 class UsageCallback(BaseCallbackHandler):
     """Add up the model calls of one answer. It records counts and times, never prompts or answers."""
 

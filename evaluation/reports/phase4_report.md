@@ -39,11 +39,26 @@ with a scripted model (see below).
 
 ## Agent test
 
-**Not finished: 1 of 58 questions ran on Phase 4 code before Gemini's daily limit stopped it.** No result is claimed
-until it finishes. The Phase 3 result was 100% on every measure, on the older code.
+All 58 questions ran on Phase 4 code, with the real model, on draft labels.
 
-An earlier "100%" from this run in Phase 4 was wrong: the script reloaded Phase 3's saved results instead of running. It
-was noticed because the timings matched exactly. Those saved results are now archived, so the real run starts clean.
+| Measure | Phase 3 | Phase 4 |
+|---|---:|---:|
+| Intent | 100% | **100%** |
+| Route | 100% | **100%** |
+| Tool chosen | 100% | **100%** |
+| Tool ran successfully (27 calls) | 100% | **100%** |
+| Approval needed and respected (9 actions) | 100% | **100%** |
+| Leave details correct | 100% | **100%** |
+| Median seconds | 3.34 | **4.11** |
+| Mean seconds | 3.68 | **5.08** |
+
+**These questions took longer than in Phase 3, and that wasn't traced.** The golden set got faster over the same code, so
+this may be the model service at that moment, but one run can't say. Phase 5's load test should measure it properly.
+
+The run was split across three API keys because of Gemini's daily limit: 2 questions on the first two, and 56 on the last.
+
+An earlier "100%" from this run was wrong: the script reloaded Phase 3's saved results instead of running. It was noticed
+because the timings matched exactly. Those results were archived, and the numbers above are from the real run.
 
 ## Retrieval, and a slowdown found and fixed
 

@@ -11,7 +11,7 @@ A feature is only marked as implemented after checking the code and running it.
 | 1 | Foundation, advanced retrieval, evaluation upgrade | Built, waiting for owner review of the golden set |
 | 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Built, waiting for owner review |
 | 3 | Document management, admin page, model settings, UI improvements | Built, waiting for owner review |
-| 4 | Multi-tenancy, login, Row-Level Security, security hardening | Built, agent test not finished, waiting for owner review |
+| 4 | Multi-tenancy, login, Row-Level Security, security hardening | Built, waiting for owner review |
 | 5 | Observability, load test, deployment guides, backups | Waiting for approval |
 | 6 | Optional advanced features | Only after Phases 1 to 5 |
 
@@ -108,7 +108,7 @@ A feature is only marked as implemented after checking the code and running it.
 | PII detection and masking | Implemented and tested | Before the model and storage, and in logs. Names and free-text addresses aren't caught |
 | Audit log | Implemented and tested | Logins, document changes, approvals, people, keys and chat deletions. The app's role can't change entries |
 | DPDP Act | Partial | Documented in `docs/DPDP_NOTES.md`. Several requirements aren't built, and there's been no legal review |
-| Agent evaluation on Phase 4 code | Partial | 1 of 58 ran before Gemini's daily limit |
+| Agent evaluation on Phase 4 code | Implemented and tested | Draft labels, 100% on a small test. Slower than Phase 3, not traced |
 
 ## Earlier work
 

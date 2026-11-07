@@ -204,6 +204,27 @@ def show_api_keys() -> None:
             st.rerun()
 
 
+def show_usage() -> None:
+    days = st.selectbox("Period", [1, 7, 30, 90], index=1, format_func=lambda value: f"Last {value} days")
+    usage, problem = call_api("GET", f"/admin/metrics?days={days}")
+    if problem:
+        st.error(problem)
+        return
+    speed = usage["latency_ms"]
+    first, second, third, fourth = st.columns(4)
+    first.metric("Questions", usage["requests"])
+    second.metric("Failed", usage["failures"])
+    third.metric("Refused", usage["refusals"])
+    fourth.metric("Typical answer", f"{(speed['total_p50'] or 0) / 1000:.1f} s")
+    first, second, third, fourth = st.columns(4)
+    first.metric("Slowest 5% from", f"{(speed['total_p95'] or 0) / 1000:.1f} s")
+    second.metric("Tokens", f"{usage['input_tokens'] + usage['output_tokens']:,}")
+    third.metric("Estimated cost", f"${usage['estimated_cost_usd']:.2f}")
+    fourth.metric("Tool failures", f"{usage['tool_failures']} of {usage['tool_calls']}")
+    st.caption("Counts and times only: no questions or answers are stored here. The cost uses the prices in "
+               "the server's settings, and is 0 on a free tier.")
+
+
 def show_audit() -> None:
     events, problem = call_api("GET", "/admin/audit")
     if problem:
@@ -237,8 +258,8 @@ if problem:
 if "admin_message" in st.session_state:
     st.success(st.session_state.pop("admin_message"))
 
-documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab, users_tab, keys_tab, audit_tab = st.tabs(
-    [f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback", "People",
+documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab, usage_tab, users_tab, keys_tab, audit_tab = st.tabs(
+    [f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback", "Usage", "People",
      "API keys", "Audit log"])
 with documents_tab:
     show_documents(current)
@@ -250,6 +271,8 @@ with unanswered_tab:
     show_unanswered()
 with feedback_tab:
     show_feedback()
+with usage_tab:
+    show_usage()
 with users_tab:
     show_users()
 with keys_tab:

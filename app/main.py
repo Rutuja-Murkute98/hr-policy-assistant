@@ -6,7 +6,6 @@ Then open http://127.0.0.1:8000/docs for a testing page.
 import json
 import logging
 import time
-import uuid
 from contextlib import asynccontextmanager
 from datetime import date
 from typing import Literal
@@ -24,14 +23,13 @@ from app.agent.tools import ActionNotFound, ActionNotPending
 from app.identity import Principal, create_identity
 from app.knowledge import NotFound
 from app.memory import ConversationNotFound
-from app.pii import install_log_masking
+from app.observability import new_request_id, request_id_var, setup_logging
 from app.rag.retrieval import SearchFilters
 from app.rag.store import count_chunks, run_migrations
 from app.security import audit, current_principal, get_rate_store, rate_limit, required_user, service_for
 from app.workflow import create_registry
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-install_log_masking()
+setup_logging()
 logger = logging.getLogger("hr_helpdesk")
 
 UNAVAILABLE = "The AI service is unavailable right now. Please try again later."
@@ -65,6 +63,7 @@ async def lifespan(app: FastAPI):
         app.state.identity = create_identity(registry.engine)
         app.state.count_chunks = count_chunks
         app.state.identity.audit.purge_older_than(config.AUDIT_RETENTION_DAYS)
+        app.state.identity.audit.purge_metrics_older_than(config.METRICS_RETENTION_DAYS)
         rate_limit.store = get_rate_store(registry.engine)
     yield
     close = getattr(app.state.service, "close", None)
@@ -124,14 +123,16 @@ class AskResponse(BaseModel):
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     """Give each request an id and log it. Questions aren't logged, as they may be personal."""
-    # The letter stops an id of all digits looking like a phone or Aadhaar number to the log masking
-    request.state.request_id = f"r{uuid.uuid4().hex[:11]}"
+    request.state.request_id = new_request_id()
+    request_id_var.set(request.state.request_id)  # every log line from this request carries it
     started = time.perf_counter()
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
-    logger.info("request_id=%s %s %s status=%s duration_ms=%.0f", request.state.request_id,
-                request.method, request.url.path, response.status_code,
-                (time.perf_counter() - started) * 1000)
+    duration = round((time.perf_counter() - started) * 1000)
+    logger.info("%s %s status=%s duration_ms=%s", request.method, request.url.path, response.status_code, duration,
+                extra={"event": "request", "method": request.method, "path": request.url.path,
+                       "status": response.status_code, "duration_ms": duration,
+                       "tenant_id": getattr(request.state, "tenant_id", None)})
     return response
 
 
@@ -147,7 +148,7 @@ def health(request: Request):
     try:
         chunks = request.app.state.count_chunks()
     except Exception:
-        logger.exception("request_id=%s health check failed", request.state.request_id)
+        logger.exception("The health check failed")
         raise HTTPException(503, "Database unavailable") from None
     if chunks == 0:
         raise HTTPException(503, "No policies indexed. Run: python -m pipeline.embed_and_store")
@@ -175,7 +176,7 @@ def ask(body: AskRequest, request: Request, principal: Principal = Depends(curre
         raise HTTPException(404, "Conversation not found") from None
     except Exception:
         # Usually a Gemini quota or network problem. The details stay in the log.
-        logger.exception("request_id=%s failed to answer", request.state.request_id)
+        logger.exception("Failed to answer")
         record_ai_failure(request.app)
         raise HTTPException(503, UNAVAILABLE) from None
     record_ai_result(request.app, result)
@@ -216,7 +217,7 @@ def ask_stream(body: AskRequest, request: Request, principal: Principal = Depend
             yield server_sent_event("error", {"detail": "Conversation not found"})
         except Exception:
             # The response has already started, so the error has to be sent as an event
-            logger.exception("request_id=%s failed to answer", request_id)
+            logger.exception("Failed to answer")
             record_ai_failure(api)
             yield server_sent_event("error", {"detail": UNAVAILABLE})
 
@@ -291,7 +292,7 @@ def decide_action(action_id: str, body: Decision, request: Request, principal: P
     except ActionNotPending:
         raise HTTPException(409, "This was already decided, or it expired") from None
     except Exception:
-        logger.exception("request_id=%s failed to finish an action", request.state.request_id)
+        logger.exception("Failed to finish an action")
         raise HTTPException(503, UNAVAILABLE) from None
     audit(request, principal, "action_approved" if body.approve else "action_declined", action_id,
           status=result.tool_status)

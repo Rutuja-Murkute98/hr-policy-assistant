@@ -1,0 +1,3 @@
+# For running the load test, in its own environment. The app doesn't need it.
+locust==2.47.0
+psutil==7.1.0

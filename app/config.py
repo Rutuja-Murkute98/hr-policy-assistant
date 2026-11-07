@@ -99,6 +99,16 @@ class Settings(BaseSettings):
     max_upload_bytes: int = Field(default=5_000_000, ge=1)
     embedding_wait_seconds: int = Field(default=65, ge=0)
 
+    # Logs, metrics and tracing: see docs/DECISIONS.md, D31 to D32
+    log_format: Literal["json", "text"] = "json"
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    metrics_retention_days: int = Field(default=90, ge=1)
+    llm_price_input_per_million: float = Field(default=0.0, ge=0)  # 0 = a free tier
+    llm_price_output_per_million: float = Field(default=0.0, ge=0)
+    langfuse_public_key: str = ""  # tracing sends prompts to Langfuse, so it's off unless both keys are set
+    langfuse_secret_key: str = ""
+    langfuse_base_url: str = ""
+
     # Sign-in: see docs/DECISIONS.md, D27. "demo" keeps shared keys and a chosen demo employee.
     auth_mode: Literal["demo", "oidc"] = "demo"
     oidc_issuer: str = ""  # such as https://accounts.google.com
@@ -209,6 +219,15 @@ MAX_MESSAGE_CHARS = settings.max_message_chars
 MAX_UPLOAD_CHARS = settings.max_upload_chars
 MAX_UPLOAD_BYTES = settings.max_upload_bytes
 EMBEDDING_WAIT_SECONDS = settings.embedding_wait_seconds
+
+LOG_FORMAT: str = settings.log_format
+LOG_LEVEL: str = settings.log_level
+METRICS_RETENTION_DAYS = settings.metrics_retention_days
+LLM_PRICE_INPUT_PER_MILLION = settings.llm_price_input_per_million
+LLM_PRICE_OUTPUT_PER_MILLION = settings.llm_price_output_per_million
+LANGFUSE_PUBLIC_KEY = settings.langfuse_public_key
+LANGFUSE_SECRET_KEY = settings.langfuse_secret_key
+LANGFUSE_BASE_URL = settings.langfuse_base_url
 
 AUTH_MODE: str = settings.auth_mode
 OIDC_ISSUER = settings.oidc_issuer

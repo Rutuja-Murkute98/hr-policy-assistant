@@ -53,6 +53,7 @@ def current_principal(
             raise HTTPException(401, "Invalid or missing API key")
         # Demo mode only: anyone with the shared key can name any user of the default organisation
         principal = Principal(config.TENANT_ID, x_user_id or None, "employee", "demo_key")
+    request.state.tenant_id = principal.tenant_id  # for this request's log line
     return principal
 
 
@@ -66,6 +67,7 @@ def admin_principal(
     if principal is not None:
         if principal.role not in ("hr_admin", "platform_admin"):
             raise HTTPException(403, "This needs an HR admin account")
+        request.state.tenant_id = principal.tenant_id
         return principal
     if config.AUTH_MODE == "oidc":
         raise HTTPException(401, "Please sign in")
@@ -73,6 +75,7 @@ def admin_principal(
         raise HTTPException(503, "Admin is switched off. Set HELPDESK_ADMIN_KEY to use it.")
     if not secrets.compare_digest(x_admin_key.encode(), config.ADMIN_KEY.encode()):
         raise HTTPException(401, "Invalid or missing admin key")
+    request.state.tenant_id = config.TENANT_ID
     return Principal(config.TENANT_ID, "admin", "hr_admin", "demo_key")
 
 

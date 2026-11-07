@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app import config
 from app.config import Tenant
 from app.identity import Identity, IdentityError, Principal
-from app.security import admin_principal, audit, current_principal, platform_principal, rate_limit
+from app.security import admin_principal, audit, current_principal, platform_principal, rate_limit, service_for
 
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 router = APIRouter()
@@ -121,6 +121,13 @@ def revoke_api_key(key_id: str, request: Request, principal: Principal = Depends
         raise HTTPException(404, "API key not found")
     audit(request, principal, "api_key_revoked", key_id)
     return {"revoked": key_id}
+
+
+@admin_router.get("/metrics")
+def usage_metrics(request: Request, days: int = Query(default=7, ge=1, le=365),
+                  principal: Principal = Depends(admin_principal)):
+    """Report requests, speed, tokens, cost, refusals, tool failures and feedback for this organisation."""
+    return service_for(request, principal).metrics.summary(days)
 
 
 @admin_router.get("/audit")

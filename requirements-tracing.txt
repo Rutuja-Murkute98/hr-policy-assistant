@@ -1,0 +1,2 @@
+# Only for a deployment that sets the LANGFUSE keys. It sends prompts to Langfuse: see docs/DECISIONS.md, D32.
+langfuse==5.2.0

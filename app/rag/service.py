@@ -1,6 +1,7 @@
 """Stage C: find the right chunks, then generate an answer that cites them."""
 import logging
 import re
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 
@@ -87,14 +88,24 @@ class RagService:
             logger.exception("The reranker failed, so it was skipped")
             return None
 
-    def search(self, question: str, filters: SearchFilters | None = None) -> tuple[list[Document], float]:
-        """Return the chunks worth sending to the LLM, and how strongly the best chunk stood out."""
+    def search(self, question: str, filters: SearchFilters | None = None,
+               timing: dict | None = None) -> tuple[list[Document], float]:
+        """Return the chunks worth sending to the LLM, and how strongly the best chunk stood out.
+
+        If timing is given, it's filled with the milliseconds spent on embedding and on the search itself.
+        """
+        started = time.perf_counter()
         vector = self.store.embeddings.embed_query(question)
+        embedded = time.perf_counter()
         found = self.store.candidates(vector, question, config.FETCH_K, use_keywords=self.hybrid,
                                       filters=filters or SearchFilters(tenant_id=self.tenant_id))
         candidates = keep_usable(found)
         confidence = max((candidate.confidence for candidate in found), default=0.0)
-        return select_chunks(candidates, self._rerank(question, candidates)), confidence
+        selected = select_chunks(candidates, self._rerank(question, candidates))
+        if timing is not None:
+            timing["embedding_ms"] = (embedded - started) * 1000
+            timing["retrieval_ms"] = (time.perf_counter() - embedded) * 1000
+        return selected, confidence
 
     def retrieve(self, question: str, filters: SearchFilters | None = None) -> list[Document]:
         return self.search(question, filters)[0]

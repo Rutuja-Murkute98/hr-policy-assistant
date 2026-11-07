@@ -67,6 +67,12 @@ class AuditLog:
             ), {"tenant_id": tenant_id, "actor": actor, "action": action, "target": mask(target),
                 "details": json.dumps(mask_value(details or {}), default=str)})
 
+    def purge_metrics_older_than(self, days: int) -> int:
+        with self.engine.begin() as connection:
+            return connection.execute(text(
+                "DELETE FROM answer_metrics WHERE created_at < now() - make_interval(days => :days)"
+            ), {"days": days}).rowcount
+
     def purge_older_than(self, days: int) -> int:
         """Remove entries past the retention period, at startup, so personal data isn't kept for ever."""
         removed = 0

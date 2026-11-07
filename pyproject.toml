@@ -22,7 +22,7 @@ extend-immutable-calls = ["fastapi.Depends", "fastapi.File", "fastapi.Form", "fa
 
 [tool.mypy]
 python_version = "3.13"
-packages = ["app", "pipeline", "evaluation", "integrations"]
+packages = ["app", "pipeline", "evaluation", "integrations", "ops"]
 explicit_package_bases = true
 namespace_packages = true
 ignore_missing_imports = true

@@ -286,7 +286,7 @@ def test_normal_questions_dont_search_old_versions(shared, monkeypatch):
     seen = []
     workflow = make(shared)
     original = workflow.rag.search
-    monkeypatch.setattr(workflow.rag, "search", lambda question, filters: seen.append(filters) or original(question, filters))
+    monkeypatch.setattr(workflow.rag, "search", lambda question, filters, timing=None: seen.append(filters) or original(question, filters, timing))
     workflow.ask("How many earned leave days?")
     assert seen[0].include_history is False
 
@@ -295,7 +295,7 @@ def test_past_questions_ask_for_history_in_the_search(shared, monkeypatch):
     seen = []
     workflow = make(shared, ScriptedLLM(asks_about_past=True))
     original = workflow.rag.search
-    monkeypatch.setattr(workflow.rag, "search", lambda question, filters: seen.append(filters) or original(question, filters))
+    monkeypatch.setattr(workflow.rag, "search", lambda question, filters, timing=None: seen.append(filters) or original(question, filters, timing))
     workflow.ask("What did the leave policy say before?")
     assert seen[0].include_history is True
 

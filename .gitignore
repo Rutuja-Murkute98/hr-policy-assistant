@@ -18,3 +18,7 @@ __pycache__/
 
 # Test cache
 .pytest_cache/
+
+# Database backups are full copies of the data
+backups/
+*.dump

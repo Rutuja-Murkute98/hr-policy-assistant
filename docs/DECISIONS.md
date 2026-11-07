@@ -272,6 +272,54 @@ do: at worst, a poisoned policy can give a wrong answer with a citation that poi
 with warnings are still indexed, because HR text can legitimately say things like "ignore the above rule", and only
 HR admins can upload.
 
+## D31. Metrics are rows in PostgreSQL, not a metrics service
+
+**Decision:** Each answer adds a row to `answer_metrics` with counts and times, and HR admins read a summary at
+`/admin/metrics` and on the admin screen. No Prometheus or similar.
+
+**Why:** The free stack has nowhere to run a scraper. A free server sleeps and loses anything in memory, and several
+server processes would each hold their own counts. PostgreSQL is already there, survives all of that, and Row-Level
+Security keeps each organisation's numbers apart. The rows hold no question or answer text.
+
+**Trade-offs:** One more small write per answer. Percentiles are worked out on request, which is fine at this size but
+isn't how you'd run a large service. Only chat answers are counted, so other routes are only in the logs. Embedding tokens
+aren't counted, because the embedding call doesn't report them.
+
+## D32. Tracing with Langfuse is optional and off by default
+
+**Decision:** Setting both Langfuse keys sends model calls to Langfuse, using a LangChain callback. It's installed
+separately (`requirements-tracing.txt`), and masks personal data before anything is sent.
+
+**Why:** Tracing is useful for debugging prompts, but it copies prompts, including policy text, to another service, so that
+has to be a deliberate choice. Keeping it out of the API's requirements saves memory on a 512 MB server. Answers must
+still work if Langfuse is unreachable, so a failure to start only switches it off.
+
+**Trade-offs:** It's only been tested against a fake, because using it needs an account. Masking won't catch names.
+
+## D33. Load tests use Locust against the real stack with a simulated model
+
+**Decision:** `loadtest/server.py` runs the real API, workflow, database and security checks, and replaces only the
+model and embedding calls, with a delay based on measured model times. A small separate run uses the real model.
+
+**Why:** The free tier allows 500 model calls a day, so a real load test can't be run on it, and it would mostly measure
+Google's limits. A simulated model finds what this code and database can carry. Locust is installed in its own
+environment, because it isn't needed to run the app.
+
+**Trade-offs:** It shows the app's own limit, not Gemini's. It ran on this PC with an embedded database, so **it isn't
+evidence of how Render's small server will behave.**
+
+## D34. Backups use pg_dump, and restores rebuild the app's database role
+
+**Decision:** `python -m ops.backup` wraps `pg_dump` and `pg_restore`, writes a list of row counts beside each backup, and
+checks the restored data against it. A restore refuses a database that already has tables.
+
+**Why:** Hosted point-in-time recovery varies by plan, and a plain dump is something the owner can hold and test.
+Database roles and the owner's privileges don't belong in a dump, because they differ between hosts, so grants are
+applied again on restore. Without that, Row-Level Security would be in place but the app couldn't read anything.
+
+**Trade-offs:** A dump is a full copy of the data, unencrypted, so where it's kept is up to the owner. Restoring loses
+anything since the last backup. Nothing schedules backups, as the free stack has no background workers.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

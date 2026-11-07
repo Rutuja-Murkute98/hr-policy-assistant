@@ -5,6 +5,7 @@ guarantee: a name or a free-text address won't be caught.
 """
 import logging
 import re
+import traceback
 from collections.abc import Iterable
 from typing import Any
 
@@ -69,6 +70,9 @@ class MaskingFilter(logging.Filter):
         if record.exc_info:
             formatter = logging.Formatter()
             record.exc_text = mask(formatter.formatException(record.exc_info))
+            # For structured logs: the kind of error and where, without its message, which can quote anything
+            record.error_type = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
+            record.error_stack = traceback.format_tb(record.exc_info[2])
             record.exc_info = None
         return True
 
@@ -76,7 +80,7 @@ class MaskingFilter(logging.Filter):
 def install_log_masking() -> None:
     """Apply masking to every log handler, so no part of the app can skip it by accident."""
     # uvicorn's access log is left out: it only holds paths, and its format needs the original arguments
-    for logger in (logging.getLogger(), logging.getLogger("uvicorn.error")):
+    for logger in (logging.getLogger(), logging.getLogger("uvicorn")):
         for handler in logger.handlers:
             if not any(isinstance(item, MaskingFilter) for item in handler.filters):
                 handler.addFilter(MaskingFilter())

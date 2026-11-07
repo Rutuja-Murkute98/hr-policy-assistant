@@ -20,6 +20,7 @@ ENTER_TENANT = f"SELECT set_config('role', '{APP_ROLE}', true), set_config('app.
 ENTER_TENANT_SQL = text(ENTER_TENANT.replace("%s", ":tenant_id"))
 CHECKPOINT_TABLES = ("checkpoints", "checkpoint_writes", "checkpoint_blobs")
 SECURITY_LOCK = 72_004  # any fixed number: it stops two server processes changing security at once
+APPEND_ONLY_TABLES = ("audit_events", "tool_audit_log", "answer_metrics")  # the app can't change these
 THREAD_TENANT = "split_part(thread_id, ':', 1) = current_setting('app.tenant_id', true)"
 
 
@@ -89,3 +90,35 @@ def _protect(connection, table: str, condition: str) -> None:
     connection.execute(text(f"GRANT SELECT, INSERT, UPDATE, DELETE ON {table} TO {APP_ROLE}"))
     connection.execute(text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
     connection.execute(text(f"CREATE POLICY tenant_isolation ON {table} USING ({condition}) WITH CHECK ({condition})"))
+
+
+def grant_app_role(connection) -> None:
+    """Give the app's role its access again, after a restore. Backups hold no privileges, as they differ by host."""
+    connection.execute(text(f"GRANT USAGE ON SCHEMA public TO {APP_ROLE}"))
+    connection.execute(text(f"GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO {APP_ROLE}"))
+    protected = connection.execute(text(
+        "SELECT tablename FROM pg_policies WHERE schemaname = 'public' AND policyname = 'tenant_isolation'"
+    )).scalars().all()
+    for table in protected:
+        if table == "organisations":
+            access = "SELECT"
+        elif table in APPEND_ONLY_TABLES:
+            access = "SELECT, INSERT"
+        else:
+            access = "SELECT, INSERT, UPDATE, DELETE"
+        connection.execute(text(f"GRANT {access} ON {table} TO {APP_ROLE}"))
+    for table in ("langchain_pg_collection", "checkpoint_migrations"):
+        if connection.execute(text("SELECT to_regclass(:table)"), {"table": table}).scalar():
+            connection.execute(text(f"GRANT SELECT ON {table} TO {APP_ROLE}"))
+
+
+def verify_tenant_policies(connection) -> None:
+    """Refuse to go on if any table with a tenant column isn't protected, such as after a bad restore."""
+    unprotected = connection.execute(text(
+        "SELECT c.relname FROM pg_class c JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' "
+        "JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'public' AND c.relkind = 'r' "
+        "AND NOT (c.relrowsecurity AND EXISTS (SELECT 1 FROM pg_policies p WHERE p.tablename = c.relname "
+        "AND p.policyname = 'tenant_isolation'))"
+    )).scalars().all()
+    if unprotected:
+        raise RuntimeError(f"These tables have no tenant protection: {', '.join(sorted(unprotected))}")

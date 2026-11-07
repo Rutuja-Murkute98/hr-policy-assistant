@@ -55,6 +55,8 @@ class WorkflowState(TypedDict, total=False):
     chunks: list[dict]
     confidence: float
     retried: bool
+    embedding_ms: float
+    retrieval_ms: float
     answer: str
     answered: bool
     abstain_reason: str
@@ -88,6 +90,13 @@ def _say(state: WorkflowState, text: str, **fields) -> dict:
 def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, checkpointer):
     profile = rag.profile
     known_tools = langchain_tools()
+
+    def timed_search(state: WorkflowState, query: str, filters: SearchFilters) -> tuple[list[Document], float, dict]:
+        """Search, and add the time it took to what this answer has used so far."""
+        timing: dict = {}
+        chunks, confidence = rag.search(query, filters, timing)
+        return chunks, confidence, {"embedding_ms": state.get("embedding_ms", 0.0) + timing["embedding_ms"],
+                                    "retrieval_ms": state.get("retrieval_ms", 0.0) + timing["retrieval_ms"]}
 
     def understand(state: WorkflowState) -> dict:
         _status("Understanding your question")
@@ -123,10 +132,10 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
     def confirm_out_of_scope(state: WorkflowState) -> dict:
         """Check the label against the policies, since wrongly refusing a real question is costly."""
         filters = SearchFilters(tenant_id=tenant_id)
-        chunks, confidence = rag.search(state["standalone"], filters)
+        chunks, confidence, timing = timed_search(state, state["standalone"], filters)
         if chunks and confidence >= config.OUT_OF_SCOPE_OVERRIDE_CONFIDENCE:
-            return {"intent": "policy_question", "category": ""}
-        return {}
+            return {"intent": "policy_question", "category": "", **timing}
+        return timing
 
     def route_out_of_scope(state: WorkflowState) -> str:
         return "refuse" if state["intent"] == "out_of_scope" else "retrieve"
@@ -146,13 +155,13 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         # Narrow by topic the first time only. FAQ and glossary chunks are "general", so they stay in.
         if config.USE_CATEGORY_ROUTING and state.get("category") and not filters.category and not state.get("retried"):
             filters.categories = [state["category"], profile.default_category]
-        chunks, confidence = rag.search(state.get("search_query") or state["standalone"], filters)
+        chunks, confidence, timing = timed_search(state, state.get("search_query") or state["standalone"], filters)
         found = {"chunks": [{"id": c.id, "page_content": c.page_content, "metadata": c.metadata} for c in chunks],
                  "confidence": confidence}
         first = state.get("first_search")
         if first and first["chunks"] and (not chunks or first["confidence"] >= confidence):
-            return first  # the retry found nothing better
-        return found
+            return {**first, **timing}  # the retry found nothing better
+        return {**found, **timing}
 
     def grade_evidence(state: WorkflowState) -> str:
         weak = not state["chunks"] or state["confidence"] < config.GRADE_MIN_CONFIDENCE

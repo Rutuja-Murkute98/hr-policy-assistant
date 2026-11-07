@@ -26,6 +26,8 @@ from app.db import get_engine
 from app.identity import Organisations, OrganisationUnavailable
 from app.knowledge import KnowledgeBase
 from app.memory import ConversationStore, summarise_if_long
+from app.metrics import AnswerMetrics, MetricsStore
+from app.observability import Tracing, UsageCallback, estimated_cost
 from app.pii import mask
 from app.rag.providers import get_chat_model
 from app.rag.rerank import get_reranker
@@ -70,7 +72,7 @@ class TenantSaver(PostgresSaver):
 
 class ChatWorkflow:
     def __init__(self, rag: RagService, llm, engine, checkpointer, hrms=None, tenant_id: str = config.TENANT_ID,
-                 today=date.today):
+                 today=date.today, tracing: Tracing | None = None):
         if rag.tenant_id != tenant_id:
             raise ValueError("This search service belongs to another tenant")
         scoped = tenant_scoped(engine, tenant_id)
@@ -83,6 +85,8 @@ class ChatWorkflow:
         self.actions = PendingActions(scoped, tenant_id)
         self.runner = ToolRunner(scoped, hrms or MockHRMS(scoped, tenant_id))
         self.knowledge = KnowledgeBase(scoped, rag.store, tenant_id, profile=rag.profile)
+        self.metrics = MetricsStore(scoped, tenant_id)
+        self.tracing_callbacks = tracing.callbacks if tracing else []
         self.checkpointer = checkpointer
         if isinstance(checkpointer, PostgresSaver):
             self.checkpointer = TenantSaver(checkpointer.conn, tenant_id)  # type: ignore[arg-type]
@@ -95,6 +99,18 @@ class ChatWorkflow:
 
     def _config(self, run_id: str) -> dict:
         return {"configurable": {"thread_id": run_id}}
+
+    def _record(self, kind: str, started: float, usage: UsageCallback, values: dict | None = None,
+                failed: bool = False) -> None:
+        values = values or {}
+        self.metrics.record(AnswerMetrics(
+            kind=kind, total_ms=(time.perf_counter() - started) * 1000, failed=failed,
+            intent=values.get("intent", ""), answered=bool(values.get("answered", False)),
+            abstain_reason=values.get("abstain_reason", ""), tool=values.get("tool") or "",
+            tool_status=values.get("tool_status") or "", embedding_ms=values.get("embedding_ms", 0.0),
+            retrieval_ms=values.get("retrieval_ms", 0.0), llm_ms=usage.llm_ms, llm_calls=usage.llm_calls,
+            input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
+            estimated_cost_usd=estimated_cost(usage.input_tokens, usage.output_tokens)))
 
     def _forget_run(self, run_id: str) -> None:
         self.checkpointer.delete_thread(run_id)
@@ -130,6 +146,8 @@ class ChatWorkflow:
                stream_tokens: bool = True, user_id: str | None = None,
                conversation_id: str | None = None) -> Iterator[tuple[str, object]]:
         """Yield ("token", text) as the answer is written, then ("done", WorkflowAnswer)."""
+        started = time.perf_counter()
+        usage = UsageCallback()
         self.run_maintenance()
         # From here on the masked text is all that's used, so a model provider never sees what was masked
         question = mask(question, self.public_emails)
@@ -152,7 +170,8 @@ class ChatWorkflow:
                     "conversation_id": conversation_id, "run_id": run_id, "today": self.today().isoformat(),
                     "filters": given, "stream_tokens": stream_tokens}
         try:
-            for event in self.graph.stream(state_in, run_config, stream_mode="custom", durability="exit"):
+            for event in self.graph.stream(state_in, {**run_config, "callbacks": [usage, *self.tracing_callbacks]},
+                                           stream_mode="custom", durability="exit"):
                 if "status" in event:
                     yield "status", event["status"]
                 else:
@@ -160,6 +179,7 @@ class ChatWorkflow:
             snapshot = self.graph.get_state(run_config)
         except Exception:
             self._forget_run(run_id)
+            self._record("question", started, usage, failed=True)
             raise
 
         answer = self._answer(snapshot.values, conversation_id)
@@ -170,6 +190,7 @@ class ChatWorkflow:
             summarise_if_long(self.conversations, self.llm, user_id, conversation_id)
         if answer.abstain_reason in ("no_evidence", "model_abstained"):
             self.knowledge.record_unanswered(answer.question_used or question, answer.abstain_reason)
+        self._record("question", started, usage, snapshot.values)  # before "done", as a caller may stop reading there
         yield "done", answer
 
     def ask(self, question: str, history: list[dict] | None = None, filters: SearchFilters | None = None,
@@ -185,9 +206,17 @@ class ChatWorkflow:
         """Record an approval or refusal, then resume the paused run. It works after a restart."""
         action = self.actions.decide(user_id, action_id, approve)
         run_config = self._config(action["run_id"])
+        started = time.perf_counter()
+        usage = UsageCallback()
         try:
-            self.graph.invoke(Command(resume="approve" if approve else "decline"), run_config, durability="exit")
-            answer = self._answer(self.graph.get_state(run_config).values, action["conversation_id"])
+            self.graph.invoke(Command(resume="approve" if approve else "decline"),
+                              {**run_config, "callbacks": [usage, *self.tracing_callbacks]}, durability="exit")
+            values = self.graph.get_state(run_config).values
+            answer = self._answer(values, action["conversation_id"])
+            self._record("decision", started, usage, {**values, "embedding_ms": 0.0, "retrieval_ms": 0.0})
+        except Exception:
+            self._record("decision", started, usage, failed=True)
+            raise
         finally:
             self._forget_run(action["run_id"])
         if action["conversation_id"]:
@@ -242,12 +271,13 @@ def create_workflow() -> ChatWorkflow:
 class WorkflowRegistry:
     """One workflow per organisation, sharing the database pools and model, as memory is tight."""
 
-    def __init__(self, store, llm, engine, checkpointer, reranker=None):
+    def __init__(self, store, llm, engine, checkpointer, reranker=None, tracing: Tracing | None = None):
         self.store = store
         self.llm = llm
         self.engine = engine
         self.checkpointer = checkpointer
         self.reranker = reranker
+        self.tracing = tracing or Tracing()
         self.organisations = Organisations(engine)
         self._workflows: dict[str, ChatWorkflow] = {}
         self._lock = threading.Lock()
@@ -264,11 +294,13 @@ class WorkflowRegistry:
         if profile is None:
             raise OrganisationUnavailable(tenant_id)
         rag = RagService(PolicyIndex(self.store, tenant_id), self.llm, self.reranker, profile=profile)
-        workflow = ChatWorkflow(rag, self.llm, self.engine, self.checkpointer, tenant_id=tenant_id)
+        workflow = ChatWorkflow(rag, self.llm, self.engine, self.checkpointer, tenant_id=tenant_id,
+                                tracing=self.tracing)
         workflow.run_maintenance(force=True)
         return workflow
 
     def close(self) -> None:
+        self.tracing.close()
         self.checkpointer.conn.close()
 
 

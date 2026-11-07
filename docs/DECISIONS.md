@@ -331,6 +331,17 @@ failed step.
 **Trade-offs:** While a provider is very busy, more questions fail rather than eventually getting through. A long answer
 from a slow model could hit the limit, so a slower provider may need a higher value.
 
+## D36. Failed tests appear as annotations on GitHub
+
+**Decision:** CI uses `pytest-github-actions-annotate-failures`, which reports each failed test as an annotation.
+
+**Why:** GitHub only shows a run's logs to someone signed in, but annotations can be read without logging in. So a failure
+can be diagnosed from the run's page or API, by a person or a tool without the owner's GitHub login. It does nothing outside
+GitHub Actions.
+
+**Trade-offs:** One more test dependency, and GitHub limits how many annotations a step shows, so a large failure may not
+list every test.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

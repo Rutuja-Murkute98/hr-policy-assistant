@@ -3,6 +3,8 @@
 Labels: **Implemented and tested** · **Implemented, not tested** · **Partial** · **Planned**.
 A feature is only marked as implemented after checking the code and running it.
 
+For the overall picture, see [the final report](FINAL_REPORT.md).
+
 ## Plan
 
 | Phase | Scope | State |

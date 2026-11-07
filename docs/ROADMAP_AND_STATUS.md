@@ -12,7 +12,7 @@ A feature is only marked as implemented after checking the code and running it.
 | 2 | Stored conversation memory, LangGraph workflow, mock HRMS agent | Built, waiting for owner review |
 | 3 | Document management, admin page, model settings, UI improvements | Built, waiting for owner review |
 | 4 | Multi-tenancy, login, Row-Level Security, security hardening | Built, waiting for owner review |
-| 5 | Observability, load test, deployment guides, backups | Waiting for approval |
+| 5 | Observability, load test, deployment guides, backups | Built, waiting for owner review |
 | 6 | Optional advanced features | Only after Phases 1 to 5 |
 
 ## Phase 1 status
@@ -110,6 +110,21 @@ A feature is only marked as implemented after checking the code and running it.
 | DPDP Act | Partial | Documented in `docs/DPDP_NOTES.md`. Several requirements aren't built, and there's been no legal review |
 | Agent evaluation on Phase 4 code | Implemented and tested | Draft labels, 100% on a small test. Slower than Phase 3, not traced |
 
+## Phase 5 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Structured JSON logs with request IDs | Implemented and tested | Seen on the running API. Render's log view hasn't been checked |
+| Never log question text or PII | Implemented and tested | Tests on success and failure. Exception messages are left out, which makes some failures harder to diagnose |
+| Metrics: requests, latency, tokens, cost, refusals, tool failures, feedback | Implemented and tested | On real model runs. Embedding tokens aren't counted, and the cost uses prices you set |
+| Usage tab on the admin screen | Implemented, not tested | Its API is tested, and the tab opens in a screen test, but it hasn't been opened in a browser |
+| LLM tracing with Langfuse | Implemented, not tested | Only against a fake, because there's no account |
+| Load test with Locust | Partial | Real results on this PC, with a simulated model and a small real-model sample. Not run against a deployment |
+| Deployment guide for the free stack | Partial | Updated, but the upgrade from earlier phases hasn't been run on Render or Neon |
+| Optional AWS and GCP guide | Implemented, not tested | Never run: there's no account, and the images have never been built here |
+| Backup and restore | Partial | Real restore on the local database, and automated tests. Not run on Neon, and nothing schedules it |
+| Time limit on model calls | Implemented and tested | 20 seconds and one retry, on a real run with the provider under load |
+
 ## Earlier work
 
 | Feature | Status | Evidence or gap |
@@ -123,7 +138,7 @@ A feature is only marked as implemented after checking the code and running it.
 
 ## Success targets
 
-See [the Phase 4 report](../evaluation/reports/phase4_report.md). The Phase 3 summary was: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
+See [the Phase 5 report](../evaluation/reports/phase5_report.md). The Phase 3 summary was: recall and citations meet their targets on draft labels, while refusals are at 96.2% and p95 latency is above the limit. Tenant leakage across every table and memory on Render aren't assessed yet.
 
 **The CI quality gate passes locally**, but partly because one likely wrong label now counts in its favour, so the owner's review may change that.
 
@@ -133,6 +148,9 @@ See [the Phase 4 report](../evaluation/reports/phase4_report.md). The Phase 3 su
 - Decide whether `adversarial-004` should count as correct, since it rejected the false claim and gave the true figure.
 - Decide the five policy contradictions listed in the report.
 - Decide whether `unanswerable-009` should be corrected, since the policy appears to answer it. It now lowers the refusal score.
+- Decide about Phase 6, which is optional.
+- Run a backup and restore against the hosted database, and decide how often to take backups.
+- On the free tier, consider lowering `RATE_LIMIT_TOTAL_PER_MINUTE`, as 3 active people hit the model's limit in testing.
 - For real sign-in: create an OIDC client and follow "Signing in" in `DEPLOY.md`.
 - Before real employee data: work through the list at the end of `docs/DPDP_NOTES.md`, including legal advice.
 - Push the branch, so CI runs for the first time.

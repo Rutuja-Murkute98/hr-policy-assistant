@@ -1,0 +1,94 @@
+{
+ "name": "simulated",
+ "steps": [
+  {
+   "users": 1,
+   "seconds": 60,
+   "requests_per_second": 0.15,
+   "ask_requests": 8,
+   "ask_failures": 0,
+   "ask_p50_ms": 3300,
+   "ask_p95_ms": 5500,
+   "ask_p99_ms": 5500,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 174
+  },
+  {
+   "users": 5,
+   "seconds": 60,
+   "requests_per_second": 0.64,
+   "ask_requests": 36,
+   "ask_failures": 0,
+   "ask_p50_ms": 3800,
+   "ask_p95_ms": 5800,
+   "ask_p99_ms": 5800,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 177
+  },
+  {
+   "users": 10,
+   "seconds": 60,
+   "requests_per_second": 1.06,
+   "ask_requests": 56,
+   "ask_failures": 0,
+   "ask_p50_ms": 3800,
+   "ask_p95_ms": 16000,
+   "ask_p99_ms": 17000,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 180
+  },
+  {
+   "users": 20,
+   "seconds": 60,
+   "requests_per_second": 2.61,
+   "ask_requests": 134,
+   "ask_failures": 0,
+   "ask_p50_ms": 3900,
+   "ask_p95_ms": 6100,
+   "ask_p99_ms": 6400,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 190
+  },
+  {
+   "users": 40,
+   "seconds": 60,
+   "requests_per_second": 5.21,
+   "ask_requests": 269,
+   "ask_failures": 0,
+   "ask_p50_ms": 3800,
+   "ask_p95_ms": 6100,
+   "ask_p99_ms": 6600,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 203
+  },
+  {
+   "users": 80,
+   "seconds": 60,
+   "requests_per_second": 6.36,
+   "ask_requests": 373,
+   "ask_failures": 6,
+   "ask_p50_ms": 8600,
+   "ask_p95_ms": 13000,
+   "ask_p99_ms": 15000,
+   "all_failures": 7,
+   "failure_kinds": [
+    {
+     "name": "/ask",
+     "error": "ConnectionResetError(10054, 'An existing connection was forcibly closed by the remote host', None, 10054, None)",
+     "count": 6
+    },
+    {
+     "name": "/health",
+     "error": "RemoteDisconnected('Remote end closed connection without response')",
+     "count": 1
+    }
+   ],
+   "peak_memory_mb": 255
+  }
+ ]
+}

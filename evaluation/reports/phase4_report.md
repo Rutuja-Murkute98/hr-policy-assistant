@@ -130,7 +130,7 @@ mypy, pip-audit and the quality gate also pass. GitHub Actions and Docker have s
 
 | Target | Goal | Result | Met? |
 |---|---|---|---|
-| Recall@5 | ≥ 0.85 | 0.943 | Yes, provisionally |
+| Recall@5 | ≥ 0.90 | 0.943 | Yes, provisionally |
 | Expected facts | Not set as a target | 0.954 | |
 | Correct refusals | 100% | 92.3% (24 / 26) | **No** |
 | Citation correctness | ≥ 95% | 100% valid, 96.8% on target | Yes, provisionally |

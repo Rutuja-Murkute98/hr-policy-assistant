@@ -1,0 +1,37 @@
+{
+ "name": "real_model",
+ "steps": [
+  {
+   "users": 1,
+   "seconds": 150,
+   "requests_per_second": 0.08,
+   "ask_requests": 6,
+   "ask_failures": 0,
+   "ask_p50_ms": 5700,
+   "ask_p95_ms": 6700,
+   "ask_p99_ms": 6700,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 193
+  },
+  {
+   "users": 3,
+   "seconds": 150,
+   "requests_per_second": 0.22,
+   "ask_requests": 29,
+   "ask_failures": 8,
+   "ask_p50_ms": 4500,
+   "ask_p95_ms": 13000,
+   "ask_p99_ms": 20000,
+   "all_failures": 8,
+   "failure_kinds": [
+    {
+     "name": "/ask",
+     "error": "HTTPError('503 Server Error: Service Unavailable for url: /ask')",
+     "count": 8
+    }
+   ],
+   "peak_memory_mb": 200
+  }
+ ]
+}

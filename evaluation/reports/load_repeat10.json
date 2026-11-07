@@ -1,0 +1,44 @@
+{
+ "name": "repeat10",
+ "steps": [
+  {
+   "users": 10,
+   "seconds": 60,
+   "requests_per_second": 1.29,
+   "ask_requests": 65,
+   "ask_failures": 0,
+   "ask_p50_ms": 3700,
+   "ask_p95_ms": 5700,
+   "ask_p99_ms": 6300,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 235
+  },
+  {
+   "users": 10,
+   "seconds": 60,
+   "requests_per_second": 1.37,
+   "ask_requests": 66,
+   "ask_failures": 0,
+   "ask_p50_ms": 3700,
+   "ask_p95_ms": 5800,
+   "ask_p99_ms": 6000,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 236
+  },
+  {
+   "users": 10,
+   "seconds": 60,
+   "requests_per_second": 1.31,
+   "ask_requests": 63,
+   "ask_failures": 0,
+   "ask_p50_ms": 3700,
+   "ask_p95_ms": 5900,
+   "ask_p99_ms": 6500,
+   "all_failures": 0,
+   "failure_kinds": [],
+   "peak_memory_mb": 237
+  }
+ ]
+}

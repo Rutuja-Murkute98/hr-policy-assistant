@@ -1,0 +1,167 @@
+{
+ "name": "phase5",
+ "review": {
+  "approved": 0,
+  "rejected": 0,
+  "unreviewed": 123
+ },
+ "metrics": {
+  "recall_at_5": 0.938,
+  "facts_correct": 0.966,
+  "facts_checked": 87,
+  "refused_when_it_should": 0.923,
+  "refusal_checked": 26,
+  "false_refusals": 0.031,
+  "citations_valid": 1.0,
+  "citations_on_target": 0.957,
+  "citations_checked": 94,
+  "seconds_p50": 4.36,
+  "seconds_p95": 14.87,
+  "judge_faithful": 1.0,
+  "judge_correct": 1.0,
+  "judged": 96
+ },
+ "by_category": {
+  "adversarial": {
+   "recall_at_5": 0.0,
+   "facts_correct": 0.0,
+   "facts_checked": 0,
+   "refused_when_it_should": 1.0,
+   "refusal_checked": 10,
+   "false_refusals": 0.0,
+   "citations_valid": 0.0,
+   "citations_on_target": 0.0,
+   "citations_checked": 0,
+   "seconds_p50": 0.0,
+   "seconds_p95": 0.0
+  },
+  "ambiguous": {
+   "recall_at_5": 1.0,
+   "facts_correct": 1.0,
+   "facts_checked": 6,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 1,
+   "false_refusals": 0.143,
+   "citations_valid": 1.0,
+   "citations_on_target": 1.0,
+   "citations_checked": 6,
+   "seconds_p50": 3.87,
+   "seconds_p95": 12.21,
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judged": 7
+  },
+  "conflict": {
+   "recall_at_5": 1.0,
+   "facts_correct": 0.6,
+   "facts_checked": 5,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 1.0,
+   "citations_checked": 5,
+   "seconds_p50": 3.98,
+   "seconds_p95": 4.36,
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judged": 5
+  },
+  "exception": {
+   "recall_at_5": 0.9,
+   "facts_correct": 0.889,
+   "facts_checked": 9,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 0.9,
+   "citations_checked": 10,
+   "seconds_p50": 4.86,
+   "seconds_p95": 7.1,
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judged": 10
+  },
+  "follow_up": {
+   "recall_at_5": 0.9,
+   "facts_correct": 1.0,
+   "facts_checked": 8,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.1,
+   "citations_valid": 1.0,
+   "citations_on_target": 1.0,
+   "citations_checked": 9,
+   "seconds_p50": 3.96,
+   "seconds_p95": 4.08,
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judged": 9
+  },
+  "multi_hop": {
+   "recall_at_5": 0.9,
+   "facts_correct": 1.0,
+   "facts_checked": 8,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 0.9,
+   "citations_checked": 10,
+   "seconds_p50": 4.15,
+   "seconds_p95": 8.44,
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judged": 10
+  },
+  "normal": {
+   "recall_at_5": 0.945,
+   "facts_correct": 1.0,
+   "facts_checked": 51,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.018,
+   "citations_valid": 1.0,
+   "citations_on_target": 0.963,
+   "citations_checked": 54,
+   "seconds_p50": 4.66,
+   "seconds_p95": 8.96,
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judged": 54
+  },
+  "unanswerable": {
+   "recall_at_5": 0.0,
+   "facts_correct": 0.0,
+   "facts_checked": 0,
+   "refused_when_it_should": 0.933,
+   "refusal_checked": 15,
+   "false_refusals": 0.0,
+   "citations_valid": 0.0,
+   "citations_on_target": 0.0,
+   "citations_checked": 0,
+   "seconds_p50": 10.24,
+   "seconds_p95": 71.81,
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judged": 1
+  }
+ },
+ "failures": {
+  "wrongly_answered": [
+   "unanswerable-009",
+   "ambiguous-006"
+  ],
+  "wrongly_refused": [
+   "normal-054",
+   "ambiguous-008",
+   "follow_up-009"
+  ],
+  "missing_facts": [
+   "conflict-001",
+   "conflict-002",
+   "exception-008"
+  ]
+ }
+}

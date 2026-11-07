@@ -9,6 +9,7 @@ import traceback
 from collections.abc import Iterable
 from typing import Any
 
+STACK_FRAMES = 6  # the last few frames show where it failed, and a full LangChain stack fills the log
 EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+(?:\.[\w-]+)+\b")
 PAN = re.compile(r"\b[A-Z]{5}[0-9]{4}[A-Z]\b")
 AADHAAR = re.compile(r"\b[2-9][0-9]{3}[ -]?[0-9]{4}[ -]?[0-9]{4}\b")
@@ -72,7 +73,7 @@ class MaskingFilter(logging.Filter):
             record.exc_text = mask(formatter.formatException(record.exc_info))
             # For structured logs: the kind of error and where, without its message, which can quote anything
             record.error_type = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
-            record.error_stack = traceback.format_tb(record.exc_info[2])
+            record.error_stack = traceback.format_tb(record.exc_info[2])[-STACK_FRAMES:]
             record.exc_info = None
         return True
 

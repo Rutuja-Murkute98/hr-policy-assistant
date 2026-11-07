@@ -19,7 +19,7 @@ from typing import Any
 from langchain_core.callbacks import BaseCallbackHandler
 
 from app import config
-from app.pii import install_log_masking, mask_value
+from app.pii import STACK_FRAMES, install_log_masking, mask_value
 
 logger = logging.getLogger("hr_helpdesk")
 
@@ -44,7 +44,7 @@ class JsonFormatter(logging.Formatter):
             entry["request_id"] = request_id
         if record.exc_info and record.exc_info[1]:  # only reached if the masking filter didn't run first
             record.error_type = record.exc_info[0].__name__ if record.exc_info[0] else "Exception"
-            record.error_stack = traceback.format_tb(record.exc_info[2])
+            record.error_stack = traceback.format_tb(record.exc_info[2])[-STACK_FRAMES:]
         entry.update({name: getattr(record, name) for name in LOG_FIELDS if hasattr(record, name)})
         return json.dumps(entry, default=str)
 
@@ -53,7 +53,9 @@ def setup_logging() -> None:
     """Log in the configured format, with personal data masked, from every part of the app."""
     logging.basicConfig(level=config.LOG_LEVEL)
     logging.getLogger().setLevel(config.LOG_LEVEL)
-    logging.getLogger("httpx").setLevel(logging.WARNING)  # logs every model call's address, which adds nothing
+    # Both of these log a line for every model call, which adds nothing
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("google_genai.models").setLevel(logging.WARNING)
     install_log_masking()
     formatter = JsonFormatter() if config.LOG_FORMAT == "json" else logging.Formatter(TEXT_FORMAT)
     for source in (logging.getLogger(), logging.getLogger("uvicorn")):

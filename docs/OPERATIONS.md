@@ -93,6 +93,7 @@ each, and tenant separation still held afterwards. **It hasn't been run against 
 | Many more refusals than usual | Index problem, or a model change | Check `chunks_indexed` on `/health`, then run the evaluation |
 | `/health` returns 503 "Database unavailable" | Database asleep or unreachable | Wait a minute on a free tier, then check Neon |
 | Everyone gets 429 | The shared limit, which protects the model quota | Change `RATE_LIMIT_TOTAL_PER_MINUTE`, if the quota allows it |
+| Some answers fail when a few people use it at once, with `error_type` `GoogleRateLimitError` | The model's per-minute limit. In testing, 3 active people were enough on the free tier | Set `RATE_LIMIT_TOTAL_PER_MINUTE` to about half that limit, as each question uses about 2 calls, or move to a paid tier |
 | An indexing job failed | Embedding quota, or a restart | Retry it on the admin screen. It carries on from where it stopped |
 | The first start fails with "permission denied" | The database user can't create the app's role | See "The database role" in `DEPLOY.md` |
 | Someone can't sign in | Not added, deactivated, or their email isn't verified | Check the **People** tab and **Audit log** |

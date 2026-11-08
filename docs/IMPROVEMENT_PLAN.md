@@ -131,6 +131,9 @@ the final report are measured there, not only on one PC.
 **Why:** the final report's own advice is to deploy before adding features. Every later phase is easier
 to judge against a real deployment.
 
+**Progress:** part 1, the checks and the CI job, is built and tested locally. Part 2, the live run, waits
+for the owner. See [the Phase 7 report](../evaluation/reports/phase7_report.md).
+
 **Work**
 
 - [ ] Merge the finished phase branches into `main` in order, following `DEPLOY.md`, after the owner

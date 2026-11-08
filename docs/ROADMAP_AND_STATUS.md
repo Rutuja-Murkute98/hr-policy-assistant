@@ -16,7 +16,18 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 4 | Multi-tenancy, login, Row-Level Security, security hardening | Built, waiting for owner review |
 | 5 | Observability, load test, deployment guides, backups | Built, waiting for owner review |
 | 6 | Optional advanced features | Folded into Phases 12, 14 and 15 of the improvement plan |
-| 7 to 19 | Deployment, trusted evaluation, speed, runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
+| 7 | Prove it live: deployment and database checks, CI starts the stack, live run on Render and Neon | Part 1 built and tested locally. Part 2 (the live run) waits for the owner. See [the Phase 7 report](../evaluation/reports/phase7_report.md) |
+| 8 to 19 | Trusted evaluation, speed, runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
+
+## Phase 7 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Deployment check from outside (`ops/check_deployment.py`) | Implemented and tested | 11 unit tests, plus real runs against the local API: without the model on an empty database, and with real Gemini on 539 chunks. Not run against Render |
+| Database security check (`ops/check_database_security.py`) | Implemented and tested | 5 tests on real PostgreSQL, and passing on the local database. **Not run on Neon** |
+| Compose stack started in CI | Implemented, not tested | Imitated locally without Docker. Runs on GitHub after a push |
+| Live deployment on Render, Neon and Streamlit | Planned | Waits for the owner. See the Phase 7 report |
+| Real OIDC sign-in, Neon backup and restore, load test on the deployment | Planned | Waits for the owner's access |
 
 ## Phase 1 status
 

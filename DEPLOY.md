@@ -96,11 +96,13 @@ string, not the pooled one, and your Gemini key in `.env`. Don't paste either on
    venv\Scripts\python -m pipeline.embed_and_store
    ```
    If it stops with `permission denied`, your database user can't create the role. Fix that before going on. See "The database role".
+   Then check that Row-Level Security holds on Neon. It reads every protected table as the app's role and changes nothing:
+   ```bash
+   venv\Scripts\python -m ops.check_database_security --report evaluation/reports/phase7_neon_security.json
+   ```
 3. **Check the live app still answers.** Ask it a question.
 4. **Merge into `main`.** This redeploys the API and the chat screen.
-5. **Check the new version:**
-   - Open `/health` on the API: `chunks_indexed` should be the same as before, and `status` should be `ok`.
-   - Ask a question, and check it has a citation.
+5. **Check the new version** with the deployment check in "Checking a deployment" below, then:
    - In Render's logs, look for JSON lines, and any `error_type`.
    - Watch Render's memory for the first few questions. It's limited to 512 MB.
 
@@ -120,6 +122,34 @@ with Row-Level Security in force. The old code still read, wrote and answered on
 after that. 251 database tests also passed as that user. **This isn't Neon.** Its connection pooler, its permissions and Render's
 memory limit can only be tested there. The rehearsal used fake embeddings and a scripted model, and made the `vector` extension
 as a superuser, because that's the one step a local non-superuser can't do.
+
+## Checking a deployment
+
+`ops/check_deployment.py` checks a running deployment from the outside, the way the chat screen or the Slack bot reaches it. It
+checks that the API is up, refuses callers without a key, and greets without the model. Then it asks 10 answerable questions from the
+golden set and expects citations, asks 3 unanswerable ones and expects refusals, and times the answers. It uses about 25 model calls,
+so run it once after a deploy, not on a schedule.
+
+Keys are read from the environment. Use an organisation's API key, made on the admin screen's API keys tab, or the shared key in
+demo mode. In PowerShell:
+
+```bash
+$env:CHECK_API_KEY = "your organisation's API key"
+```
+
+```bash
+venv\Scripts\python -m ops.check_deployment --api-url https://your-api.onrender.com --ui-url https://your-app.streamlit.app --report evaluation/reports/phase7_live.json
+```
+
+**To check that two organisations are kept apart,** add a second organisation on the platform admin screen, upload a document only it
+has, and make an API key for it. Then set `CHECK_SECOND_API_KEY` to that key and add
+`--isolation-question "a question only that document answers" --isolation-file "its file name"`. The check passes when the second
+organisation's answer cites the file and the first organisation's doesn't.
+
+Add `--no-model` to skip everything that uses the model. CI runs it that way against the Compose stack on every push.
+
+**Sleeping services:** the first check's time includes waking Render and Neon, so it shows the cold start. Run the check a second time
+straight away for warm timings.
 
 ## Updating a database from before Phase 1
 

@@ -1,0 +1,76 @@
+{
+  "api_url": "http://127.0.0.1:8079",
+  "started_at": "2026-11-09T04:57:14+0530",
+  "passed": true,
+  "checks": [
+    {
+      "name": "API is up",
+      "passed": true,
+      "detail": "status 200, first response after 0.0 s",
+      "seconds": 0.008770099999310332
+    },
+    {
+      "name": "Database and index",
+      "passed": true,
+      "detail": "539 chunks indexed, AI status 'ok'",
+      "seconds": null
+    },
+    {
+      "name": "Refuses callers without a key",
+      "passed": true,
+      "detail": "status 401",
+      "seconds": null
+    },
+    {
+      "name": "Greets without using the model",
+      "passed": true,
+      "detail": "intent 'greeting', 151 characters, no sources",
+      "seconds": 0.04633380000086618
+    },
+    {
+      "name": "Answers normal-001 with citations",
+      "passed": true,
+      "detail": "cited Employee_FAQ.md, Leave_Policy.md; expected facts found 1 of 1",
+      "seconds": 3.3484716000002663
+    },
+    {
+      "name": "Answers normal-002 with citations",
+      "passed": true,
+      "detail": "cited Employee_FAQ.md, Leave_Policy.md; expected facts found 1 of 1",
+      "seconds": 3.6660878000002413
+    },
+    {
+      "name": "Answers normal-003 with citations",
+      "passed": true,
+      "detail": "cited Employee_FAQ.md, Leave_Policy.md; expected facts found 1 of 1",
+      "seconds": 3.815592699998888
+    },
+    {
+      "name": "Answers normal-004 with citations",
+      "passed": true,
+      "detail": "cited Leave_Policy.md; expected facts found 2 of 2",
+      "seconds": 13.910950600000433
+    },
+    {
+      "name": "Answers normal-005 with citations",
+      "passed": true,
+      "detail": "cited Employee_FAQ.md, Leave_Policy.md; expected facts found 1 of 1",
+      "seconds": 15.536597399999664
+    },
+    {
+      "name": "Refuses unanswerable-001",
+      "passed": true,
+      "detail": "no sources given",
+      "seconds": 8.200740599999335
+    },
+    {
+      "name": "Refuses unanswerable-002",
+      "passed": true,
+      "detail": "no sources given",
+      "seconds": 24.16921419999926
+    }
+  ],
+  "answers_timed": 5,
+  "answer_p50_seconds": 3.816,
+  "answer_p95_seconds": 15.537
+}

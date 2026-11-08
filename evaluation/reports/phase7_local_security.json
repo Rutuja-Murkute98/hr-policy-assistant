@@ -1,0 +1,55 @@
+{
+  "passed": true,
+  "checks": [
+    {
+      "name": "helpdesk_app role exists",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "helpdesk_app can't skip Row-Level Security",
+      "passed": true,
+      "detail": "superuser=False, bypassrls=False"
+    },
+    {
+      "name": "helpdesk_app can't sign in by itself",
+      "passed": true,
+      "detail": "login=False"
+    },
+    {
+      "name": "helpdesk_app owns no tables",
+      "passed": true,
+      "detail": "a table's owner skips its policies"
+    },
+    {
+      "name": "The connected role can switch to helpdesk_app",
+      "passed": true,
+      "detail": "connected as postgres; it can skip Row-Level Security itself: True, which is why the app switches role"
+    },
+    {
+      "name": "Every table with a tenant column has a policy",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "name": "Protected tables found",
+      "passed": true,
+      "detail": "25 tables, 1 organisations"
+    },
+    {
+      "name": "As organisation default, only its own rows are visible",
+      "passed": true,
+      "detail": "23 tables read, 2 refused"
+    },
+    {
+      "name": "As no organisation, no rows are visible",
+      "passed": true,
+      "detail": "23 tables read, 2 refused"
+    },
+    {
+      "name": "As an unknown organisation, no rows are visible",
+      "passed": true,
+      "detail": "23 tables read, 2 refused"
+    }
+  ]
+}

@@ -385,6 +385,22 @@ GitHub Actions.
 **Trade-offs:** One more test dependency, and GitHub limits how many annotations a step shows, so a large failure may not
 list every test.
 
+## D37. A deployment is checked from the outside, and its database by trying to read across organisations
+
+**Decision:** Two scripts check a deployment. `ops/check_deployment.py` calls the running API over HTTP, as the chat screen does,
+and needs only `httpx`. `ops/check_database_security.py` connects to the database, switches to the app's role, and counts rows it
+can see from other organisations, in transactions that are rolled back. CI starts the Compose stack and runs the first script
+without the model.
+
+**Why:** Phase 7 has to show the deployed system works, and tests on one PC can't show that. Reading the database's settings isn't
+enough on its own, because hosts differ in what roles can do, and a table's owner skips Row-Level Security unless it's forced.
+Trying the reads as the app does is the direct proof. A greeting goes through sign-in, rate limits, the database and the workflow without a
+model call, so CI can start the real containers with no model key.
+
+**Trade-offs:** The full deployment check uses about 25 model calls, so it's run by hand after a deploy, not on a schedule. The CI
+check proves the stack starts and the request path works, not that answers are good: that stays with the evaluation. The database
+check reads every protected table, which is slow on a large database.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

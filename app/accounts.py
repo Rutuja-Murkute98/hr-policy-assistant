@@ -5,12 +5,12 @@ admin can add and suspend organisations, but has no route to read what's inside 
 """
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field, SecretStr
 
 from app import config
 from app.config import Tenant
-from app.identity import Identity, IdentityError, Principal
+from app.identity import MAX_PHOTO_BYTES, Identity, IdentityError, Principal, Profiles, photo_type
 from app.passwords import MAX_PASSWORD_CHARS, AccountProblem, PasswordAccounts, SignedIn
 from app.security import admin_principal, audit, current_principal, platform_principal, rate_limit, service_for
 
@@ -148,6 +148,65 @@ def log_out(request: Request, authorization: str = Header(default=""),
     passwords_of(request).sign_out(authorization.removeprefix("Bearer ").strip())
     audit(request, principal, "logout")
     return {"signed_out": True}
+
+
+PROFILE_TEXT = r"^[^<>\x00-\x1f]*$"  # plain text: no markup and no control characters
+
+
+class ProfileChange(BaseModel):
+    display_name: str = Field(min_length=1, max_length=100, pattern=PROFILE_TEXT)
+    job_title: str = Field(default="", max_length=100, pattern=PROFILE_TEXT)
+    department: str = Field(default="", max_length=100, pattern=PROFILE_TEXT)
+    location: str = Field(default="", max_length=100, pattern=PROFILE_TEXT)
+
+
+def own_profile(request: Request, principal: Principal = Depends(current_principal)) -> tuple[Profiles, Principal]:
+    """Only someone signed in to their own account has a profile. A shared key or an integration doesn't."""
+    profiles = identity_of(request).profiles
+    if profiles is None or not principal.account_id:
+        raise HTTPException(404, "Profiles need you to be signed in")
+    return profiles, principal
+
+
+@router.get("/me/profile", tags=["accounts"])
+def read_profile(found: tuple[Profiles, Principal] = Depends(own_profile)):
+    profiles, principal = found
+    return profiles.get(principal.tenant_id, principal.account_id)
+
+
+@router.put("/me/profile", tags=["accounts"], dependencies=[Depends(rate_limit)])
+def change_profile(body: ProfileChange, request: Request, found: tuple[Profiles, Principal] = Depends(own_profile)):
+    profiles, principal = found
+    fields = {name: " ".join(value.split()) for name, value in body.model_dump().items()}
+    if not fields["display_name"]:
+        raise HTTPException(422, "Please enter your name")
+    profiles.update(principal.tenant_id, principal.account_id, **fields)
+    audit(request, principal, "profile_changed")
+    return profiles.get(principal.tenant_id, principal.account_id)
+
+
+@router.put("/me/profile/photo", tags=["accounts"], dependencies=[Depends(rate_limit)])
+def change_photo(request: Request, photo: UploadFile = File(...),
+                 found: tuple[Profiles, Principal] = Depends(own_profile)):
+    """Set a profile photo: PNG, JPEG or WebP, up to 300 KB. The chat screen shrinks a photo before sending it."""
+    profiles, principal = found
+    data = photo.file.read(MAX_PHOTO_BYTES + 1)
+    if len(data) > MAX_PHOTO_BYTES:
+        raise HTTPException(413, "Please use a photo under 300 KB")
+    content_type = photo_type(data)
+    if content_type is None:
+        raise HTTPException(415, "Please use a PNG, JPEG or WebP photo")
+    profiles.set_photo(principal.tenant_id, principal.account_id, data, content_type)
+    audit(request, principal, "profile_photo_changed")
+    return profiles.get(principal.tenant_id, principal.account_id)
+
+
+@router.delete("/me/profile/photo", tags=["accounts"])
+def remove_photo(request: Request, found: tuple[Profiles, Principal] = Depends(own_profile)):
+    profiles, principal = found
+    profiles.set_photo(principal.tenant_id, principal.account_id, None, None)
+    audit(request, principal, "profile_photo_removed")
+    return profiles.get(principal.tenant_id, principal.account_id)
 
 
 class NewUser(BaseModel):

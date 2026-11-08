@@ -98,7 +98,7 @@ class PasswordAccounts:
     @staticmethod
     def _principal(user) -> Principal:
         return Principal(user.tenant_id, user.employee_id or user.id, user.role, "password", user.email,
-                         user.display_name)
+                         user.display_name, user.id)
 
     def sign_up(self, email: str, password: str, display_name: str, remember: bool = False) -> SignedIn:
         """Create an employee account in the default organisation, and sign them in.

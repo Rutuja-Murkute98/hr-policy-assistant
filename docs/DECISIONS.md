@@ -264,6 +264,18 @@ part, so it's the part left out.
 trail. Counts and timings still go to the metrics. A chat that isn't saved can't be rated, as there's no stored answer to rate.
 Reopened chats have no sources, because sources aren't stored with messages.
 
+## D39. Profiles with a photo, stored in PostgreSQL
+
+**Decision:** A signed-in person can change their name and add a job title, department, work location and photo. The name
+stays in `users.display_name`, and the rest is in `user_profiles`. The chat screen crops a photo to a square and shrinks it
+with Pillow before sending it, and the API only takes PNG, JPEG or WebP under 300 KB, recognised by their first bytes.
+
+**Why:** The owner asked for a profile with a photo shown on the chat screen. The free stack has no file storage, and a
+shrunk photo is about 20 KB, so a database column is simplest. Checking the bytes rather than the file name keeps out SVG,
+which can hold a script.
+
+**Trade-offs:** Photos make backups a little larger. Pillow is only needed by the chat screen, so the API doesn't grow.
+
 ## D28. Rate limits are counted in PostgreSQL, or Redis if it's set up
 
 **Decision:** Limits per client, per organisation and overall, over a sliding 60 seconds. Counts live in

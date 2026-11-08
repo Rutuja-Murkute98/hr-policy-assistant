@@ -1,4 +1,6 @@
 """The password sign-in and sign-up page, with the API replaced by a fake. No API quota is used."""
+import base64
+import io
 import sys
 from pathlib import Path
 
@@ -220,20 +222,16 @@ def test_a_saved_chat_opens_from_history_and_back_returns(api):
     app = press(signed_in_page(api), "chat_history")
     assert "Your chats" in shown(app)
     assert next(button for button in app.button if button.key == "open_chat1").label.startswith("How much leave?")
-    app = press(app, "open_chat1")
+    app = press(app, "chat_back")  # the arrow returns to the fresh chat History was opened from
+    assert "Hello, Asha!" in shown(app)
+    app = press(press(app, "chat_history"), "open_chat1")
     assert "How much leave?" in shown(app) and "You get 12 days." in shown(app)
     assert app.session_state.conversation_id == "chat1"
-    app = press(app, "chat_back")
-    assert "Your chats" in shown(app)
-    app = press(app, "chat_back")
-    assert "Hello, Asha!" in shown(app)
-    assert app.session_state.conversation_id is None
-    assert next(button for button in app.button if button.key == "chat_back").disabled
 
 
-def test_back_is_off_when_there_is_nowhere_to_go(api):
+def test_the_chat_has_no_back_arrow(api):
     app = signed_in_page(api)
-    assert next(button for button in app.button if button.key == "chat_back").disabled
+    assert not [button for button in app.button if button.key == "chat_back"]
 
 
 def test_history_explains_a_failure_without_crashing(api):
@@ -372,3 +370,80 @@ def test_set_up_codes_are_long_and_easy_to_read():
     assert len(code) == 14 and code.count("-") == 2
     assert not set(code) & set("01OIL")
     assert code != new_setup_code()
+
+
+# Profile
+
+PROFILE = {"display_name": "Asha Rao", "email": "asha@example.test", "job_title": "", "department": "",
+           "location": "", "photo": ""}
+
+
+def profile_page(api, profile=None):
+    api.replies["/me/profile"] = Reply(body=profile or PROFILE)
+    return signed_in_page(api)
+
+
+def test_the_profile_button_shows_initials_where_back_used_to_be(api):
+    app = profile_page(api)
+    assert next(button for button in app.button if button.key == "chat_profile").label == "AR"
+    assert not [button for button in app.button if button.key == "chat_back"]
+
+
+def test_the_profile_opens_and_a_back_arrow_returns_to_the_chat(api):
+    app = press(profile_page(api), "chat_profile")
+    assert "Your profile" in shown(app)
+    assert [box.label for box in app.text_input][:4] == ["Full name", "Job title", "Department", "Work location"]
+    assert not [button for button in app.button if button.key == "chat_profile"]
+    app = press(app, "chat_back")
+    assert "Hello, Asha!" in shown(app)
+    assert next(button for button in app.button if button.key == "chat_profile")
+
+
+def test_settings_and_history_have_a_back_arrow_too(api):
+    for key in ("chat_settings", "chat_history"):
+        app = press(profile_page(api), key)
+        assert next(button for button in app.button if button.key == "chat_back")
+
+
+def test_saving_the_profile_sends_the_details_and_uses_the_new_name(api):
+    api.replies["/me/profile"] = Reply(body=PROFILE)
+    app = press(profile_page(api), "chat_profile")
+    app.text_input[0].set_value("Asha Kulkarni")
+    app.text_input[1].set_value("Engineer")
+    api.replies["/me/profile"] = Reply(body={**PROFILE, "display_name": "Asha Kulkarni", "job_title": "Engineer"})
+    app = submit(app, "profile_form")
+    assert not app.exception
+    sent = [call for call in api.sent if call[:2] == ("PUT", "/me/profile")][0][2]["json"]
+    assert sent == {"display_name": "Asha Kulkarni", "job_title": "Engineer", "department": "", "location": ""}
+    app = press(app, "chat_back")
+    app = press(app, "history_new_chat") if [b for b in app.button if b.key == "history_new_chat"] else app
+    assert app.session_state.signed_in["display_name"] == "Asha Kulkarni"
+
+
+def test_a_profile_needs_a_name(api):
+    app = press(profile_page(api), "chat_profile")
+    app.text_input[0].set_value("  ")
+    app = submit(app, "profile_form")
+    assert "Please enter your name." in app.error[0].value
+    assert not [call for call in api.sent if call[:2] == ("PUT", "/me/profile")]
+
+
+def test_a_photo_is_used_for_the_button_and_your_messages(api):
+    from PIL import Image
+
+    output = io.BytesIO()
+    Image.new("RGB", (8, 8), (10, 120, 110)).save(output, format="JPEG")
+    with_photo = {**PROFILE, "photo": "data:image/jpeg;base64," + base64.b64encode(output.getvalue()).decode()}
+    app = profile_page(api, with_photo)
+    assert "background-image" in " ".join(str(block.value) for block in app.get("html"))
+    assert next(button for button in app.button if button.key == "chat_profile").label == "AR"  # still read aloud
+    app = press(app, "chat_profile")
+    assert not app.exception
+    assert next(button for button in app.button if button.key == "remove_photo")
+
+
+def test_a_profile_that_cannot_load_explains_without_crashing(api):
+    api.replies["/me/profile"] = Reply(500, {"detail": "Please try again."})
+    app = press(signed_in_page(api), "chat_profile")
+    assert not app.exception
+    assert app.error

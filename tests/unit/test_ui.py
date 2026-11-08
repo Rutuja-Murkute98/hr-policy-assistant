@@ -16,6 +16,7 @@ sys.path.insert(0, str(UI_DIR))  # Streamlit does this when it starts the main s
 
 @pytest.fixture
 def chat():
+    st.cache_data.clear()  # another test's API status mustn't be reused here
     app = AppTest.from_file(APP_FILE, default_timeout=30)
     # Setting this as a secret also checks that secrets work, as on Streamlit Cloud
     app.secrets["HELPDESK_API_URL"] = "http://127.0.0.1:9"

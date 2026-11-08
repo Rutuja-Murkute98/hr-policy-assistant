@@ -190,6 +190,8 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `POST` | `/auth/login` | Signs in with an email and password | Anyone |
 | `POST` | `/auth/password` | Sets a password with a one-time code from an HR admin | Anyone with a code |
 | `POST` | `/auth/logout` | Ends this session | A signed-in person |
+| `GET`, `PUT` | `/me/profile` | Reads or changes your name, job title, department and work location | A signed-in person |
+| `PUT`, `DELETE` | `/me/profile/photo` | Sets or removes your profile photo: PNG, JPEG or WebP, under 300 KB | A signed-in person |
 | `GET`, `PATCH` | `/me/settings` | Reads or changes whether this person's chats are saved | A known user |
 | `POST` | `/admin/users/{id}/setup-code` | Makes a one-time code for setting a password | HR admin |
 | `GET` | `/me` | Says who's calling, and their organisation | Any caller |

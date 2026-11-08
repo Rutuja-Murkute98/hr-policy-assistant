@@ -1,5 +1,6 @@
 # What the hosted chat screen needs. Streamlit Community Cloud uses this file.
 streamlit==1.66.1
 Authlib==1.9.5  # for sign-in with st.login
+pillow==13.0.0  # to crop and shrink profile photos
 requests==2.34.2
 python-dotenv==1.2.4

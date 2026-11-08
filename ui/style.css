@@ -242,12 +242,33 @@
 .st-key-chat_frame .brand-product { font-size: 13px; }
 .st-key-chat_frame [data-testid="stElementContainer"]:has(.brand-bar) { margin-top: 0; }
 .st-key-chat_tools {
+  min-height: 44px; overflow: visible;
   flex-direction: row; justify-content: flex-end; align-items: center; flex-wrap: wrap;
   box-sizing: border-box; padding: 5px 14px; background: var(--surface); border-bottom: 1px solid var(--line);
 }
 .st-key-chat_tools .stButton, .st-key-chat_tools [data-testid="stElementContainer"]:has(.stButton) { width: auto !important; }
 .st-key-chat_tools [data-testid="stElementContainer"]:has(.st-key-chat_back),
-.st-key-chat_back { margin-right: auto; }
+.st-key-chat_tools [data-testid="stElementContainer"]:has(.st-key-chat_profile),
+.st-key-chat_back, .st-key-chat_profile { margin-right: auto; }
+/* Away from the chat, the back arrow is a symbol only */
+.st-key-chat_tools .st-key-chat_back button {
+  width: 34px; height: 34px; min-height: 34px; padding: 0; justify-content: center; border-radius: 50%;
+  color: var(--ink);
+}
+.st-key-chat_tools .st-key-chat_back button p { display: none; }
+.st-key-chat_tools .st-key-chat_back button span { margin: 0; font-size: 22px; }
+.st-key-chat_tools .st-key-chat_back button:hover { background: #edf3f1; }
+/* In the chat, the person's photo, or their initials until they add one */
+.st-key-chat_tools .st-key-chat_profile { margin-left: 4px; }
+.st-key-chat_tools .st-key-chat_profile button {
+  width: 30px; height: 30px; min-height: 30px; padding: 0; justify-content: center; border-radius: 50%;
+  color: #fff; background-color: #b45309; background-size: cover; background-position: center;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--line);
+}
+.st-key-chat_tools .st-key-chat_profile button p { color: #fff; font-size: 12.5px; font-weight: 700; }
+.st-key-chat_tools .st-key-chat_profile button[style], .st-key-chat_tools .st-key-chat_profile button:hover {
+  color: #fff;
+}
 .st-key-chat_tools button:disabled { opacity: .45; }
 .st-key-chat_tools button {
   width: auto; min-height: 30px; padding: 2px 10px; border: none; background: transparent;
@@ -264,6 +285,13 @@
 .st-key-chat_bottom .footer-note { margin: 6px 0 1rem; font-size: 11.5px; line-height: 1.3; }
 .st-key-chat_messages [data-testid="stChatMessage"]:last-of-type { margin-bottom: 0; }
 .panel-title { margin: 2px 0 4px; color: var(--ink); font-size: 20px; font-weight: 800; }
+.profile-initials {
+  display: grid; place-items: center; width: 88px; height: 88px; border-radius: 50%;
+  color: #fff; background: #b45309; font-size: 30px; font-weight: 800;
+}
+.st-key-profile_head img { width: 88px; height: 88px; border-radius: 50%; object-fit: cover; }
+.profile-name { color: var(--ink); font-size: 19px; font-weight: 800; }
+.st-key-chat_messages [data-testid="stImage"] img { border-radius: 50%; }
 .panel-note { margin-bottom: 1rem; color: var(--muted); font-size: 14px; }
 .panel-subtitle { margin: 14px 0 2px; color: var(--ink); font-size: 15px; font-weight: 700; }
 .chat-temp-note {

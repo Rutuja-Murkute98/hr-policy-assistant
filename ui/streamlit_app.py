@@ -3,6 +3,7 @@
 Run from the project folder (with the API running):
     venv\\Scripts\\streamlit run ui\\streamlit_app.py
 """
+import base64
 import html
 import json
 import re
@@ -14,6 +15,7 @@ from pathlib import Path
 import requests
 import streamlit as st
 from chat_format import error_html, link_citations, sources_html, usable_history
+from photos import photo_bytes, square_photo
 from sign_in import auth_token, bearer_headers, require_sign_in, sign_out
 from ui_settings import api_url, demo_employees, setting, tenant
 
@@ -167,7 +169,7 @@ def change_employee() -> None:
     start_new_chat()  # one employee must never continue another's chat
     st.session_state.back_stack = []
     st.session_state.chat_view = "chat"
-    for key in ("save_history", "retention_days", "save_history_toggle"):
+    for key in ("save_history", "retention_days", "save_history_toggle", "profile"):
         st.session_state.pop(key, None)
 
 
@@ -206,7 +208,7 @@ def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[
 
 
 def show_message(index: int, message: dict) -> None:
-    with st.chat_message(message["role"], avatar=AVATARS[message["role"]]):
+    with st.chat_message(message["role"], avatar=user_avatar() if message["role"] == "user" else AVATARS["assistant"]):
         if message.get("error"):
             st.markdown(error_html(message["content"]), unsafe_allow_html=True)
             return
@@ -244,6 +246,9 @@ def remember_place() -> None:
 
 
 def go_back() -> None:
+    if not st.session_state.get("back_stack"):
+        st.session_state.chat_view = "chat"
+        return
     place = st.session_state.back_stack.pop()
     st.session_state.chat_view = place["view"]
     st.session_state.messages = place["messages"]
@@ -329,6 +334,110 @@ def delete_all_chats() -> None:
         st.toast("All your saved chats were deleted.")
 
 
+# The person's profile: their name, job details and photo
+
+def load_profile() -> dict:
+    """Asked for once per visit. Without sign-in there's no profile, and a failure just means no photo."""
+    if "profile" not in st.session_state:
+        found, problem = call_api("GET", "/me/profile") if SESSION else ({}, "")
+        st.session_state.profile = found if isinstance(found, dict) and not problem else {}
+    return st.session_state.profile
+
+
+def initials(profile: dict) -> str:
+    name = profile.get("display_name") or (SESSION or {}).get("display_name") or (SESSION or {}).get("email", "")
+    letters = [part[0] for part in re.findall(r"[^\W\d_]+", name)[:2]]
+    return "".join(letters).upper() or "?"
+
+
+def user_avatar():
+    return photo_bytes(load_profile()) or AVATARS["user"]
+
+
+def save_profile(fields: dict) -> None:
+    saved, problem = call_api("PUT", "/me/profile", json=fields)
+    if problem:
+        st.session_state.profile_problem = problem
+        return
+    st.session_state.profile = saved
+    if SESSION:
+        SESSION["display_name"] = saved["display_name"]  # the greeting uses the new name from now on
+    st.toast("Your profile was saved.")
+
+
+def save_photo(data: bytes) -> None:
+    saved, problem = call_api("PUT", "/me/profile/photo", files={"photo": ("photo.jpg", data, "image/jpeg")})
+    if problem:
+        st.session_state.profile_problem = problem
+    else:
+        st.session_state.profile = saved
+        st.toast("Your photo was saved.")
+
+
+def remove_photo() -> None:
+    saved, problem = call_api("DELETE", "/me/profile/photo")
+    if problem:
+        st.session_state.profile_problem = problem
+    else:
+        st.session_state.profile = saved
+
+
+def show_profile() -> None:
+    st.markdown('<div class="panel-title">Your profile</div>', unsafe_allow_html=True)
+    if not SESSION:
+        st.caption("Profiles need you to be signed in.")
+        return
+    if "profile_problem" in st.session_state:
+        st.error(st.session_state.pop("profile_problem"))
+    profile = load_profile()
+    if not profile:
+        st.error(WAKING_UP)
+        return
+    current = photo_bytes(profile)
+    with st.container(horizontal=True, key="profile_head", vertical_alignment="center"):
+        if current:
+            st.image(current, width=88)
+        else:
+            st.markdown(f'<div class="profile-initials">{html.escape(initials(profile))}</div>',
+                        unsafe_allow_html=True)
+        st.markdown(f'<div class="profile-name">{html.escape(profile["display_name"] or "Your name")}</div>'
+                    f'<div class="panel-note">{html.escape(profile["email"])}</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="panel-subtitle">Profile photo</div>', unsafe_allow_html=True)
+    upload = st.file_uploader("Choose a photo", type=["png", "jpg", "jpeg", "webp"], max_upload_size=10,
+                              key="photo_upload", help="It's shown at the top of the chat and next to your messages")
+    if upload is not None:
+        shrunk = square_photo(upload.getvalue())
+        if shrunk is None:
+            st.error("That file isn't a photo we can use. Please choose a PNG, JPEG or WebP picture.")
+        else:
+            with st.container(horizontal=True, vertical_alignment="center"):
+                st.image(shrunk, width=64)
+                st.button("Use this photo", icon=":material/check:", type="primary", key="use_photo",
+                          on_click=save_photo, args=(shrunk,))
+    if current:
+        st.button("Remove photo", icon=":material/delete:", key="remove_photo", on_click=remove_photo)
+
+    st.markdown('<div class="panel-subtitle">About you</div>', unsafe_allow_html=True)
+    with st.form("profile_form", border=False):
+        name = st.text_input("Full name", value=profile["display_name"], max_chars=100, autocomplete="name")
+        job_title = st.text_input("Job title", value=profile["job_title"], max_chars=100,
+                                  placeholder="Such as Software Engineer")
+        department = st.text_input("Department", value=profile["department"], max_chars=100,
+                                   placeholder="Such as Engineering")
+        location = st.text_input("Work location", value=profile["location"], max_chars=100,
+                                 placeholder="Such as Pune office")
+        st.text_input("Work email", value=profile["email"], disabled=True,
+                      help="Your email signs you in, so it can't be changed here")
+        if st.form_submit_button("Save profile", type="primary"):
+            if not name.strip():
+                st.error("Please enter your name.")
+            else:
+                save_profile({"display_name": name.strip(), "job_title": job_title.strip(),
+                              "department": department.strip(), "location": location.strip()})
+                st.rerun()
+
+
 def history_is_saved() -> bool:
     """This person's choice, asked for once. If the API can't say, assume the usual setting."""
     if "save_history" not in st.session_state:
@@ -407,7 +516,7 @@ def show_chat(question: str | None) -> None:
 
     if question:
         st.session_state.messages.append({"role": "user", "content": question, "sources": []})
-        with st.chat_message("user", avatar=AVATARS["user"]):
+        with st.chat_message("user", avatar=user_avatar()):
             st.markdown(question)
 
         with st.chat_message("assistant", avatar=AVATARS["assistant"]):
@@ -477,7 +586,8 @@ if "messages" not in st.session_state:
 # The chat sits in one frame. Only the messages scroll: the header above and the question box below stay put.
 with st.container(key="chat_frame", gap=None):
     frame_top = st.container(key="chat_top", gap=None)
-    messages_area = st.container(key="chat_messages", height=MESSAGES_HEIGHT, border=False, autoscroll=True)
+    following = st.session_state.get("chat_view", "chat") == "chat"
+    messages_area = st.container(key="chat_messages", height=MESSAGES_HEIGHT, border=False, autoscroll=following)
     frame_bottom = st.container(key="chat_bottom", gap=None)
 
 with frame_top:
@@ -486,8 +596,19 @@ with frame_top:
     st.fragment(show_header, run_every=STATUS_CHECK_SECONDS if page_status == "connecting" else None)(page_status)
     employees = {} if SESSION else demo_employees()
     with st.container(key="chat_tools"):
-        st.button("Back", icon=":material/arrow_back:", key="chat_back", on_click=go_back,
-                  disabled=not st.session_state.get("back_stack"))
+        if st.session_state.get("chat_view", "chat") != "chat":
+            # Away from the chat, an arrow takes you back. In the chat, your photo opens your profile.
+            st.button("Back", icon=":material/arrow_back:", key="chat_back", on_click=go_back, help="Back")
+        elif SESSION:
+            profile = load_profile()
+            photo = photo_bytes(profile)
+            if photo:
+                # The photo is drawn behind the button. It was checked as an image, and base64 can't break the CSS
+                encoded = base64.b64encode(photo).decode()
+                st.html(f"<style>.st-key-chat_profile button {{ background-image: url('data:image/jpeg;base64,"
+                        f"{encoded}'); }} .st-key-chat_profile button p {{ opacity: 0; }}</style>")
+            st.button(initials(profile), key="chat_profile", on_click=open_view, args=("profile",),
+                      help="Your profile")
         st.button("History", icon=":material/history:", key="chat_history", on_click=open_view, args=("history",))
         st.button("Settings", icon=":material/settings:", key="chat_settings", on_click=open_view, args=("settings",))
         if SESSION:
@@ -513,6 +634,8 @@ with messages_area:
     view = st.session_state.get("chat_view", "chat")
     if view == "history":
         show_history()
+    elif view == "profile":
+        show_profile()
     elif view == "settings":
         show_settings()
     else:

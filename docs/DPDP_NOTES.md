@@ -28,6 +28,7 @@ squared with holding employees' personal data.
 | Tool use | `tool_audit_log` | `AUDIT_RETENTION_DAYS`, 365 by default | Masked arguments, and the app can't change entries |
 | Accounts | `users`, `user_credentials`, `user_sessions` | Until removed, and sessions until they expire | Passwords and session tokens are only stored as hashes. The app's tenant role can't read them |
 | Sign-ins and admin changes | `audit_events` | `AUDIT_RETENTION_DAYS`, 365 by default | Masked, and the app can't change entries |
+| Profile details and photo | `users`, `user_profiles` | Until removed, or the account is | Given by the person, who can change or remove them |
 | Whether someone's chats are saved | `user_preferences` | Until removed | With saving off, questions and answers aren't stored, except actions such as leave requests |
 | Rate limit counts | `rate_limit_hits` | Minutes | Holds a user id or client id, and a time |
 | Mock leave and tickets | `hr_leave_requests`, `hr_tickets` | Not removed: a real HR system would set this | Masked question. Fake data only |

@@ -3,6 +3,7 @@
 Finding which organisation a login or key belongs to has to look across tenants, so those few lookups
 run as the database owner. Everything an organisation does after that runs inside its own tenant.
 """
+import base64
 import hashlib
 import json
 import logging
@@ -42,6 +43,7 @@ class Principal:
     source: Literal["oidc", "password", "api_key", "demo_key"]
     email: str = ""
     name: str = ""
+    account_id: str = ""  # the users row, for a signed-in person. user_id can be their employee id instead
 
 
 class IdentityError(Exception):
@@ -214,6 +216,66 @@ class Users:
         return result.rowcount > 0
 
 
+PHOTO_TYPES = {b"\x89PNG\r\n\x1a\n": "image/png", b"\xff\xd8\xff": "image/jpeg"}
+MAX_PHOTO_BYTES = 300_000
+
+
+def photo_type(data: bytes) -> str | None:
+    """Recognise a photo by its first bytes, not its name. Anything else, such as SVG, can hold a script."""
+    for signature, content_type in PHOTO_TYPES.items():
+        if data.startswith(signature):
+            return content_type
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+class Profiles:
+    """A signed-in person's own name, job details and photo. Each person can only reach their own."""
+
+    def __init__(self, engine: Engine):
+        self.engine = engine
+
+    def get(self, tenant_id: str, account_id: str) -> dict:
+        with TenantEngine(self.engine, tenant_id).begin() as connection:
+            row = connection.execute(text(
+                "SELECT u.display_name, u.email, p.job_title, p.department, p.location, p.photo, p.photo_type "
+                "FROM users u LEFT JOIN user_profiles p ON p.user_id = u.id "
+                "WHERE u.id = :id AND u.tenant_id = :tenant_id"
+            ), {"id": account_id, "tenant_id": tenant_id}).first()
+        if row is None:
+            return {}
+        photo = f"data:{row.photo_type};base64,{base64.b64encode(row.photo).decode()}" if row.photo else ""
+        return {"display_name": row.display_name, "email": row.email, "job_title": row.job_title or "",
+                "department": row.department or "", "location": row.location or "", "photo": photo}
+
+    def _ensure(self, connection, tenant_id: str, account_id: str) -> None:
+        connection.execute(text(
+            "INSERT INTO user_profiles (user_id, tenant_id) VALUES (:id, :tenant_id) ON CONFLICT (user_id) DO NOTHING"
+        ), {"id": account_id, "tenant_id": tenant_id})
+
+    def update(self, tenant_id: str, account_id: str, display_name: str, job_title: str, department: str,
+               location: str) -> None:
+        with TenantEngine(self.engine, tenant_id).begin() as connection:
+            connection.execute(text(
+                "UPDATE users SET display_name = :name WHERE id = :id AND tenant_id = :tenant_id"
+            ), {"name": display_name, "id": account_id, "tenant_id": tenant_id})
+            self._ensure(connection, tenant_id, account_id)
+            connection.execute(text(
+                "UPDATE user_profiles SET job_title = :job_title, department = :department, location = :location, "
+                "updated_at = now() WHERE user_id = :id AND tenant_id = :tenant_id"
+            ), {"job_title": job_title, "department": department, "location": location, "id": account_id,
+                "tenant_id": tenant_id})
+
+    def set_photo(self, tenant_id: str, account_id: str, data: bytes | None, content_type: str | None) -> None:
+        with TenantEngine(self.engine, tenant_id).begin() as connection:
+            self._ensure(connection, tenant_id, account_id)
+            connection.execute(text(
+                "UPDATE user_profiles SET photo = :photo, photo_type = :type, updated_at = now() "
+                "WHERE user_id = :id AND tenant_id = :tenant_id"
+            ), {"photo": data, "type": content_type, "id": account_id, "tenant_id": tenant_id})
+
+
 class ApiKeys:
     """Keys for integrations, one or more per organisation. Only a hash is stored."""
 
@@ -299,7 +361,8 @@ class TokenVerifier:
             self.users.pin_subject(user.id, claims["sub"])  # the first sign-in fixes who this email belongs to
         elif user.oidc_subject != claims["sub"]:
             raise IdentityError("Please contact your HR team about this account.")
-        return Principal(user.tenant_id, user.employee_id or user.id, user.role, "oidc", email, user.display_name)
+        return Principal(user.tenant_id, user.employee_id or user.id, user.role, "oidc", email, user.display_name,
+                         user.id)
 
 
 def bootstrap_platform_admins(users: Users, emails: list[str], tenant_id: str) -> None:
@@ -317,6 +380,7 @@ class Identity:
     audit: AuditLog
     verifier: "TokenVerifier | PasswordAccounts | None"
     passwords: "PasswordAccounts | None" = None
+    profiles: Profiles | None = None
 
 
 def create_identity(engine: Engine) -> Identity:
@@ -324,7 +388,7 @@ def create_identity(engine: Engine) -> Identity:
     organisations, users = Organisations(engine), Users(engine)
     organisations.ensure(config.tenant)
     bootstrap_platform_admins(users, config.PLATFORM_ADMIN_EMAILS, config.TENANT_ID)
-    identity = Identity(organisations, users, ApiKeys(engine), AuditLog(engine), None)
+    identity = Identity(organisations, users, ApiKeys(engine), AuditLog(engine), None, profiles=Profiles(engine))
     if config.AUTH_MODE == "oidc":
         identity.verifier = TokenVerifier(config.OIDC_ISSUER, config.OIDC_CLIENT_ID, users)
     elif config.AUTH_MODE == "password":

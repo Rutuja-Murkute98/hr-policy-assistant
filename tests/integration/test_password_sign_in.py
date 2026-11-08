@@ -9,7 +9,7 @@ from sqlalchemy import exc, text
 from app import config, security
 from app.config import Tenant
 from app.db import get_engine
-from app.identity import ApiKeys, AuditLog, Identity, Organisations, Users
+from app.identity import ApiKeys, AuditLog, Identity, Organisations, Profiles, Users
 from app.main import app
 from app.passwords import PasswordAccounts
 from app.rag.store import run_migrations
@@ -32,7 +32,8 @@ def world(database_uri):
     organisations.ensure(config.tenant)
     organisations.ensure(OTHER)
     passwords = PasswordAccounts(engine, users)
-    identity = Identity(organisations, users, ApiKeys(engine), AuditLog(engine), passwords, passwords)
+    identity = Identity(organisations, users, ApiKeys(engine), AuditLog(engine), passwords, passwords,
+                        profiles=Profiles(engine))
     yield SimpleNamespace(engine=engine, identity=identity, users=users, passwords=passwords)
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM users"))
@@ -288,3 +289,90 @@ def test_every_sign_in_step_is_in_the_audit_log(client, world):
         logged = " ".join(connection.execute(text("SELECT details::text FROM audit_events")).scalars())
     assert {"signup", "login", "login_failed", "logout"} <= actions
     assert PASSWORD not in logged
+
+
+# Profiles
+
+PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
+JPEG = b"\xff\xd8\xff\xe0" + b"\x00" * 64
+DETAILS = {"display_name": "Asha  Rao", "job_title": "Engineer", "department": "Platform", "location": "Pune"}
+
+
+def test_a_new_account_has_a_profile_with_its_name(client):
+    headers = bearer(sign_up(client))
+    profile = client.get("/me/profile", headers=headers).json()
+    assert profile == {"display_name": "Asha Rao", "email": "asha@example.test", "job_title": "", "department": "",
+                       "location": "", "photo": ""}
+
+
+def test_profile_details_are_saved_and_the_new_name_is_used_everywhere(client):
+    headers = bearer(sign_up(client))
+    saved = client.put("/me/profile", headers=headers, json=DETAILS)
+    assert saved.status_code == 200
+    assert saved.json()["display_name"] == "Asha Rao"  # extra spaces are tidied
+    assert saved.json()["department"] == "Platform"
+    assert client.get("/me", headers=headers).json()["display_name"] == "Asha Rao"
+    assert log_in(client).json()["session"]["display_name"] == "Asha Rao"
+
+
+@pytest.mark.parametrize("change", [{"display_name": ""}, {"display_name": "<script>x</script>"},
+                                    {"job_title": "a" * 101}, {"location": "line\nbreak"}])
+def test_profile_details_must_be_plain_text(client, change):
+    headers = bearer(sign_up(client))
+    assert client.put("/me/profile", headers=headers, json={**DETAILS, **change}).status_code == 422
+
+
+def test_a_photo_is_saved_and_removed(client):
+    headers = bearer(sign_up(client))
+    saved = client.put("/me/profile/photo", headers=headers, files={"photo": ("me.jpg", JPEG, "image/jpeg")})
+    assert saved.status_code == 200
+    assert saved.json()["photo"].startswith("data:image/jpeg;base64,")
+    removed = client.delete("/me/profile/photo", headers=headers)
+    assert removed.json()["photo"] == ""
+
+
+def test_a_photo_is_recognised_by_its_contents_not_its_name(client):
+    headers = bearer(sign_up(client))
+    svg = b'<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>'
+    named_as_png = client.put("/me/profile/photo", headers=headers, files={"photo": ("me.png", svg, "image/png")})
+    assert named_as_png.status_code == 415
+    really_png = client.put("/me/profile/photo", headers=headers, files={"photo": ("me.txt", PNG, "text/plain")})
+    assert really_png.json()["photo"].startswith("data:image/png;base64,")
+
+
+def test_a_photo_that_is_too_big_is_refused(client):
+    headers = bearer(sign_up(client))
+    huge = JPEG + b"\x00" * 300_000
+    assert client.put("/me/profile/photo", headers=headers,
+                      files={"photo": ("me.jpg", huge, "image/jpeg")}).status_code == 413
+
+
+def test_each_person_only_reaches_their_own_profile(client, world):
+    asha = bearer(sign_up(client))
+    client.put("/me/profile", headers=asha, json=DETAILS)
+    client.put("/me/profile/photo", headers=asha, files={"photo": ("me.jpg", JPEG, "image/jpeg")})
+    gina = admin_of(client, world, "pw_other", "gina@other.example")
+    other = client.get("/me/profile", headers=gina).json()
+    assert other["email"] == "gina@other.example" and other["photo"] == "" and other["department"] == ""
+
+
+def test_a_shared_key_has_no_profile(client, monkeypatch):
+    monkeypatch.setattr(config, "AUTH_MODE", "demo")
+    response = client.get("/me/profile", headers={"X-API-Key": "shared-demo-key", "X-User-Id": "E1001"})
+    assert response.status_code == 404
+
+
+def test_profile_changes_are_in_the_audit_log(client, world):
+    headers = bearer(sign_up(client))
+    client.put("/me/profile", headers=headers, json=DETAILS)
+    client.put("/me/profile/photo", headers=headers, files={"photo": ("me.jpg", JPEG, "image/jpeg")})
+    with world.engine.connect() as connection:
+        actions = set(connection.execute(text("SELECT action FROM audit_events")).scalars())
+    assert {"profile_changed", "profile_photo_changed"} <= actions
+
+
+def test_the_apps_tenant_role_keeps_profiles_apart(client, world):
+    headers = bearer(sign_up(client))
+    client.put("/me/profile", headers=headers, json=DETAILS)
+    with TenantEngine(world.engine, "pw_other").begin() as connection:
+        assert connection.execute(text("SELECT count(*) FROM user_profiles")).scalar() == 0

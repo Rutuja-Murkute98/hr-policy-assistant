@@ -15,7 +15,8 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 3 | Document management, admin page, model settings, UI improvements | Built, waiting for owner review |
 | 4 | Multi-tenancy, login, Row-Level Security, security hardening | Built, waiting for owner review |
 | 5 | Observability, load test, deployment guides, backups | Built, waiting for owner review |
-| 6 | Optional advanced features | Only after Phases 1 to 5 |
+| 6 | Optional advanced features | Folded into Phases 12, 14 and 15 of the improvement plan |
+| 7 to 19 | Deployment, trusted evaluation, speed, runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
 
 ## Phase 1 status
 

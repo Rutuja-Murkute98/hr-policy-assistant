@@ -111,13 +111,21 @@ class Settings(BaseSettings):
     langfuse_base_url: str = ""
 
     # Sign-in: see docs/DECISIONS.md, D27. "demo" keeps shared keys and a chosen demo employee.
-    auth_mode: Literal["demo", "oidc"] = "demo"
+    auth_mode: Literal["demo", "oidc", "password"] = "demo"
     oidc_issuer: str = ""  # such as https://accounts.google.com
     oidc_client_id: str = ""
     platform_admin_emails: str = ""  # comma-separated: the first platform admins, who can add organisations
     redis_url: str = ""  # empty = rate limits are counted in PostgreSQL
     rate_limit_tenant_per_minute: int = Field(default=30, ge=1)
     rate_limit_login_per_minute: int = Field(default=30, ge=1)
+    # Password sign-in: see docs/DECISIONS.md, D37
+    allow_signup: bool = True
+    signup_email_domains: str = ""  # comma-separated, such as company.com. Empty = any email can sign up
+    min_password_chars: int = Field(default=10, ge=8, le=64)
+    session_remember_days: int = Field(default=30, ge=1)  # with "Keep me signed in"
+    session_hours: int = Field(default=12, ge=1)  # without it, and the browser forgets it on closing
+    setup_code_hours: int = Field(default=24, ge=1)
+    rate_limit_account_per_minute: int = Field(default=5, ge=1)  # tries at one account's password
 
     @model_validator(mode="after")
     def check_combinations(self) -> "Settings":
@@ -237,3 +245,10 @@ PLATFORM_ADMIN_EMAILS = [email.strip() for email in settings.platform_admin_emai
 REDIS_URL = settings.redis_url
 RATE_LIMIT_TENANT_PER_MINUTE = settings.rate_limit_tenant_per_minute
 RATE_LIMIT_LOGIN_PER_MINUTE = settings.rate_limit_login_per_minute
+ALLOW_SIGNUP = settings.allow_signup
+SIGNUP_EMAIL_DOMAINS = [domain.strip().lower() for domain in settings.signup_email_domains.split(",") if domain.strip()]
+MIN_PASSWORD_CHARS = settings.min_password_chars
+SESSION_REMEMBER_DAYS = settings.session_remember_days
+SESSION_HOURS = settings.session_hours
+SETUP_CODE_HOURS = settings.setup_code_hours
+RATE_LIMIT_ACCOUNT_PER_MINUTE = settings.rate_limit_account_per_minute

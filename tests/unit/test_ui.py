@@ -31,7 +31,7 @@ def test_opens_with_company_name_greeting_and_suggestions(chat):
     assert not chat.exception
     assert "Rutuja Talent Nexus" in page_text(chat)
     assert "Welcome to the" in chat.chat_message[0].markdown[0].value
-    assert len(chat.button) == 4
+    assert len([button for button in chat.button if button.key.startswith("suggestion_")]) == 4
 
 
 def test_shows_connecting_when_the_api_is_unreachable(chat):
@@ -48,7 +48,8 @@ def test_unreachable_api_gives_a_friendly_message(chat):
 def test_failed_reply_offers_try_again_and_new_chat(chat):
     assert [button.label for button in chat.button if button.label == "Try again"] == []
     chat.chat_input[0].set_value("How much leave do I get?").run()
-    assert [button.label for button in chat.button] == ["Try again", "New chat"]
+    assert [button.label for button in chat.button if button.label not in ("Back", "History", "Settings")] == [
+        "Try again", "New chat"]
 
 
 def test_try_again_asks_the_same_question_without_a_duplicate(chat):
@@ -179,7 +180,7 @@ def test_a_signed_in_person_gets_their_own_company_and_no_employee_picker(signed
     assert "Globex &lt;b&gt;Ltd&lt;/b&gt;" in page_text(app)  # an organisation's details can't add HTML to the page
     assert "Rutuja Talent Nexus" not in page_text(app)
     assert not app.selectbox
-    assert "Sign out (asha@globex.example)" in [button.label for button in app.button]
+    assert "Sign out" in [button.label for button in app.button]
     assert signed_in[0] == ("http://127.0.0.1:9/auth/session", {"Authorization": "Bearer a-token"})
 
 

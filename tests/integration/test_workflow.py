@@ -669,3 +669,49 @@ def test_unknown_employee_is_refused(shared):
 def test_working_days_skip_weekends():
     friday = date(2026, 11, 6)
     assert working_days(friday, friday + timedelta(days=3)) == 2
+
+
+# Choosing not to save chats
+
+def test_a_chat_that_is_not_saved_stores_nothing(shared):
+    workflow = make(shared)
+    result = workflow.ask("How much earned leave do I get?", user_id="E1001", save_history=False)
+    assert result.answer
+    assert result.conversation_id is None
+    assert result.message_id is None
+    assert workflow.conversations.conversations("E1001") == []
+    assert rows(shared, "messages") == []
+
+
+def test_a_follow_up_still_works_when_chats_are_not_saved(shared):
+    llm = ScriptedLLM()
+    workflow = make(shared, llm)
+    workflow.ask("What about sick leave?", [{"role": "user", "content": "How much earned leave?"},
+                                            {"role": "assistant", "content": "Twenty days."}],
+                 user_id="E1001", save_history=False)
+    assert any("How much earned leave?" in seen for seen in llm.seen)
+    assert workflow.conversations.conversations("E1001") == []
+
+
+def test_an_unanswered_question_is_not_kept_when_chats_are_not_saved(shared, monkeypatch):
+    llm = ScriptedLLM()
+    llm.answer = StructuredAnswer(answered=False)
+    workflow = make(shared, llm)
+    workflow.ask("How much earned leave do I get?", user_id="E1001", save_history=False)
+    assert rows(shared, "unanswered_questions") == []
+
+
+def test_saving_chats_is_on_until_someone_turns_it_off(shared):
+    store = make(shared).conversations
+    assert store.saves_history("E1001") is True
+    store.set_saves_history("E1001", False)
+    assert store.saves_history("E1001") is False
+    assert store.saves_history("E1002") is True
+    store.set_saves_history("E1001", True)
+    assert store.saves_history("E1001") is True
+
+
+def test_a_saved_chat_is_listed_with_its_first_question_as_the_title(shared):
+    workflow = make(shared)
+    workflow.ask("How much earned leave do I get?", user_id="E1001")
+    assert workflow.conversations.conversations("E1001")[0]["title"] == "How much earned leave do I get?"

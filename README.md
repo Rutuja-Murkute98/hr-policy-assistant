@@ -185,6 +185,13 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `GET` | `/live` | Checks that the server is running | Anyone |
 | `GET` | `/health` | Checks the database and counts indexed chunks | Anyone |
 | `POST` | `/auth/session` | Records a sign-in, and says who it is | A signed-in person |
+| `GET` | `/auth/options` | Says how the sign-in page should behave | Anyone |
+| `POST` | `/auth/signup` | Creates an employee account and signs in. Needs `AUTH_MODE=password`, as do the next three | Anyone |
+| `POST` | `/auth/login` | Signs in with an email and password | Anyone |
+| `POST` | `/auth/password` | Sets a password with a one-time code from an HR admin | Anyone with a code |
+| `POST` | `/auth/logout` | Ends this session | A signed-in person |
+| `GET`, `PATCH` | `/me/settings` | Reads or changes whether this person's chats are saved | A known user |
+| `POST` | `/admin/users/{id}/setup-code` | Makes a one-time code for setting a password | HR admin |
 | `GET` | `/me` | Says who's calling, and their organisation | Any caller |
 | `POST` | `/ask` | Answers a question | Any caller |
 | `POST` | `/ask/stream` | Sends the answer as it's written, as server-sent events: `token`, then `done` or `error` | Any caller |
@@ -212,8 +219,9 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 **How callers prove who they are** depends on `AUTH_MODE`:
 
 - **`demo` (default):** a shared `X-API-Key`, plus `X-User-Id` to name a user, and a shared `X-Admin-Key` for admin routes. **Anyone with the key can name any user, so this is for fake data only.**
+- **`password`:** people create an account or sign in on the sign-in page, and the screens send `Authorization: Bearer <session token>`. The shared keys stop working. See [DEPLOY.md](DEPLOY.md).
 - **`oidc`:** people sign in and send `Authorization: Bearer <ID token>`. The shared keys stop working. Accounts must be added by an HR admin first.
-- **In both:** a per-organisation key from `/admin/api-keys`, sent as `X-API-Key` with `X-User-Id`, lets an integration act for its own organisation's users. Treat that key like a password, because it can name any user in that organisation.
+- **In all of them:** a per-organisation key from `/admin/api-keys`, sent as `X-API-Key` with `X-User-Id`, lets an integration act for its own organisation's users. Treat that key like a password, because it can name any user in that organisation.
 
 The organisation always comes from the caller's identity. No header or request field can choose it.
 
@@ -265,7 +273,9 @@ Add these to `.env` to change how it works. `.env.example` lists them all.
 | `ABSTENTION_MODE` | `confidence` (default) or `distance`, which uses `MAX_DISTANCE` |
 | `RERANKER` | `flashrank` adds a small local reranker, with more memory use and a model download. `cohere` uses Cohere's API and needs `COHERE_API_KEY`. Both are off by default |
 | `TENANT_CONFIG_FILE` | Points to the file with the company's name, HR email, branding and policy categories |
-| `AUTH_MODE`, `OIDC_ISSUER`, `OIDC_CLIENT_ID` | `demo` (default) or `oidc` for real sign-in. See [DEPLOY.md](DEPLOY.md) |
+| `AUTH_MODE`, `OIDC_ISSUER`, `OIDC_CLIENT_ID` | `demo` (default), `password` for accounts with a sign-up page, or `oidc` for a sign-in provider. See [DEPLOY.md](DEPLOY.md) |
+| `ALLOW_SIGNUP`, `SIGNUP_EMAIL_DOMAINS` | Whether people can create their own account, and from which email domains. On by default, for any email |
+| `MIN_PASSWORD_CHARS`, `SESSION_REMEMBER_DAYS`, `SESSION_HOURS`, `SETUP_CODE_HOURS` | Password length (10), and how long a kept session (30 days), other session (12 hours) and set-up code (24 hours) last |
 | `PLATFORM_ADMIN_EMAILS` | The first platform admins, who can add organisations |
 | `LOG_FORMAT`, `LOG_LEVEL` | `json` (default) or `text`. See [OPERATIONS.md](docs/OPERATIONS.md) |
 | `LLM_PRICE_INPUT_PER_MILLION`, `LLM_PRICE_OUTPUT_PER_MILLION` | Prices for the cost estimate. 0 by default, for a free tier |

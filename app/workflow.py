@@ -143,8 +143,8 @@ class ChatWorkflow:
             logger.info("Removed %s conversations past the retention period", removed)
 
     def stream(self, question: str, history: list[dict] | None = None, filters: SearchFilters | None = None,
-               stream_tokens: bool = True, user_id: str | None = None,
-               conversation_id: str | None = None) -> Iterator[tuple[str, object]]:
+               stream_tokens: bool = True, user_id: str | None = None, conversation_id: str | None = None,
+               save_history: bool = True) -> Iterator[tuple[str, object]]:
         """Yield ("token", text) as the answer is written, then ("done", WorkflowAnswer)."""
         started = time.perf_counter()
         usage = UsageCallback()
@@ -152,7 +152,7 @@ class ChatWorkflow:
         # From here on the masked text is all that's used, so a model provider never sees what was masked
         question = mask(question, self.public_emails)
         summary = ""
-        if user_id:
+        if user_id and save_history:
             # A stored chat is the source of history, so a caller can't rewrite what was said
             conversation_id = self.conversations.start(user_id, conversation_id)
             summary, history = self.conversations.context(user_id, conversation_id, config.MAX_HISTORY_MESSAGES)
@@ -188,15 +188,17 @@ class ChatWorkflow:
         if user_id and conversation_id:
             answer.message_id = self.conversations.add_message(user_id, conversation_id, "assistant", answer.answer)
             summarise_if_long(self.conversations, self.llm, user_id, conversation_id)
-        if answer.abstain_reason in ("no_evidence", "model_abstained"):
+        # The wording of a question is kept here too, so someone who chose not to save their chats is left out
+        if save_history and answer.abstain_reason in ("no_evidence", "model_abstained"):
             self.knowledge.record_unanswered(answer.question_used or question, answer.abstain_reason)
         self._record("question", started, usage, snapshot.values)  # before "done", as a caller may stop reading there
         yield "done", answer
 
     def ask(self, question: str, history: list[dict] | None = None, filters: SearchFilters | None = None,
-            user_id: str | None = None, conversation_id: str | None = None) -> WorkflowAnswer:
+            user_id: str | None = None, conversation_id: str | None = None,
+            save_history: bool = True) -> WorkflowAnswer:
         for kind, value in self.stream(question, history, filters, stream_tokens=False, user_id=user_id,
-                                       conversation_id=conversation_id):
+                                       conversation_id=conversation_id, save_history=save_history):
             if kind == "done":
                 assert isinstance(value, WorkflowAnswer)
                 return value

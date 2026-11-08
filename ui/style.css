@@ -212,6 +212,94 @@
   .suggest-label { margin: 2px 0 4px; }
 }
 
+/* The chat frame: one bordered box filling the window, where only the messages scroll.
+   Streamlit pulls the element after a piece of Markdown up by 1rem, so those margins cancel that out. */
+.stApp:has(.st-key-chat_frame) [data-testid="stHeader"] { display: none; }
+[data-testid="stMain"]:has(.st-key-chat_frame) { overflow: hidden; }
+.block-container:has(.st-key-chat_frame) {
+  box-sizing: border-box; height: 100dvh; max-width: 860px; padding: 14px 16px; overflow: hidden;
+}
+.block-container:has(.st-key-chat_frame) [data-testid="stElementContainer"]:has([data-testid="stHtml"]) { display: none; }
+.st-key-chat_frame {
+  display: flex; flex-direction: column; flex-wrap: nowrap;
+  box-sizing: border-box; flex: 0 0 calc(100dvh - 28px); overflow: hidden;
+  background: var(--surface); border: 1px solid #c6dcd7; border-radius: 22px;
+  box-shadow: 0 26px 60px -34px rgba(11, 79, 74, .65);
+  animation: rise .3s ease-out both;
+}
+/* The header and question box keep their full height, and the messages take what's left */
+[data-testid="stLayoutWrapper"]:has(> .st-key-chat_top),
+[data-testid="stLayoutWrapper"]:has(> .st-key-chat_bottom),
+[data-testid="stLayoutWrapper"]:has(> .st-key-chat_tools),
+.st-key-chat_top, .st-key-chat_bottom, .st-key-chat_tools { flex: 0 0 auto; }
+[data-testid="stLayoutWrapper"]:has(> .st-key-chat_messages) { flex: 1 1 0; min-height: 0; }
+.st-key-chat_messages {
+  box-sizing: border-box; height: 100% !important; padding: 14px 16px; background: #f7faf9;
+}
+.st-key-chat_frame .brand-bar { margin: 0 0 1rem; padding: 13px 18px; border-radius: 0; box-shadow: none; animation: sheen 9s ease-in-out infinite alternate; }
+.st-key-chat_frame .brand-logo { width: 44px; height: 44px; font-size: 17px; }
+.st-key-chat_frame .brand-company { font-size: 18px; }
+.st-key-chat_frame .brand-product { font-size: 13px; }
+.st-key-chat_frame [data-testid="stElementContainer"]:has(.brand-bar) { margin-top: 0; }
+.st-key-chat_tools {
+  flex-direction: row; justify-content: flex-end; align-items: center; flex-wrap: wrap;
+  box-sizing: border-box; padding: 5px 14px; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+.st-key-chat_tools .stButton, .st-key-chat_tools [data-testid="stElementContainer"]:has(.stButton) { width: auto !important; }
+.st-key-chat_tools [data-testid="stElementContainer"]:has(.st-key-chat_back),
+.st-key-chat_back { margin-right: auto; }
+.st-key-chat_tools button:disabled { opacity: .45; }
+.st-key-chat_tools button {
+  width: auto; min-height: 30px; padding: 2px 10px; border: none; background: transparent;
+  color: var(--muted); font-size: 13px; animation: none;
+}
+.st-key-chat_tools button p { font-size: 13px; }
+.st-key-chat_tools button:hover, .st-key-chat_tools button:focus-visible {
+  transform: none; box-shadow: none; color: var(--brand-dark);
+}
+.st-key-chat_bottom {
+  box-sizing: border-box; padding: 10px 14px 8px; background: var(--surface); border-top: 1px solid var(--line);
+}
+.st-key-chat_bottom [data-testid="stChatInput"] { box-shadow: none; }
+.st-key-chat_bottom .footer-note { margin: 6px 0 1rem; font-size: 11.5px; line-height: 1.3; }
+.st-key-chat_messages [data-testid="stChatMessage"]:last-of-type { margin-bottom: 0; }
+.panel-title { margin: 2px 0 4px; color: var(--ink); font-size: 20px; font-weight: 800; }
+.panel-note { margin-bottom: 1rem; color: var(--muted); font-size: 14px; }
+.panel-subtitle { margin: 14px 0 2px; color: var(--ink); font-size: 15px; font-weight: 700; }
+.chat-temp-note {
+  margin-bottom: 1.5rem; padding: 7px 12px; border-radius: 10px; text-align: center;
+  color: #5c2c04; background: #fdf1dc; border: 1px solid #f2cf95; font-size: 13px;
+}
+.st-key-chat_messages .stButton > button { width: auto; }
+.st-key-chat_messages [data-testid="stHorizontalBlock"] .stButton > button { width: 100%; }
+[class*="st-key-chat_row_"] { flex-wrap: nowrap; align-items: center; }
+[class*="st-key-chat_row_"] [data-testid="stElementContainer"]:first-child,
+[class*="st-key-chat_row_"] [data-testid="stElementContainer"]:first-child .stButton { flex: 1 1 0; min-width: 0; width: 100%; }
+[class*="st-key-chat_row_"] [data-testid="stElementContainer"]:first-child .stButton > button { width: 100%; justify-content: flex-start; }
+[class*="st-key-open_"] button > div, [class*="st-key-open_"] button [data-testid="stMarkdownContainer"] {
+  justify-content: flex-start; width: 100%; text-align: left;
+}
+[class*="st-key-chat_row_"] [data-testid="stElementContainer"]:first-child .stButton > button p {
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left;
+}
+[class*="st-key-chat_row_"] [data-testid="stElementContainer"]:last-child { flex: 0 0 auto; width: auto; }
+[class*="st-key-delete_"] .stButton > button { color: var(--muted); }
+
+@media (max-width: 600px) {
+  .block-container:has(.st-key-chat_frame) { padding: 6px 8px; }
+  .st-key-chat_frame { flex-basis: calc(100dvh - 12px); border-radius: 16px; }
+  .st-key-chat_frame .brand-bar { padding: 10px 12px; }
+  .st-key-chat_frame .brand-logo { width: 38px; height: 38px; font-size: 14px; }
+  .st-key-chat_frame .brand-company { font-size: 16px; }
+  .st-key-chat_frame .brand-product { font-size: 12px; }
+  .st-key-chat_tools { gap: 2px; padding: 5px 6px; }
+  .st-key-chat_tools:not(:has([data-testid="stSelectbox"])) { flex-wrap: nowrap; }
+  .st-key-chat_tools button { padding: 2px 6px; }
+  .st-key-chat_tools button p { font-size: 12.5px; }
+  .st-key-chat_messages { padding: 10px; }
+  .st-key-chat_bottom { padding: 8px 10px 6px; }
+}
+
 /* Respect people who turn animations off */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }

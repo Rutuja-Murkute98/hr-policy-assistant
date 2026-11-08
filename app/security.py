@@ -10,7 +10,7 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy import Engine, text
 
 from app import config
-from app.identity import KEY_PREFIX, IdentityError, OrganisationUnavailable, Principal
+from app.identity import KEY_PREFIX, IdentityError, OrganisationUnavailable, Principal, hash_key
 
 logger = logging.getLogger("hr_helpdesk")
 
@@ -45,7 +45,7 @@ def current_principal(
             # An integration, such as a Slack bot, says which of its own organisation's users it's acting for
             principal = Principal(tenant_id, x_user_id or None, "employee", "api_key")
     if principal is None:
-        if config.AUTH_MODE == "oidc":
+        if config.AUTH_MODE != "demo":
             raise HTTPException(401, "Please sign in")
         if not config.API_KEY:
             raise HTTPException(503, "The server has no HELPDESK_API_KEY set")
@@ -69,7 +69,7 @@ def admin_principal(
             raise HTTPException(403, "This needs an HR admin account")
         request.state.tenant_id = principal.tenant_id
         return principal
-    if config.AUTH_MODE == "oidc":
+    if config.AUTH_MODE != "demo":
         raise HTTPException(401, "Please sign in")
     if not config.ADMIN_KEY:
         raise HTTPException(503, "Admin is switched off. Set HELPDESK_ADMIN_KEY to use it.")
@@ -233,7 +233,8 @@ class RateLimiter:
     def __call__(self, request: Request, x_client_id: str = Header(default=""),
                  principal: Principal = Depends(current_principal)) -> None:
         tenant_id = principal.tenant_id
-        client = principal.user_id if principal.source == "oidc" else x_client_id[:64] or _client_address(request)
+        signed_in = principal.source in ("oidc", "password")
+        client = principal.user_id if signed_in else x_client_id[:64] or _client_address(request)
         client_key = f"client:{tenant_id}:{client}"
         limits = [(client_key, self.per_client), (f"tenant:{tenant_id}", self.per_tenant), ("all", self.total)]
         full = self.store.allow(limits)
@@ -248,6 +249,12 @@ class RateLimiter:
         """Slow down sign-in attempts, which happen before the caller is known."""
         if self.store.allow([(f"login:{_client_address(request)}", self.logins)]):
             raise HTTPException(429, "Too many sign-in attempts. Please wait a minute and try again.",
+                                headers={"Retry-After": "60"})
+
+    def check_account(self, email: str) -> None:
+        """Slow down guessing at one account's password. The email is hashed, so none is stored here."""
+        if self.store.allow([(f"account:{hash_key(email.strip().lower())}", config.RATE_LIMIT_ACCOUNT_PER_MINUTE)]):
+            raise HTTPException(429, "Too many tries for this account. Please wait a minute and try again.",
                                 headers={"Retry-After": "60"})
 
 

@@ -233,6 +233,37 @@ account, and `email_verified` is required, so an unproven email can't claim an a
 **Trade-offs:** An ID token lasts about an hour with most providers, after which the person signs in again, as there's
 no refresh yet. A real login needs a client from a provider, which the owner has to create. Tests use a fake provider.
 
+## D37. Password sign-in and self-service sign-up, as a third AUTH_MODE
+
+**Decision:** `AUTH_MODE=password` adds accounts with an email and password, on a sign-in and sign-up page. Passwords are
+hashed with Argon2id (`argon2-cffi`), at OWASP's minimum of 19 MB and 2 passes. A session is a random token kept in a browser
+cookie, and the database holds only its hash. People who forget a password, or whom HR added, use a one-time code from an HR
+admin. The first admin comes from `ops/create_admin.py`. `demo` and `oidc` still work as before.
+
+**Why:** The owner asked for real sign-in with a sign-up page, without needing a client from a provider. This changes D27's
+"stores no passwords" and "no self-service sign-up" for this mode, so these limits apply: a new account is always an employee
+in the default organisation, with no link to HR records, and an email that already exists can't be claimed, so nobody can take
+over an admin by signing up first. The tables holding hashes and sessions are closed to the app's tenant role.
+
+**Trade-offs:** Emails aren't verified, because there's no email service, so anyone can register with any address unless
+`SIGNUP_EMAIL_DOMAINS` or `ALLOW_SIGNUP=false` limit it, and even a domain limit isn't proof of who someone is. Forgotten
+passwords need an HR admin. Streamlit can't set cookies from the server, so the page sets it with JavaScript, which means it
+isn't HttpOnly: a script injected into the page could read it. Sessions can be ended, and they expire, which limits that.
+
+## D38. Each person chooses whether their chats are saved
+
+**Decision:** Saving chats is on by default, with a switch in Settings, kept per person in `user_preferences`. The API reads
+it on each question, so no screen can store a chat someone said not to. With it off, nothing goes to `conversations` or
+`messages`, the screen sends the recent messages so follow-ups still work, and an unanswered question isn't kept either. The
+chat screen always opens on a fresh chat, and earlier chats are opened from History.
+
+**Why:** The owner asked for the same control people have in ChatGPT and Claude. The wording of a question is the personal
+part, so it's the part left out.
+
+**Trade-offs:** Actions such as leave requests and tickets are still recorded, because they are real actions and need an audit
+trail. Counts and timings still go to the metrics. A chat that isn't saved can't be rated, as there's no stored answer to rate.
+Reopened chats have no sources, because sources aren't stored with messages.
+
 ## D28. Rate limits are counted in PostgreSQL, or Redis if it's set up
 
 **Decision:** Limits per client, per organisation and overall, over a sliding 60 seconds. Counts live in

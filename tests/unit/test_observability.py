@@ -76,12 +76,21 @@ def test_personal_data_in_a_message_is_masked():
     assert format_record("Call %s", ("9876543210",))["message"] == "Call [PHONE]"
 
 
+class SavesChats:
+    def saves_history(self, user_id):
+        return True
+
+
 class FailingService:
+    conversations = SavesChats()
+
     def ask(self, *args, **kwargs):
         raise RuntimeError(f"The provider refused: {SECRET_QUESTION}")
 
 
 class WorkingService:
+    conversations = SavesChats()
+
     def ask(self, question, *args, **kwargs):
         return SimpleNamespace(answer="Yes", sources=[], chunks=[], conversation_id=None, intent="", pending_action=None,
                                message_id=None)

@@ -8,7 +8,7 @@ from datetime import date
 
 import requests
 import streamlit as st
-from sign_in import bearer_headers, require_sign_in
+from sign_in import auth_token, bearer_headers, password_mode, require_sign_in, sign_out
 from ui_settings import api_url, tenant
 
 API_URL = api_url()
@@ -21,7 +21,7 @@ JOB_LABELS = {"queued": "Waiting", "running": "Indexing", "succeeded": "Done", "
 
 def request_headers() -> dict[str, str]:
     if SESSION:
-        return bearer_headers(st.user.tokens["id"])
+        return bearer_headers(auth_token())
     return {"X-Admin-Key": st.session_state.get("admin_key", "")}
 
 
@@ -172,8 +172,40 @@ def show_users() -> None:
             if problem:
                 st.error(problem)
             else:
-                st.session_state.admin_message = f"{email.strip()} can now sign in."
+                next_step = ("Choose them below and create a set-up code, so they can set a password."
+                             if password_mode() else "They can now sign in.")
+                st.session_state.admin_message = f"{email.strip()} was added. {next_step}"
                 st.rerun()
+    show_person(users)
+
+
+def show_person(users: list[dict]) -> None:
+    """Link someone to their HR records, or let them set a password."""
+    people = {user["email"]: user for user in users}
+    chosen = st.selectbox("Person", list(people), index=None, placeholder="Choose someone to link or help sign in")
+    if not chosen:
+        return
+    person = people[chosen]
+    with st.form("link_employee"):
+        employee_id = st.text_input("Employee ID", value=person["employee_id"] or "",
+                                    help="Links this person to their HR records, for leave and payslip questions")
+        if st.form_submit_button("Save") and employee_id.strip():
+            _, problem = call_api("PATCH", f"/admin/users/{person['id']}", json={"employee_id": employee_id.strip()})
+            if problem:
+                st.error(problem)
+            else:
+                st.session_state.admin_message = f"{chosen} is now linked to {employee_id.strip()}."
+                st.rerun()
+    if password_mode() and st.button("Create a set-up code", key="setup_code", icon=":material/key:",
+                                     help="For someone you added, or who has forgotten their password"):
+        created, problem = call_api("POST", f"/admin/users/{person['id']}/setup-code")
+        if problem:
+            st.error(problem)
+        else:
+            st.code(created["code"], language=None)
+            st.warning(f"Give this code to {chosen} privately. It's shown only once, works once, and expires in "
+                       f"{created['expires_in_hours']} hours. They enter it under \"Forgot your password\" "
+                       "on the sign-in page.")
 
 
 def show_api_keys() -> None:
@@ -237,10 +269,11 @@ def show_audit() -> None:
 
 
 st.set_page_config(page_title="HR Helpdesk admin", page_icon=":material/admin_panel_settings:")
+st.markdown("[← Back to chat](/)")
 st.title("Policy admin")
 
 if SESSION:
-    st.button(f"Sign out ({SESSION['email']})", icon=":material/logout:", on_click=st.logout)
+    st.button(f"Sign out ({SESSION['email']})", icon=":material/logout:", on_click=sign_out)
     if SESSION["role"] == "employee":
         st.error("This page is for HR admins. Please ask your HR team if you need access.")
         st.stop()
@@ -255,8 +288,10 @@ if problem:
     st.error(problem)
     st.stop()
 
-if "admin_message" in st.session_state:
-    st.success(st.session_state.pop("admin_message"))
+# Always here, even when empty: if the tabs moved up or down the page, Streamlit would reopen the first tab
+with st.container():
+    if "admin_message" in st.session_state:
+        st.success(st.session_state.pop("admin_message"))
 
 documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab, usage_tab, users_tab, keys_tab, audit_tab = st.tabs(
     [f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback", "Usage", "People",

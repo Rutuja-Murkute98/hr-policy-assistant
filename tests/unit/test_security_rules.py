@@ -165,7 +165,7 @@ def test_another_organisations_chunk_ids_are_prefixed():
 class FakeUsers:
     def __init__(self, **changes):
         self.user = SimpleNamespace(id="u1", tenant_id="acme", employee_id="E1", role="employee", active=True,
-                                    organisation_active=True, oidc_subject=None, **changes)
+                                    organisation_active=True, oidc_subject=None, display_name="", **changes)
         self.pinned = []
 
     def find_by_email(self, email):

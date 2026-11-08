@@ -131,6 +131,27 @@ venv\Scripts\python -m pipeline.embed_and_store
 
 The API creates its new table by itself when it starts.
 
+## Signing in with an email and password (`AUTH_MODE=password`)
+
+People create an account on the sign-in page, and it's still there on their next visit. No sign-in provider is needed.
+
+1. In Render's **Environment** settings and Streamlit's **Secrets**, add `AUTH_MODE` = `password`. The API adds its new tables
+   by itself when it starts.
+2. **Decide who may sign up, before anyone can reach it.** By default anyone can register with any email, and emails aren't
+   verified. Set `SIGNUP_EMAIL_DOMAINS` = `yourcompany.com` on Render to limit it, or `ALLOW_SIGNUP` = `false` so only people
+   HR adds can sign in. A new account can read the policies, but never another person's HR records.
+3. Make the first HR admin. Run this anywhere that has `DATABASE_URL` set. It asks for the password without showing it:
+
+   ```
+   python -m ops.create_admin you@company.com --name "Your Name"
+   ```
+4. On `/admin`, under **People**, an HR admin can link someone to their employee ID, which leave and payslip questions need.
+   There they can also create a one-time **set-up code** for someone they added or who has forgotten their password. The person
+   enters it under "Forgot your password" on the sign-in page. There's no email service, so the code is passed on by hand.
+
+The screens must be on https, as the password goes through them and the session is kept in a cookie. This has run locally, not
+yet on Streamlit Community Cloud, so check that a page refresh keeps you signed in there.
+
 ## Signing in (`AUTH_MODE=oidc`)
 
 By default this runs in demo mode: anyone with the shared key can name any demo employee. To have people sign in, you

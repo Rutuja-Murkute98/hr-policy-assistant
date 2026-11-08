@@ -26,7 +26,9 @@ squared with holding employees' personal data.
 | Ratings and comments | `feedback` | Removed with the answer they refer to | Masked |
 | Requests waiting for approval | `pending_actions`, checkpoint tables | Until decided, or 24 hours | Masked question. Finished runs are deleted straight away |
 | Tool use | `tool_audit_log` | `AUDIT_RETENTION_DAYS`, 365 by default | Masked arguments, and the app can't change entries |
+| Accounts | `users`, `user_credentials`, `user_sessions` | Until removed, and sessions until they expire | Passwords and session tokens are only stored as hashes. The app's tenant role can't read them |
 | Sign-ins and admin changes | `audit_events` | `AUDIT_RETENTION_DAYS`, 365 by default | Masked, and the app can't change entries |
+| Whether someone's chats are saved | `user_preferences` | Until removed | With saving off, questions and answers aren't stored, except actions such as leave requests |
 | Rate limit counts | `rate_limit_hits` | Minutes | Holds a user id or client id, and a time |
 | Mock leave and tickets | `hr_leave_requests`, `hr_tickets` | Not removed: a real HR system would set this | Masked question. Fake data only |
 

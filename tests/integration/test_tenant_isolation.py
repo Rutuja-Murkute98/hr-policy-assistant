@@ -810,3 +810,28 @@ def test_a_store_gives_the_same_error_for_someone_elses_conversation(world, clie
     chat = ask(world, client, bob(world))["conversation_id"]
     with pytest.raises(ConversationNotFound):
         world.registry.for_tenant("acme").conversations.messages("E1001", chat)
+
+
+def test_turning_off_saving_through_the_api_stops_chats_being_stored(world, client):
+    with world.engine.begin() as connection:
+        connection.execute(text("DELETE FROM user_preferences"))
+    assert client.get("/me/settings", headers=alice(world)).json()["save_chat_history"] is True
+    assert client.patch("/me/settings", headers=alice(world), json={"save_chat_history": False}).status_code == 200
+    reply = ask(world, client, alice(world))
+    assert reply["conversation_id"] is None
+    assert client.get("/conversations", headers=alice(world)).json() == []
+    with world.engine.connect() as connection:
+        assert connection.execute(text("SELECT count(*) FROM messages")).scalar() == 0
+        actions = connection.execute(text("SELECT action FROM audit_events")).scalars().all()
+    assert "chat_history_setting_changed" in actions
+    assert client.patch("/me/settings", headers=alice(world), json={"save_chat_history": True}).status_code == 200
+    assert ask(world, client, alice(world))["conversation_id"]
+
+
+def test_one_persons_setting_does_not_change_anothers(world, client):
+    with world.engine.begin() as connection:
+        connection.execute(text("DELETE FROM user_preferences"))
+    client.patch("/me/settings", headers=alice(world), json={"save_chat_history": False})
+    assert client.get("/me/settings", headers=bob(world)).json()["save_chat_history"] is True  # also an E1001, elsewhere
+    with world.engine.begin() as connection:
+        connection.execute(text("DELETE FROM user_preferences"))

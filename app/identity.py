@@ -10,7 +10,7 @@ import secrets
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 import httpx
 import jwt
@@ -20,6 +20,9 @@ from app import config
 from app.config import Tenant
 from app.pii import mask, mask_value
 from app.tenancy import TenantEngine, check_tenant_id
+
+if TYPE_CHECKING:
+    from app.passwords import PasswordAccounts
 
 logger = logging.getLogger("hr_helpdesk")
 
@@ -36,8 +39,9 @@ class Principal:
     tenant_id: str
     user_id: str | None
     role: Role
-    source: Literal["oidc", "api_key", "demo_key"]
+    source: Literal["oidc", "password", "api_key", "demo_key"]
     email: str = ""
+    name: str = ""
 
 
 class IdentityError(Exception):
@@ -166,6 +170,7 @@ class Users:
             raise ValueError(f"Role must be one of: {', '.join(ROLES)}")
         if self.find_by_email(email):
             raise ValueError("That email is already registered")
+        self._check_employee_free(tenant_id, employee_id)
         user_id = uuid.uuid4().hex
         with self.engine.begin() as connection:
             connection.execute(text(
@@ -174,6 +179,17 @@ class Users:
             ), {"id": user_id, "tenant_id": tenant_id, "email": email, "employee_id": employee_id,
                 "display_name": display_name, "role": role})
         return {"id": user_id, "email": email, "role": role, "employee_id": employee_id}
+
+    def _check_employee_free(self, tenant_id: str, employee_id: str | None, user_id: str = "") -> None:
+        """Two accounts on one employee record could each read the other's payslip and leave."""
+        if not employee_id:
+            return
+        with TenantEngine(self.engine, tenant_id).begin() as connection:
+            taken = connection.execute(text(
+                "SELECT 1 FROM users WHERE tenant_id = :tenant_id AND employee_id = :employee_id AND id <> :id"
+            ), {"tenant_id": tenant_id, "employee_id": employee_id, "id": user_id}).first()
+        if taken:
+            raise ValueError("That employee ID already belongs to another person")
 
     def list_for_tenant(self, tenant_id: str) -> list[dict]:
         with TenantEngine(self.engine, tenant_id).begin() as connection:
@@ -184,14 +200,17 @@ class Users:
         return [{"id": row.id, "email": row.email, "employee_id": row.employee_id,
                  "display_name": row.display_name, "role": row.role, "active": row.active} for row in rows]
 
-    def update(self, tenant_id: str, user_id: str, role: str | None, active: bool | None) -> bool:
+    def update(self, tenant_id: str, user_id: str, role: str | None, active: bool | None,
+               employee_id: str | None = None) -> bool:
         if role is not None and role not in ("employee", "hr_admin"):
             raise ValueError("Role must be employee or hr_admin")
+        self._check_employee_free(tenant_id, employee_id, user_id)
         with TenantEngine(self.engine, tenant_id).begin() as connection:
             result = connection.execute(text(
-                "UPDATE users SET role = COALESCE(:role, role), active = COALESCE(:active, active) "
+                "UPDATE users SET role = COALESCE(:role, role), active = COALESCE(:active, active), "
+                "employee_id = COALESCE(:employee_id, employee_id) "
                 "WHERE id = :id AND tenant_id = :tenant_id AND role <> 'platform_admin'"
-            ), {"id": user_id, "tenant_id": tenant_id, "role": role, "active": active})
+            ), {"id": user_id, "tenant_id": tenant_id, "role": role, "active": active, "employee_id": employee_id})
         return result.rowcount > 0
 
 
@@ -280,7 +299,7 @@ class TokenVerifier:
             self.users.pin_subject(user.id, claims["sub"])  # the first sign-in fixes who this email belongs to
         elif user.oidc_subject != claims["sub"]:
             raise IdentityError("Please contact your HR team about this account.")
-        return Principal(user.tenant_id, user.employee_id or user.id, user.role, "oidc", email)
+        return Principal(user.tenant_id, user.employee_id or user.id, user.role, "oidc", email, user.display_name)
 
 
 def bootstrap_platform_admins(users: Users, emails: list[str], tenant_id: str) -> None:
@@ -296,7 +315,8 @@ class Identity:
     users: Users
     api_keys: ApiKeys
     audit: AuditLog
-    verifier: TokenVerifier | None
+    verifier: "TokenVerifier | PasswordAccounts | None"
+    passwords: "PasswordAccounts | None" = None
 
 
 def create_identity(engine: Engine) -> Identity:
@@ -304,5 +324,11 @@ def create_identity(engine: Engine) -> Identity:
     organisations, users = Organisations(engine), Users(engine)
     organisations.ensure(config.tenant)
     bootstrap_platform_admins(users, config.PLATFORM_ADMIN_EMAILS, config.TENANT_ID)
-    verifier = TokenVerifier(config.OIDC_ISSUER, config.OIDC_CLIENT_ID, users) if config.AUTH_MODE == "oidc" else None
-    return Identity(organisations, users, ApiKeys(engine), AuditLog(engine), verifier)
+    identity = Identity(organisations, users, ApiKeys(engine), AuditLog(engine), None)
+    if config.AUTH_MODE == "oidc":
+        identity.verifier = TokenVerifier(config.OIDC_ISSUER, config.OIDC_CLIENT_ID, users)
+    elif config.AUTH_MODE == "password":
+        from app.passwords import PasswordAccounts as Accounts  # it builds on this module
+
+        identity.passwords = identity.verifier = Accounts(engine, users)
+    return identity

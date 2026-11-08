@@ -84,11 +84,29 @@ class ConversationStore:
     def conversations(self, user_id: str) -> list[dict]:
         with self.engine.connect() as connection:
             rows = connection.execute(text(
-                "SELECT id, created_at, updated_at FROM conversations "
-                "WHERE tenant_id = :tenant_id AND user_id = :user_id ORDER BY updated_at DESC"
+                "SELECT c.id, c.created_at, c.updated_at, (SELECT left(m.content, 80) FROM messages m "
+                "WHERE m.tenant_id = c.tenant_id AND m.conversation_id = c.id AND m.role = 'user' "
+                "ORDER BY m.id LIMIT 1) AS title FROM conversations c "
+                "WHERE c.tenant_id = :tenant_id AND c.user_id = :user_id ORDER BY c.updated_at DESC"
             ), self._owner(user_id)).all()
-        return [{"id": row.id, "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat()}
-                for row in rows]
+        return [{"id": row.id, "title": row.title or "", "created_at": row.created_at.isoformat(),
+                 "updated_at": row.updated_at.isoformat()} for row in rows]
+
+    def saves_history(self, user_id: str) -> bool:
+        """Whether this person's chats are saved. They are unless the person has turned that off."""
+        with self.engine.connect() as connection:
+            saved = connection.execute(text(
+                "SELECT save_chat_history FROM user_preferences WHERE tenant_id = :tenant_id AND user_id = :user_id"
+            ), self._owner(user_id)).scalar()
+        return True if saved is None else saved
+
+    def set_saves_history(self, user_id: str, save: bool) -> None:
+        with self.engine.begin() as connection:
+            connection.execute(text(
+                "INSERT INTO user_preferences (tenant_id, user_id, save_chat_history) "
+                "VALUES (:tenant_id, :user_id, :save) ON CONFLICT (tenant_id, user_id) "
+                "DO UPDATE SET save_chat_history = :save, updated_at = now()"
+            ), self._owner(user_id, save=save))
 
     def delete(self, user_id: str, conversation_id: str) -> None:
         with self.engine.begin() as connection:

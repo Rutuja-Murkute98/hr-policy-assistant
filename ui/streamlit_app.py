@@ -3,15 +3,18 @@
 Run from the project folder (with the API running):
     venv\\Scripts\\streamlit run ui\\streamlit_app.py
 """
+import html
 import json
+import re
 import uuid
 from collections.abc import Iterable, Iterator
+from datetime import datetime
 from pathlib import Path
 
 import requests
 import streamlit as st
 from chat_format import error_html, link_citations, sources_html, usable_history
-from sign_in import bearer_headers, require_sign_in
+from sign_in import auth_token, bearer_headers, require_sign_in, sign_out
 from ui_settings import api_url, demo_employees, setting, tenant
 
 UI_DIR = Path(__file__).resolve().parent
@@ -21,8 +24,10 @@ API_KEY = setting("HELPDESK_API_KEY")
 SESSION = require_sign_in(API_URL)  # None in demo mode, where the tenant file says which company this is
 TENANT = SESSION["organisation"] if SESSION else tenant()
 COMPANY = TENANT["company_name"]
+# Only letters and the like, because a name someone typed goes into Markdown here
+FIRST_NAME = re.sub(r"[^\w'-]", "", ((SESSION or {}).get("display_name") or "").split(" ")[0])
 WELCOME = (
-    f"Hello! 👋 Welcome to the **{COMPANY} HR Helpdesk**.\n\n"
+    f"Hello{f', {FIRST_NAME}' if FIRST_NAME else ''}! 👋 Welcome to the **{COMPANY} HR Helpdesk**.\n\n"
     "I can answer questions about our HR policies, including leave, payroll, "
     "work from home, insurance and more. What would you like to know?"
 )
@@ -48,6 +53,9 @@ TYPING_DOTS = (
 )
 STATUS_LABELS = {"online": "Online", "limited": "Service issue", "connecting": "Connecting"}
 STATUS_CHECK_SECONDS = 5  # how often to check again while the API can't be reached
+MESSAGES_HEIGHT = 480  # turns on scrolling for the messages. The stylesheet then fits them to the window
+MAX_BACK_STEPS = 20
+STORED_CITATION = re.compile(r"\s*\[\d+(?:,\s*\d+)*\]")
 
 
 @st.cache_data(ttl=30, show_spinner=False)
@@ -121,7 +129,7 @@ def read_events(lines: Iterable[str]) -> Iterator[tuple[str, dict]]:
 
 def api_headers() -> dict[str, str]:
     if SESSION:  # the API works out who this is from the token, so nothing else is sent
-        return {**bearer_headers(st.user.tokens["id"]), "X-Client-Id": st.session_state.client_id}
+        return {**bearer_headers(auth_token()), "X-Client-Id": st.session_state.client_id}
     headers = {"X-API-Key": API_KEY, "X-Client-Id": st.session_state.client_id}
     if st.session_state.get("employee_id"):
         headers["X-User-Id"] = st.session_state.employee_id
@@ -157,6 +165,10 @@ def send_feedback(message_id: int) -> None:
 
 def change_employee() -> None:
     start_new_chat()  # one employee must never continue another's chat
+    st.session_state.back_stack = []
+    st.session_state.chat_view = "chat"
+    for key in ("save_history", "retention_days", "save_history_toggle"):
+        st.session_state.pop(key, None)
 
 
 def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[str]:
@@ -222,95 +234,286 @@ def start_new_chat() -> None:
     st.session_state.pending_action = None
 
 
-st.set_page_config(page_title=f"HR Helpdesk | {COMPANY}", page_icon=":material/support_agent:")
-st.markdown(f"<style>{(UI_DIR / 'style.css').read_text(encoding='utf-8')}</style>", unsafe_allow_html=True)
+# Moving between the chat, History and Settings, with Back returning to wherever you were
 
-page_status = api_status()
-# Only while the API can't be reached, the header checks again by itself. Otherwise an
-# open tab would keep waking the hosted API and database.
-st.fragment(show_header, run_every=STATUS_CHECK_SECONDS if page_status == "connecting" else None)(page_status)
+def remember_place() -> None:
+    st.session_state.back_stack = [*st.session_state.get("back_stack", []), {
+        "view": st.session_state.get("chat_view", "chat"), "messages": st.session_state.messages,
+        "conversation_id": st.session_state.conversation_id, "pending_action": st.session_state.pending_action,
+    }][-MAX_BACK_STEPS:]
 
-if "messages" not in st.session_state:
+
+def go_back() -> None:
+    place = st.session_state.back_stack.pop()
+    st.session_state.chat_view = place["view"]
+    st.session_state.messages = place["messages"]
+    st.session_state.conversation_id = place["conversation_id"]
+    st.session_state.pending_action = place["pending_action"]
+
+
+def open_view(view: str) -> None:
+    if st.session_state.get("chat_view", "chat") != view:
+        remember_place()
+        st.session_state.chat_view = view
+
+
+def open_new_chat() -> None:
+    is_fresh = st.session_state.get("chat_view", "chat") == "chat" and len(st.session_state.messages) == 1
+    if not is_fresh:
+        remember_place()
     start_new_chat()
-if "client_id" not in st.session_state:
-    st.session_state.client_id = uuid.uuid4().hex  # gives each chat its own rate limit
-
-employees = {} if SESSION else demo_employees()
-if SESSION:
-    st.button(f"Sign out ({SESSION['email']})", icon=":material/logout:", on_click=st.logout)
-if employees:
-    st.selectbox("Demo employee (fake data, until real sign-in)", list(employees), format_func=employees.get,
-                 key="employee_id", on_change=change_employee)
-
-# A question comes from the box or from a suggested-question button
-question = st.chat_input("Ask about leave, payroll, work from home...", max_chars=500)
-question = question or st.session_state.pop("queued_question", None)
-
-for message_index, past_message in enumerate(st.session_state.messages):
-    show_message(message_index, past_message)
-
-if question:
-    st.session_state.messages.append({"role": "user", "content": question, "sources": []})
-    with st.chat_message("user", avatar=AVATARS["user"]):
-        st.markdown(question)
-
-    with st.chat_message("assistant", avatar=AVATARS["assistant"]):
-        history = chat_history()
-        typing = st.empty()
-        with typing.container():
-            st.markdown(TYPING_DOTS, unsafe_allow_html=True)
-            if page_status == "connecting":
-                st.caption("The helpdesk is waking up. The first question can take a minute or two.")
+    st.session_state.chat_view = "chat"
 
 
-        def clear_typing_then_stream(tokens: Iterator[str]) -> Iterator[str]:
-            for number, token in enumerate(tokens):
-                if number == 0:
-                    typing.empty()
-                yield token
+def forget_chat(conversation_id: str | None = None) -> None:
+    """Drop a deleted chat from Back and from the screen. With no id, that's every saved chat."""
+    def is_gone(place_id: str | None) -> bool:
+        return bool(place_id) and conversation_id in (None, place_id)
+
+    st.session_state.back_stack = [place for place in st.session_state.get("back_stack", [])
+                                   if not is_gone(place["conversation_id"])]
+    if is_gone(st.session_state.conversation_id):
+        start_new_chat()
 
 
-        def show_status(text: str) -> None:
+def call_api(method: str, path: str, **kwargs) -> tuple[object | None, str]:
+    """Return (data, ""), or (None, a message for the person)."""
+    try:
+        response = requests.request(method, f"{API_URL}{path}", headers=api_headers(), timeout=30, **kwargs)
+    except requests.RequestException:
+        return None, WAKING_UP
+    if not response.ok:
+        return None, error_message(response)
+    try:
+        return response.json(), ""
+    except ValueError:
+        return None, f"Something went wrong (error {response.status_code}). Please try again."
+
+
+def short_date(moment: str) -> str:
+    return datetime.fromisoformat(moment).astimezone().strftime("%d %b %Y")
+
+
+def open_saved_chat(conversation_id: str, updated_at: str) -> None:
+    stored, problem = call_api("GET", f"/conversations/{conversation_id}/messages")
+    if problem:
+        st.toast(problem)
+        return
+    remember_place()
+    # Sources aren't stored with a message, so the numbers that pointed to them would lead nowhere
+    earlier = [{"role": message["role"], "content": STORED_CITATION.sub("", message["content"]), "sources": []}
+               for message in stored]
+    opening = f"Here's your chat from {short_date(updated_at)}. You can carry on from here."
+    st.session_state.messages = [{"role": "assistant", "content": opening, "sources": []}, *earlier]
+    st.session_state.conversation_id = conversation_id
+    st.session_state.pending_action = None
+    st.session_state.chat_view = "chat"
+
+
+def delete_saved_chat(conversation_id: str) -> None:
+    _, problem = call_api("DELETE", f"/conversations/{conversation_id}")
+    if problem:
+        st.toast(problem)
+    else:
+        forget_chat(conversation_id)
+        st.toast("Chat deleted.")
+
+
+def delete_all_chats() -> None:
+    _, problem = call_api("DELETE", "/conversations")
+    if problem:
+        st.toast(problem)
+    else:
+        forget_chat()
+        st.session_state.confirm_delete_all = False
+        st.toast("All your saved chats were deleted.")
+
+
+def history_is_saved() -> bool:
+    """This person's choice, asked for once. If the API can't say, assume the usual setting."""
+    if "save_history" not in st.session_state:
+        settings, problem = call_api("GET", "/me/settings")
+        if problem:
+            return True
+        st.session_state.save_history = settings["save_chat_history"]
+        st.session_state.retention_days = settings["retention_days"]
+    return st.session_state.save_history
+
+
+def change_saving() -> None:
+    wanted = st.session_state.save_history_toggle
+    settings, problem = call_api("PATCH", "/me/settings", json={"save_chat_history": wanted})
+    if problem:
+        st.session_state.save_history_toggle = not wanted
+        st.toast(problem)
+    else:
+        st.session_state.save_history = settings["save_chat_history"]
+
+
+def show_history() -> None:
+    st.markdown('<div class="panel-title">Your chats</div>', unsafe_allow_html=True)
+    st.button("New chat", icon=":material/add:", on_click=open_new_chat, key="history_new_chat")
+    chats, problem = call_api("GET", "/conversations")
+    if problem:
+        st.error(problem)
+        return
+    if not chats:
+        st.caption("No saved chats yet." if history_is_saved() else
+                   "No saved chats. Saving is turned off in Settings, so new chats won't appear here.")
+        return
+    for chat in chats:
+        title = chat["title"] or "Chat"
+        with st.container(horizontal=True, key=f"chat_row_{chat['id']}"):
+            st.button(f"{title} · {short_date(chat['updated_at'])}", key=f"open_{chat['id']}", on_click=open_saved_chat,
+                      args=(chat["id"], chat["updated_at"]))
+            st.button("Delete", icon=":material/delete:", key=f"delete_{chat['id']}", on_click=delete_saved_chat,
+                      args=(chat["id"],), help="Delete this chat")
+
+
+def show_settings() -> None:
+    st.markdown('<div class="panel-title">Settings</div>', unsafe_allow_html=True)
+    if SESSION:
+        st.markdown(f'<div class="panel-note">Signed in as {html.escape(SESSION["email"])}</div>',
+                    unsafe_allow_html=True)
+    saving = history_is_saved()
+    if "save_history" not in st.session_state:  # the API couldn't say, so don't show a switch that might be wrong
+        st.error(WAKING_UP)
+        return
+    if "save_history_toggle" not in st.session_state:
+        st.session_state.save_history_toggle = saving
+    st.toggle("Save my chat history", key="save_history_toggle", on_change=change_saving)
+    days = st.session_state.get("retention_days", 90)
+    if saving:
+        st.caption(f"Your chats are saved to your account, so you can reopen them from History. "
+                   f"A chat is deleted automatically after {days} days with no activity.")
+    else:
+        st.caption("New chats aren't saved or shown in History, and they're gone once you leave this screen. "
+                   "Chats saved earlier stay until you delete them. Anything you ask the helpdesk to do, "
+                   "such as a leave request or a ticket, is still recorded.")
+    st.markdown('<div class="panel-subtitle">Delete my saved chats</div>', unsafe_allow_html=True)
+    confirmed = st.checkbox("Yes, delete all my saved chats. This can't be undone.", key="confirm_delete_all")
+    st.button("Delete all chats", icon=":material/delete:", disabled=not confirmed, on_click=delete_all_chats,
+              key="delete_all_chats")
+
+
+def show_chat(question: str | None) -> None:
+    # A sleeping API wakes up from this, so an unreachable one isn't asked on every redraw
+    if page_status != "connecting" and not history_is_saved():
+        st.markdown('<div class="chat-temp-note">Temporary chat: this chat isn\'t being saved. '
+                    "You can change that in Settings.</div>", unsafe_allow_html=True)
+
+    for message_index, past_message in enumerate(st.session_state.messages):
+        show_message(message_index, past_message)
+
+    if question:
+        st.session_state.messages.append({"role": "user", "content": question, "sources": []})
+        with st.chat_message("user", avatar=AVATARS["user"]):
+            st.markdown(question)
+
+        with st.chat_message("assistant", avatar=AVATARS["assistant"]):
+            history = chat_history()
+            typing = st.empty()
             with typing.container():
                 st.markdown(TYPING_DOTS, unsafe_allow_html=True)
-                st.caption(text)
+                if page_status == "connecting":
+                    st.caption("The helpdesk is waking up. The first question can take a minute or two.")
 
+            def clear_typing_then_stream(tokens: Iterator[str]) -> Iterator[str]:
+                for number, token in enumerate(tokens):
+                    if number == 0:
+                        typing.empty()
+                    yield token
 
-        result = {"sources": [], "on_status": show_status}
-        streamed = st.write_stream(clear_typing_then_stream(stream_answer(question, history, result)))
-    if "error" in result:
-        failed = {"role": "assistant", "content": result["error"], "sources": [], "error": True}
-        st.session_state.messages.append(failed)
+            def show_status(text: str) -> None:
+                with typing.container():
+                    st.markdown(TYPING_DOTS, unsafe_allow_html=True)
+                    st.caption(text)
+
+            result = {"sources": [], "on_status": show_status}
+            streamed = st.write_stream(clear_typing_then_stream(stream_answer(question, history, result)))
+        if "error" in result:
+            failed = {"role": "assistant", "content": result["error"], "sources": [], "error": True}
+            st.session_state.messages.append(failed)
+        else:
+            answer = result.get("answer") or streamed  # the API's final, checked text wins
+            st.session_state.messages.append({"role": "assistant", "content": answer, "sources": result["sources"],
+                                              "message_id": result.get("message_id")})
+            st.session_state.pending_action = result.get("pending_action")
+        _fetch_status.clear()  # the badge should reflect how this question went
+        st.rerun()  # shows the sources, links and buttons straight away
+
+    pending = st.session_state.get("pending_action")
+    if pending:
+        with st.container(horizontal=True):
+            st.button("Approve", icon=":material/check:", type="primary", key="approve_action",
+                      on_click=decide_action, args=(pending["id"], True))
+            st.button("Decline", icon=":material/close:", key="decline_action",
+                      on_click=decide_action, args=(pending["id"], False))
+    elif st.session_state.messages[-1].get("error"):
+        with st.container(horizontal=True):
+            st.button("Try again", icon=":material/replay:", type="primary", on_click=try_again)
+            st.button("New chat", icon=":material/refresh:", on_click=open_new_chat)
+    elif len(st.session_state.messages) == 1:
+        st.markdown('<div class="suggest-label">Popular questions</div>', unsafe_allow_html=True)
+        columns = st.columns(2)
+        for index, suggestion in enumerate(SUGGESTIONS):
+            columns[index % 2].button(suggestion, key=f"suggestion_{index}", on_click=queue_question,
+                                      args=(suggestion,), use_container_width=True)
     else:
-        answer = result.get("answer") or streamed  # the API's final, checked text wins
-        st.session_state.messages.append({"role": "assistant", "content": answer, "sources": result["sources"],
-                                          "message_id": result.get("message_id")})
-        st.session_state.pending_action = result.get("pending_action")
-    _fetch_status.clear()  # the badge should reflect how this question went
-    st.rerun()  # shows the sources, links and buttons straight away
+        st.button("New chat", icon=":material/refresh:", on_click=open_new_chat)
 
-pending = st.session_state.get("pending_action")
-if pending:
-    with st.container(horizontal=True):
-        st.button("Approve", icon=":material/check:", type="primary", key="approve_action",
-                  on_click=decide_action, args=(pending["id"], True))
-        st.button("Decline", icon=":material/close:", key="decline_action",
-                  on_click=decide_action, args=(pending["id"], False))
-elif st.session_state.messages[-1].get("error"):
-    with st.container(horizontal=True):
-        st.button("Try again", icon=":material/replay:", type="primary", on_click=try_again)
-        st.button("New chat", icon=":material/refresh:", on_click=start_new_chat)
-elif len(st.session_state.messages) == 1:
-    st.markdown('<div class="suggest-label">Popular questions</div>', unsafe_allow_html=True)
-    columns = st.columns(2)
-    for index, suggestion in enumerate(SUGGESTIONS):
-        columns[index % 2].button(suggestion, key=f"suggestion_{index}", on_click=queue_question,
-                                  args=(suggestion,), use_container_width=True)
-else:
-    st.button("New chat", icon=":material/refresh:", on_click=start_new_chat)
 
-st.markdown(
-    '<div class="footer-note">Answers come from company HR policies. For important decisions, '
-    f"please confirm with HR at {TENANT['hr_email']}.</div>",
-    unsafe_allow_html=True,
-)
+st.set_page_config(page_title=f"HR Helpdesk | {COMPANY}", page_icon=":material/support_agent:")
+# st.html, not st.markdown: Markdown can draw after the elements below it, showing them unstyled for a moment
+st.html(f"<style>{(UI_DIR / 'style.css').read_text(encoding='utf-8')}</style>")
+
+page_status = api_status()
+
+if "client_id" not in st.session_state:
+    st.session_state.client_id = uuid.uuid4().hex  # gives each chat its own rate limit
+if "messages" not in st.session_state:
+    start_new_chat()  # every visit opens on a fresh chat. Earlier ones are under History
+
+# The chat sits in one frame. Only the messages scroll: the header above and the question box below stay put.
+with st.container(key="chat_frame", gap=None):
+    frame_top = st.container(key="chat_top", gap=None)
+    messages_area = st.container(key="chat_messages", height=MESSAGES_HEIGHT, border=False, autoscroll=True)
+    frame_bottom = st.container(key="chat_bottom", gap=None)
+
+with frame_top:
+    # Only while the API can't be reached, the header checks again by itself. Otherwise an
+    # open tab would keep waking the hosted API and database.
+    st.fragment(show_header, run_every=STATUS_CHECK_SECONDS if page_status == "connecting" else None)(page_status)
+    employees = {} if SESSION else demo_employees()
+    with st.container(key="chat_tools"):
+        st.button("Back", icon=":material/arrow_back:", key="chat_back", on_click=go_back,
+                  disabled=not st.session_state.get("back_stack"))
+        st.button("History", icon=":material/history:", key="chat_history", on_click=open_view, args=("history",))
+        st.button("Settings", icon=":material/settings:", key="chat_settings", on_click=open_view, args=("settings",))
+        if SESSION:
+            st.button("Sign out", icon=":material/logout:", key="chat_sign_out", on_click=sign_out,
+                      help=f"Signed in as {SESSION['email']}")
+        if employees:
+            st.selectbox("Demo employee (fake data, until real sign-in)", list(employees),
+                         format_func=employees.get, key="employee_id", on_change=change_employee)
+
+with frame_bottom:
+    # A question comes from the box or from a suggested-question button
+    question = st.chat_input("Ask about leave, payroll, work from home...", max_chars=500)
+    st.markdown(
+        '<div class="footer-note">Answers come from company HR policies. For important decisions, '
+        f"please confirm with HR at {TENANT['hr_email']}.</div>",
+        unsafe_allow_html=True,
+    )
+question = question or st.session_state.pop("queued_question", None)
+if question:
+    st.session_state.chat_view = "chat"  # asking from History or Settings carries on with the open chat
+
+with messages_area:
+    view = st.session_state.get("chat_view", "chat")
+    if view == "history":
+        show_history()
+    elif view == "settings":
+        show_settings()
+    else:
+        show_chat(question)

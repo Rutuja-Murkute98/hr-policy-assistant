@@ -21,6 +21,7 @@ ENTER_TENANT_SQL = text(ENTER_TENANT.replace("%s", ":tenant_id"))
 CHECKPOINT_TABLES = ("checkpoints", "checkpoint_writes", "checkpoint_blobs")
 SECURITY_LOCK = 72_004  # any fixed number: it stops two server processes changing security at once
 APPEND_ONLY_TABLES = ("audit_events", "tool_audit_log", "answer_metrics")  # the app can't change these
+OWNER_ONLY_TABLES = ("user_credentials", "user_sessions")  # the app's role gets no access to password hashes at all
 THREAD_TENANT = "split_part(thread_id, ':', 1) = current_setting('app.tenant_id', true)"
 
 
@@ -100,6 +101,8 @@ def grant_app_role(connection) -> None:
         "SELECT tablename FROM pg_policies WHERE schemaname = 'public' AND policyname = 'tenant_isolation'"
     )).scalars().all()
     for table in protected:
+        if table in OWNER_ONLY_TABLES:
+            continue
         if table == "organisations":
             access = "SELECT"
         elif table in APPEND_ONLY_TABLES:

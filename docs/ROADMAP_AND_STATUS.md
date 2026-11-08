@@ -127,6 +127,17 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Backup and restore | Partial | Real restore on the local database, and automated tests. Not run on Neon, and nothing schedules it |
 | Time limit on model calls | Implemented and tested | 20 seconds and one retry, on a real run with the provider under load |
 
+## Password sign-in
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Sign-up, sign-in and sign-out with an email and password | Implemented and tested | Real PostgreSQL through the API, and clicked through in a real browser, locally |
+| Staying signed in between visits, and the last chat restored | Implemented and tested | In a real browser, locally. Not run on Streamlit Community Cloud |
+| Set-up codes for people HR adds or who forget a password | Implemented and tested | API on real PostgreSQL, and the admin screen and form clicked through in a real browser, locally |
+| Fresh chat on every visit, with Back, History and Settings | Implemented and tested | Clicked through in a real browser, locally |
+| Choosing whether chats are saved | Implemented and tested | Real PostgreSQL through the API, and in a real browser, locally |
+| Email verification | Planned | There's no email service, so an email address isn't proven |
+
 ## Earlier work
 
 | Feature | Status | Evidence or gap |

@@ -1,0 +1,160 @@
+/* The sign-in and sign-up page. Colours come from style.css, which always loads first.
+   This file only loads on this page, so its page-wide rules don't reach the chat. */
+[data-testid="stHeader"] { display: none; }
+.block-container {
+  display: flex; flex-direction: column; justify-content: center;
+  box-sizing: border-box; min-height: 100dvh; max-width: 960px; padding: 12px 16px;
+}
+.block-container > [data-testid="stVerticalBlock"] { flex: 0 0 auto; }
+/* The page's styles sit in an element of their own, which shouldn't take up room */
+.block-container [data-testid="stElementContainer"]:has(style),
+.block-container [data-testid="stElementContainer"]:has([data-testid="stHtml"]) { display: none; }
+
+/* One card, split in two: the company on the left, the form on the right.
+   It stays hidden until the form has really loaded, so nobody sees it build up or change size.
+   The late fallback shows it anyway, if the form is ever slow to load. */
+.st-key-auth_page {
+  opacity: 0; background: var(--surface); border-radius: 24px; overflow: hidden;
+  box-shadow: 0 30px 60px -36px rgba(11, 79, 74, .6), 0 0 0 1px rgba(15, 118, 110, .08);
+  animation: auth-show .2s linear 4s forwards;
+}
+.st-key-auth_page:has(input[type="password"]) {
+  opacity: 1;
+  animation: auth-card .6s cubic-bezier(.22, 1, .36, 1) both;
+}
+@keyframes auth-show { to { opacity: 1; } }
+@keyframes auth-card {
+  from { opacity: 0; transform: translateY(22px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes auth-from-left {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes auth-from-below {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* The same size whichever form is showing. An error message can still make it taller. */
+.st-key-auth_page [data-testid="stHorizontalBlock"] { gap: 0; align-items: stretch; min-height: 510px; }
+.st-key-auth_page [data-testid="stColumn"]:first-child {
+  position: relative; overflow: hidden; color: #fff; padding: 32px;
+  display: flex; flex-direction: column; justify-content: center;
+  background: linear-gradient(150deg, var(--brand-dark) 0%, var(--brand) 55%, #14958a 100%);
+  background-size: 200% 200%;
+  animation: sheen 12s ease-in-out infinite alternate;
+}
+.st-key-auth_page [data-testid="stColumn"]:first-child [data-testid="stVerticalBlock"] { justify-content: center; }
+.st-key-auth_page [data-testid="stHeaderActionElements"] { display: none; }
+.st-key-auth_page [data-testid="stColumn"]:last-child {
+  display: flex; flex-direction: column; padding: 26px 36px 20px;
+}
+.st-key-auth_page [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] { flex: 1 1 auto; }
+.st-key-auth_page [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"] { gap: 8px; }
+/* A shorter form sits in the middle of the box, with the help line staying at the bottom */
+.st-key-auth_page [data-testid="stElementContainer"]:has(.auth-heading),
+.st-key-auth_page [data-testid="stElementContainer"]:has(.auth-help) { margin-top: auto; }
+
+/* The company side comes in from the left, the form rises field by field */
+.auth-hero { display: flex; flex-direction: column; gap: 18px; }
+.auth-brand { display: flex; align-items: center; gap: 12px; }
+.auth-brand .brand-logo { width: 44px; height: 44px; font-size: 16px; }
+.auth-brand-name { font-size: 16px; font-weight: 700; line-height: 1.25; }
+.auth-brand-product { font-size: 13px; opacity: .85; }
+.auth-hero h1.auth-title {
+  margin: 0; padding: 0; color: #fff; font-size: 30px; font-weight: 800; line-height: 1.18; letter-spacing: -.4px;
+}
+.st-key-auth_page:has(input[type="password"]) .auth-brand { animation: auth-from-left .6s ease-out .15s backwards; }
+.st-key-auth_page:has(input[type="password"]) .auth-title { animation: auth-from-left .6s ease-out .28s backwards; }
+.st-key-auth_page h2.auth-heading { animation: auth-from-below .4s ease-out .12s backwards; }
+.st-key-auth_page [data-testid="stForm"] [data-testid="stElementContainer"] {
+  animation: auth-from-below .4s ease-out backwards;
+}
+.st-key-auth_page [data-testid="stForm"] [data-testid="stElementContainer"]:nth-child(1) { animation-delay: .16s; }
+.st-key-auth_page [data-testid="stForm"] [data-testid="stElementContainer"]:nth-child(2) { animation-delay: .21s; }
+.st-key-auth_page [data-testid="stForm"] [data-testid="stElementContainer"]:nth-child(3) { animation-delay: .26s; }
+.st-key-auth_page [data-testid="stForm"] [data-testid="stElementContainer"]:nth-child(4) { animation-delay: .31s; }
+.st-key-auth_page [data-testid="stForm"] [data-testid="stElementContainer"]:nth-child(5) { animation-delay: .36s; }
+.st-key-auth_page [data-testid="stForm"] [data-testid="stElementContainer"]:nth-child(6) { animation-delay: .41s; }
+
+/* The form side */
+.st-key-auth_page h2.auth-heading {
+  margin: 8px 0 18px; padding: 0; color: var(--ink); font-size: 23px; font-weight: 800; line-height: 1.2;
+}
+.auth-help { text-align: center; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+.auth-help a { color: var(--brand-dark); font-weight: 600; }
+
+.st-key-auth_page [data-testid="stForm"] { padding: 0; border: none; }
+.st-key-auth_page [data-testid="stWidgetLabel"] { min-height: 0; margin-bottom: 2px; }
+.st-key-auth_page [data-testid="stWidgetLabel"] p { color: var(--ink); font-size: 13px; font-weight: 600; }
+.st-key-auth_page [data-testid="stTextInputRootElement"] {
+  height: 40px; border-radius: 11px; background: #f7faf9; border-color: var(--line);
+  transition: border-color .16s ease, box-shadow .16s ease, background .16s ease;
+}
+.st-key-auth_page [data-testid="stTextInputRootElement"]:focus-within {
+  background: #fff; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(15, 118, 110, .16);
+}
+.st-key-auth_page input { background: transparent; }
+
+/* The switch between signing in and creating an account */
+.st-key-auth_view [data-testid="stButtonGroup"] { width: 100%; }
+.st-key-auth_view [role="radiogroup"] {
+  display: grid; grid-template-columns: 1fr 1fr; width: 100%; gap: 4px; padding: 3px;
+  border-radius: 12px; background: #edf3f1;
+}
+.st-key-auth_view button {
+  width: 100%; min-height: 34px; border: none !important; border-radius: 9px !important;
+  background: transparent; color: var(--muted); font-weight: 600;
+}
+.st-key-auth_view button[aria-checked="true"] {
+  color: var(--brand-dark); background: #fff !important; box-shadow: 0 3px 10px -5px rgba(23, 48, 45, .55);
+}
+
+/* The main button */
+.st-key-auth_page [data-testid="stFormSubmitButton"] button {
+  width: 100%; min-height: 42px; border: none; border-radius: 11px; color: #fff; font-size: 15px; font-weight: 700;
+  background: linear-gradient(120deg, var(--brand-dark), var(--brand));
+}
+
+/* Links under the form */
+.st-key-auth_page .stButton > button[data-testid="stBaseButton-tertiary"] {
+  min-height: 24px; border: none; background: transparent; box-shadow: none; color: var(--brand-dark); font-weight: 600;
+  animation: none;
+}
+.st-key-auth_page [data-testid="stAlert"] { border-radius: 11px; }
+
+/* Nothing on this page reacts to the mouse passing over it. Keyboard focus still shows on the fields. */
+.st-key-auth_page button, .st-key-auth_page button:hover, .st-key-auth_page button:active {
+  transform: none !important; filter: none !important; transition: none !important;
+}
+.st-key-auth_view button:hover { color: var(--muted) !important; background: transparent !important; }
+.st-key-auth_view button[aria-checked="true"]:hover { color: var(--brand-dark) !important; background: #fff !important; }
+.st-key-auth_page [data-testid="stFormSubmitButton"] button:hover {
+  color: #fff !important; box-shadow: none !important;
+  background: linear-gradient(120deg, var(--brand-dark), var(--brand)) !important;
+}
+.st-key-auth_page .stButton > button[data-testid="stBaseButton-tertiary"]:hover {
+  color: var(--brand-dark) !important; background: transparent !important; box-shadow: none !important;
+}
+.st-key-auth_page [data-testid="stTextInputRootElement"]:hover:not(:focus-within) { border-color: var(--line); }
+
+/* Phones and narrow windows: a short company header above the form */
+@media (max-width: 760px) {
+  .st-key-auth_page [data-testid="stHorizontalBlock"] { flex-direction: column; min-height: 0; }
+  .st-key-auth_page [data-testid="stColumn"] { width: 100% !important; flex: 0 0 auto !important; min-width: 0; }
+  .st-key-auth_page [data-testid="stColumn"]:first-child { padding: 14px 20px; }
+  .st-key-auth_page [data-testid="stColumn"]:last-child { min-height: 484px; padding: 14px 20px 14px; }
+  .auth-hero h1.auth-title { display: none; }
+}
+
+/* Very short windows: everything a little tighter, so nothing has to scroll */
+@media (max-height: 580px) {
+  .st-key-auth_page [data-testid="stHorizontalBlock"] { min-height: 400px; }
+  .st-key-auth_page [data-testid="stColumn"]:last-child { min-height: 0; padding-top: 12px; padding-bottom: 8px; }
+  .st-key-auth_page [data-testid="stColumn"]:last-child [data-testid="stVerticalBlock"] { gap: 4px; }
+  .st-key-auth_page [data-testid="stTextInputRootElement"] { height: 36px; }
+  .st-key-auth_page h2.auth-heading { margin: 2px 0 16px; font-size: 20px; }
+  .st-key-auth_page [data-testid="stFormSubmitButton"] button { min-height: 38px; }
+  .auth-help { display: none; }
+}

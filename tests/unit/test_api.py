@@ -15,6 +15,9 @@ SOURCES = [{"ref": 1, "policy": "Leave Policy", "section": "4.1", "file": "Leave
 
 
 class FakeConversations:
+    def saves_history(self, user_id):
+        return True
+
     def conversations(self, user_id):
         return [{"id": f"chat-of-{user_id}"}]
 
@@ -56,7 +59,7 @@ class FakeService:
             raise RuntimeError("secret internal detail")
         return WorkflowAnswer("Done.", tool_status="success", conversation_id="chat")
 
-    def ask(self, question, history=None, filters=None, user_id=None, conversation_id=None):
+    def ask(self, question, history=None, filters=None, user_id=None, conversation_id=None, save_history=True):
         self.history = history
         self.filters = filters
         self.user_id = user_id
@@ -65,7 +68,7 @@ class FakeService:
             raise self.error
         return WorkflowAnswer("18 days.", SOURCES, intent="policy_question", conversation_id=self.conversation_id, pending_action=self.pending)
 
-    def stream(self, question, history=None, filters=None, user_id=None, conversation_id=None):
+    def stream(self, question, history=None, filters=None, user_id=None, conversation_id=None, save_history=True):
         self.history = history
         self.filters = filters
         self.user_id = user_id

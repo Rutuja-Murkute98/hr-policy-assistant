@@ -64,6 +64,8 @@ async def lifespan(app: FastAPI):
         app.state.count_chunks = count_chunks
         app.state.identity.audit.purge_older_than(config.AUDIT_RETENTION_DAYS)
         app.state.identity.audit.purge_metrics_older_than(config.METRICS_RETENTION_DAYS)
+        if app.state.identity.passwords:
+            app.state.identity.passwords.purge_expired()
         rate_limit.store = get_rate_store(registry.engine)
     yield
     close = getattr(app.state.service, "close", None)
@@ -165,13 +167,18 @@ def parse_request(body: AskRequest, principal: Principal) -> tuple[str, list[dic
     return question, [message.model_dump() for message in body.history], filters
 
 
+def keeps_history(service, principal: Principal) -> bool:
+    """The server decides from the person's saved choice, so no screen can store a chat they said not to."""
+    return not principal.user_id or service.conversations.saves_history(principal.user_id)
+
+
 @app.post("/ask", response_model=AskResponse, dependencies=[Depends(rate_limit)])
 def ask(body: AskRequest, request: Request, principal: Principal = Depends(current_principal)):
     question, history, filters = parse_request(body, principal)
     service = service_for(request, principal)
     try:
         result = service.ask(question, history, filters, user_id=principal.user_id,
-                             conversation_id=body.conversation_id)
+                             conversation_id=body.conversation_id, save_history=keeps_history(service, principal))
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None
     except Exception:
@@ -200,7 +207,8 @@ def ask_stream(body: AskRequest, request: Request, principal: Principal = Depend
     def events():
         try:
             for kind, value in service.stream(question, history, filters, user_id=principal.user_id,
-                                              conversation_id=body.conversation_id):
+                                              conversation_id=body.conversation_id,
+                                              save_history=keeps_history(service, principal)):
                 if kind == "token":
                     yield server_sent_event("token", {"text": value})
                 elif kind == "status":
@@ -244,6 +252,24 @@ def give_feedback(body: Feedback, request: Request, principal: Principal = Depen
     except NotFound:
         raise HTTPException(404, "Answer not found") from None
     return {"saved": True}
+
+
+class ChatSettings(BaseModel):
+    save_chat_history: bool
+
+
+@app.get("/me/settings")
+def chat_settings(request: Request, principal: Principal = Depends(required_user)):
+    saved = service_for(request, principal).conversations.saves_history(principal.user_id)
+    return {"save_chat_history": saved, "retention_days": config.CONVERSATION_RETENTION_DAYS}
+
+
+@app.patch("/me/settings")
+def change_chat_settings(body: ChatSettings, request: Request, principal: Principal = Depends(required_user)):
+    """Choose whether new chats are saved. Chats already saved stay until they're deleted or expire."""
+    service_for(request, principal).conversations.set_saves_history(principal.user_id, body.save_chat_history)
+    audit(request, principal, "chat_history_setting_changed", save=body.save_chat_history)
+    return {"save_chat_history": body.save_chat_history, "retention_days": config.CONVERSATION_RETENTION_DAYS}
 
 
 @app.get("/conversations")

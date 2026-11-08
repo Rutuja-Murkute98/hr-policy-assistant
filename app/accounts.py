@@ -6,11 +6,12 @@ admin can add and suspend organisations, but has no route to read what's inside 
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from app import config
 from app.config import Tenant
 from app.identity import Identity, IdentityError, Principal
+from app.passwords import MAX_PASSWORD_CHARS, AccountProblem, PasswordAccounts, SignedIn
 from app.security import admin_principal, audit, current_principal, platform_principal, rate_limit, service_for
 
 EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
@@ -34,8 +35,8 @@ def session_details(request: Request, principal: Principal) -> dict:
         profile = config.tenant
     if profile is None:
         raise HTTPException(403, "This organisation isn't available")
-    return {"user_id": principal.user_id, "email": principal.email, "role": principal.role,
-            "tenant_id": principal.tenant_id, "organisation": profile.model_dump()}
+    return {"user_id": principal.user_id, "email": principal.email, "display_name": principal.name,
+            "role": principal.role, "tenant_id": principal.tenant_id, "organisation": profile.model_dump()}
 
 
 @router.post("/auth/session", tags=["accounts"])
@@ -60,6 +61,95 @@ def who_am_i(request: Request, principal: Principal = Depends(current_principal)
     return session_details(request, principal)
 
 
+def passwords_of(request: Request) -> PasswordAccounts:
+    passwords = identity_of(request).passwords
+    if passwords is None:
+        raise HTTPException(404, "Password sign-in isn't switched on")
+    return passwords
+
+
+def signed_in_reply(request: Request, signed_in: SignedIn) -> dict:
+    return {"token": signed_in.token, "max_age_seconds": signed_in.max_age_seconds,
+            "session": session_details(request, signed_in.principal)}
+
+
+class SignIn(BaseModel):
+    email: str = Field(pattern=EMAIL_PATTERN, max_length=254)
+    password: SecretStr = Field(max_length=MAX_PASSWORD_CHARS)
+    remember: bool = False
+
+
+class SignUp(SignIn):
+    display_name: str = Field(max_length=100)
+
+
+class SetPassword(SignIn):
+    code: str = Field(max_length=40)
+
+
+@router.get("/auth/options", tags=["accounts"])
+def sign_in_options():
+    """What the sign-in page needs to know before anyone is signed in."""
+    return {"mode": config.AUTH_MODE, "signup_enabled": config.ALLOW_SIGNUP,
+            "min_password_chars": config.MIN_PASSWORD_CHARS, "signup_email_domains": config.SIGNUP_EMAIL_DOMAINS,
+            "session_remember_days": config.SESSION_REMEMBER_DAYS}
+
+
+@router.post("/auth/signup", status_code=201, tags=["accounts"])
+def sign_up(body: SignUp, request: Request):
+    """Create an employee account and sign in. It can't claim an existing account or an employee record."""
+    rate_limit.check_login(request)
+    rate_limit.check_account(body.email)
+    try:
+        result = passwords_of(request).sign_up(body.email, body.password.get_secret_value(), body.display_name,
+                                               body.remember)
+    except AccountProblem as problem:
+        raise HTTPException(409, str(problem)) from None
+    audit(request, result.principal, "signup")
+    return signed_in_reply(request, result)
+
+
+@router.post("/auth/login", tags=["accounts"])
+def log_in(body: SignIn, request: Request):
+    rate_limit.check_login(request)
+    rate_limit.check_account(body.email)
+    try:
+        result = passwords_of(request).sign_in(body.email, body.password.get_secret_value(), body.remember)
+    except IdentityError as error:
+        identity_of(request).audit.record("unknown", "unknown", "login_failed", details={"reason": str(error)})
+        raise HTTPException(401, str(error)) from None
+    audit(request, result.principal, "login")
+    return signed_in_reply(request, result)
+
+
+@router.post("/auth/password", tags=["accounts"])
+def set_password_with_code(body: SetPassword, request: Request):
+    """Set a password with a one-time code from an HR admin, then sign in. Older sessions stop working."""
+    rate_limit.check_login(request)
+    rate_limit.check_account(body.email)
+    try:
+        result = passwords_of(request).set_with_code(body.email, body.code, body.password.get_secret_value(),
+                                                     body.remember)
+    except IdentityError as error:
+        identity_of(request).audit.record("unknown", "unknown", "setup_code_failed", details={"reason": str(error)})
+        raise HTTPException(401, str(error)) from None
+    except AccountProblem as problem:
+        raise HTTPException(409, str(problem)) from None
+    audit(request, result.principal, "password_set")
+    return signed_in_reply(request, result)
+
+
+@router.post("/auth/logout", tags=["accounts"])
+def log_out(request: Request, authorization: str = Header(default=""),
+            principal: Principal = Depends(current_principal)):
+    """End this session, so its token stops working everywhere."""
+    if principal.source != "password":
+        raise HTTPException(404, "Password sign-in isn't in use here")
+    passwords_of(request).sign_out(authorization.removeprefix("Bearer ").strip())
+    audit(request, principal, "logout")
+    return {"signed_out": True}
+
+
 class NewUser(BaseModel):
     email: str = Field(pattern=EMAIL_PATTERN, max_length=254)
     role: Literal["employee", "hr_admin"] = "employee"  # a platform admin can only come from the server's settings
@@ -70,6 +160,7 @@ class NewUser(BaseModel):
 class UserChange(BaseModel):
     role: Literal["employee", "hr_admin"] | None = None
     active: bool | None = None
+    employee_id: str | None = Field(default=None, max_length=64, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 @admin_router.get("/users")
@@ -91,10 +182,26 @@ def add_user(body: NewUser, request: Request, principal: Principal = Depends(adm
 
 @admin_router.patch("/users/{user_id}")
 def change_user(user_id: str, body: UserChange, request: Request, principal: Principal = Depends(admin_principal)):
-    if not identity_of(request).users.update(principal.tenant_id, user_id, body.role, body.active):
+    try:
+        changed = identity_of(request).users.update(principal.tenant_id, user_id, body.role, body.active,
+                                                    body.employee_id)
+    except ValueError as problem:
+        raise HTTPException(409, str(problem)) from None
+    if not changed:
         raise HTTPException(404, "User not found")
-    audit(request, principal, "user_changed", user_id, role=body.role, active=body.active)
+    audit(request, principal, "user_changed", user_id, role=body.role, active=body.active,
+          employee_id=body.employee_id)
     return {"updated": user_id}
+
+
+@admin_router.post("/users/{user_id}/setup-code", status_code=201)
+def create_setup_code(user_id: str, request: Request, principal: Principal = Depends(admin_principal)):
+    """Make a one-time code so someone can set a password. This response is the only time it's shown."""
+    code = passwords_of(request).issue_setup_code(principal.tenant_id, user_id)
+    if code is None:
+        raise HTTPException(404, "User not found")
+    audit(request, principal, "setup_code_created", user_id)
+    return {"code": code, "expires_in_hours": config.SETUP_CODE_HOURS}
 
 
 class NewApiKey(BaseModel):

@@ -43,9 +43,39 @@ jobs:
 
   containers:
     runs-on: ubuntu-latest
+    # Only for the containers started here. The model key is never used, because the checks below need no model.
+    env:
+      HELPDESK_API_KEY: ci-smoke-key
+      GOOGLE_API_KEY: not-used-by-the-smoke-test
+      AUTH_MODE: demo
     steps:
       - uses: actions/checkout@v4
       - name: Check the Compose file
         run: docker compose config --quiet
       - name: Build the images
         run: docker compose build
+      - name: Start the stack
+        run: docker compose up -d
+      - name: Wait for the API and the chat screen
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS http://localhost:8000/live && curl -fsS http://localhost:8501/_stcore/health && exit 0
+            sleep 2
+          done
+          exit 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Check the running stack, without the model
+        env:
+          CHECK_API_KEY: ci-smoke-key
+        run: |
+          pip install httpx==0.28.1
+          python -m ops.check_deployment --api-url http://localhost:8000 --ui-url http://localhost:8501 \
+            --no-model --allow-empty-index
+      - name: Show the logs if anything failed
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v

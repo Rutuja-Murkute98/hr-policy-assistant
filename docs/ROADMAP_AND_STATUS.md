@@ -25,7 +25,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 |---|---|---|
 | Deployment check from outside (`ops/check_deployment.py`) | Implemented and tested | 11 unit tests, plus real runs against the local API: without the model on an empty database, and with real Gemini on 539 chunks. Not run against Render |
 | Database security check (`ops/check_database_security.py`) | Implemented and tested | 5 tests on real PostgreSQL, and passing on the local database. **Not run on Neon** |
-| Compose stack started in CI | Implemented, not tested | Imitated locally without Docker. Runs on GitHub after a push |
+| Compose stack started in CI | Implemented and tested | Passed on GitHub in CI run #11: the stack started and the deployment check passed without the model |
 | Live deployment on Render, Neon and Streamlit | Planned | Waits for the owner. See the Phase 7 report |
 | Real OIDC sign-in, Neon backup and restore, load test on the deployment | Planned | Waits for the owner's access |
 

@@ -26,7 +26,7 @@ No application code changed.
 | ruff | Passed |
 | mypy | Passed, 51 files |
 | New tests | 16 passed |
-| CI on GitHub | **Not run yet.** The branch hasn't been pushed |
+| CI on GitHub | **Passed**, run #11 on commit `0f3f2ee`: `checks` in 2 min 21 s, `containers` in 1 min 14 s |
 
 ## Checks run on this PC
 
@@ -42,7 +42,9 @@ separate process in demo mode with a fake model key, then `check_deployment --no
 | Refuses callers without a key | Pass, 401 |
 | Greets without using the model | Pass, 0.06 s |
 
-**The Compose stack itself still hasn't been started anywhere.** The new CI job does that on the next push.
+**The Compose stack then ran for real on GitHub.** CI run #11 built the images, started the database, API and chat
+screen, and the same check passed against them, including the chat screen's health check. That job has no keys, so
+it says nothing about answers.
 
 ### The full deployment check, with the real model
 
@@ -83,7 +85,7 @@ harness now writes the API's output to a file.
 | Merge the finished branches into `main` | Planned | `main` already holds Phases 1 to 5. Password sign-in, profiles and this phase aren't merged. Needs the owner's approval |
 | Row-Level Security checked on Neon | Implemented and tested | The check is built and passes locally and in tests. **Not run on Neon** |
 | Deploy to Render and Streamlit, record cold start and memory | Planned | Needs the owner |
-| Start the Compose stack in CI | Implemented, not tested | Imitated locally without Docker. Runs on GitHub after a push |
+| Start the Compose stack in CI | Implemented and tested | Passed on GitHub in CI run #11, without the model |
 | Real OIDC sign-in | Planned | Needs a Google OIDC client from the owner |
 | Backup and restore on Neon | Planned | `ops/backup.py` exists and is tested locally. Needs Neon access |
 | Load test against the deployment | Planned | Needs the deployment |
@@ -91,7 +93,7 @@ harness now writes the API's output to a file.
 
 ## What the owner must do for part 2
 
-1. **Approve pushing this branch,** so the new CI job runs on GitHub.
+1. ~~Approve pushing this branch.~~ Done: pushed, and CI passed.
 2. **Decide what to deploy:** `main` plus password sign-in, profiles and this phase, merged in order.
 3. With Neon's **direct** connection string in `DATABASE_URL` (never pasted into a chat), follow "Upgrading a running deployment"
    in `DEPLOY.md`: back up, update the database, then run `ops.check_database_security`.

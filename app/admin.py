@@ -120,3 +120,9 @@ def unanswered_questions(base: KnowledgeBase = Depends(knowledge)):
 @router.get("/feedback")
 def feedback_summary(base: KnowledgeBase = Depends(knowledge)):
     return base.feedback_summary()
+
+
+@router.get("/test-candidates")
+def test_candidates(base: KnowledgeBase = Depends(knowledge)):
+    """Unanswered questions and answers rated down, to become test items once a reviewer has labelled them."""
+    return base.test_candidates()

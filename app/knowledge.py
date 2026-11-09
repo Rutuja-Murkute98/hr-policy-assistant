@@ -437,3 +437,25 @@ class KnowledgeBase:
         return {"thumbs_up": totals.up, "thumbs_down": totals.down,
                 "recent_negative": [{"answer": row.answer, "comment": row.comment,
                                      "created_at": row.created_at.isoformat()} for row in rows]}
+
+    def test_candidates(self, limit: int = 100) -> list[dict]:
+        """Questions from real use that would make good test items: ones the bot couldn't answer, and answers rated down.
+
+        Everything here was masked before it was stored. A rated answer comes with the question just before it in
+        the same chat, since that's what the test item will ask.
+        """
+        candidates = [{"question": row["question"], "source": "unanswered", "asked": row["asked"],
+                       "last_seen": row["last_asked"]} for row in self.unanswered_report(limit)]
+        with self.engine.connect() as connection:
+            rows = connection.execute(text(
+                "SELECT m.content AS answer, f.comment, f.created_at, "
+                "(SELECT q.content FROM messages q WHERE q.conversation_id = m.conversation_id "
+                " AND q.tenant_id = m.tenant_id AND q.role = 'user' AND q.id < m.id "
+                " ORDER BY q.id DESC LIMIT 1) AS question "
+                "FROM feedback f JOIN messages m ON m.id = f.message_id "
+                "WHERE f.tenant_id = :tenant_id AND f.rating < 0 ORDER BY f.created_at DESC LIMIT :limit"
+            ), {"tenant_id": self.tenant_id, "limit": limit}).all()
+        candidates += [{"question": row.question, "source": "thumbs_down", "asked": 1, "answer": row.answer,
+                        "comment": row.comment, "last_seen": row.created_at.isoformat()}
+                       for row in rows if row.question]
+        return candidates

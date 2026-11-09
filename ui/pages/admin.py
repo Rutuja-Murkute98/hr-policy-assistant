@@ -4,6 +4,7 @@ It isn't linked from the chat screen. Open it by adding /admin to the chat scree
 With sign-in, it needs an HR admin account. In demo mode, the shared admin key is typed in each
 session and is never stored by this app.
 """
+import json
 from datetime import date
 
 import requests
@@ -153,6 +154,24 @@ def show_feedback() -> None:
     if summary["recent_negative"]:
         st.caption("Recent answers rated down")
         st.dataframe(summary["recent_negative"], hide_index=True, use_container_width=True)
+    show_test_candidates()
+
+
+def show_test_candidates() -> None:
+    """Hand unanswered questions and answers rated down to whoever looks after the evaluation."""
+    st.divider()
+    st.caption("Unanswered questions and answers rated down can become test questions, so the evaluation checks "
+               "what people really ask. Personal details were already masked when they were saved.")
+    if not st.button("Prepare test questions"):
+        return
+    candidates, problem = call_api("GET", "/admin/test-candidates")
+    if problem:
+        st.error(problem)
+    elif not candidates:
+        st.caption("Nothing to add yet.")
+    else:
+        st.download_button(f"Download {len(candidates)} test questions", json.dumps(candidates, indent=1),
+                           file_name="test_candidates.json", mime="application/json")
 
 
 def show_users() -> None:

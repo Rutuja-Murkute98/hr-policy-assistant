@@ -410,6 +410,25 @@ def test_feedback_is_stored_and_replaced(setup):
     assert summary["recent_negative"][0]["comment"] == "Wrong"
 
 
+def test_test_candidates_pair_a_rated_answer_with_its_question_and_mask_personal_details(setup):
+    chat = setup.conversations.start("E1001")
+    setup.conversations.add_message("E1001", chat, "user", "First question about sick leave")
+    setup.conversations.add_message("E1001", chat, "assistant", "An earlier answer.")
+    setup.conversations.add_message("E1001", chat, "user", "Can I carry over leave? Mail me at asha@example.com")
+    answer = setup.conversations.add_message("E1001", chat, "assistant", "No, it lapses.")
+    setup.client.post("/feedback", headers=USER, json={"message_id": answer, "rating": -1, "comment": "Wrong"})
+    setup.knowledge.record_unanswered("Is there a gym?", "no_evidence")
+
+    candidates = setup.client.get("/admin/test-candidates", headers=HEADERS).json()
+    by_source = {candidate["source"]: candidate for candidate in candidates}
+    assert by_source["unanswered"]["question"] == "is there a gym?"
+    rated = by_source["thumbs_down"]
+    assert rated["question"].startswith("Can I carry over leave?")
+    assert "asha@example.com" not in rated["question"]
+    assert (rated["answer"], rated["comment"]) == ("No, it lapses.", "Wrong")
+    assert setup.client.get("/admin/test-candidates", headers=USER).status_code == 401
+
+
 def test_someone_else_cant_rate_an_answer(setup):
     message = stored_answer(setup, "E1002")
     assert setup.client.post("/feedback", headers=USER, json={"message_id": message, "rating": 1}).status_code == 404

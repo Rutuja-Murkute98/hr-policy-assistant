@@ -84,6 +84,12 @@ Measured on 123 questions in [`evaluation/data/golden_set.json`](evaluation/data
 
 > **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 3 report](evaluation/reports/phase3_report.md).
 
+**To review the labels,** open the review screen. It shows each question, the policy text it should find and what the bot said, and saves your decisions to the label files. It needs no API key:
+
+```bash
+venv\Scripts\streamlit run evaluation/review_app.py
+```
+
 | Check | Result | Target | What it measures |
 |---|---:|---:|---|
 | **Recall@5** | **0.938** | 0.90 or more | Whether search finds the labelled chunks |

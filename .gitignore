@@ -25,3 +25,6 @@ backups/
 
 # Local tool settings
 .claude/
+
+# Test coverage data
+.coverage

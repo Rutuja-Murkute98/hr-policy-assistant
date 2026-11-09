@@ -1,0 +1,119 @@
+# Runs the evaluation with the real model every night, and fails if a result drops below the quality gate's floors.
+# Scheduled runs only happen on the default branch. It does nothing until the GOOGLE_API_KEY secret is set.
+# Quota: about 60 questions with 2 to 3 model calls each, plus one judge call per answer. The policies are only
+# embedded again when they or the chunking change: otherwise the index comes back from a cached database copy.
+# See docs/DECISIONS.md, D43.
+name: Nightly evaluation
+
+on:
+  schedule:
+    - cron: "30 21 * * *"  # 03:00 in India
+  workflow_dispatch:
+    inputs:
+      split:
+        description: "Which golden items: check (half, the nightly default), tune (the other half) or all"
+        default: check
+        type: choice
+        options: [check, tune, all]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-evaluation
+  cancel-in-progress: false
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CI_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+      GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+      # Optional: judges from other vendors, such as "anthropic:claude-sonnet-5-5,google:gemini-3.1-flash-lite".
+      # Each needs its package in EVAL_JUDGE_PACKAGES, such as "langchain-anthropic==<version>", and its key.
+      EVAL_JUDGES: ${{ vars.EVAL_JUDGES }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      LOG_FORMAT: text
+    steps:
+      - name: Check for a model key
+        id: key
+        run: |
+          if [ -z "$GOOGLE_API_KEY" ]; then
+            echo "::notice::Skipped: add a GOOGLE_API_KEY repository secret to run the nightly evaluation."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.key.outputs.skip != 'true'
+      - uses: actions/setup-python@v5
+        if: steps.key.outputs.skip != 'true'
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - name: Install
+        if: steps.key.outputs.skip != 'true'
+        env:
+          EVAL_JUDGE_PACKAGES: ${{ vars.EVAL_JUDGE_PACKAGES }}
+        run: |
+          pip install -r requirements-api.txt
+          if [ -n "$EVAL_JUDGE_PACKAGES" ]; then pip install $EVAL_JUDGE_PACKAGES; fi
+          command -v pg_dump || (sudo apt-get update && sudo apt-get install -y postgresql-client)
+
+      # The index only changes with the policies, the chunking or the database schema
+      - name: Look for a saved index
+        id: index
+        if: steps.key.outputs.skip != 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/index
+          key: index-${{ hashFiles('policies/**', 'pipeline/**', 'migrations/**', 'app/rag/store.py', 'config/tenant.toml', 'app/config.py') }}
+      - name: Restore the saved index
+        if: steps.key.outputs.skip != 'true' && steps.index.outputs.cache-hit == 'true'
+        env:
+          RESTORE_DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+        run: python -m ops.backup restore .cache/index/index.dump --target-env RESTORE_DATABASE_URL
+      - name: Index the policies
+        if: steps.key.outputs.skip != 'true' && steps.index.outputs.cache-hit != 'true'
+        env:
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+        run: |
+          python -m pipeline.embed_and_store
+          python -m ops.backup create .cache/index/index.dump
+      - name: Save the index for later runs
+        if: steps.key.outputs.skip != 'true' && steps.index.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/index
+          key: ${{ steps.index.outputs.cache-primary-key }}
+
+      - name: Answer and judge the golden questions
+        if: steps.key.outputs.skip != 'true'
+        env:
+          DATABASE_URL: ${{ env.CI_DATABASE_URL }}
+        run: python -m evaluation.run_eval answers --name nightly --workflow --split "${{ inputs.split || 'check' }}"
+      - name: Check the results against the floors
+        if: steps.key.outputs.skip != 'true'
+        run: python -m evaluation.quality_gate --run nightly
+      - name: Keep the report
+        if: always() && steps.key.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-evaluation
+          path: |
+            evaluation/reports/answers_nightly.json
+            .cache/answers_nightly.json
+          if-no-files-found: ignore
+          retention-days: 30

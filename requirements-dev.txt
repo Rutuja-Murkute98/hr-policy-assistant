@@ -1,5 +1,7 @@
 # Tests and code checks. CI installs this with requirements-api.txt and ui/requirements.txt.
 pytest==9.2.0
+pytest-cov==7.0.0
+coverage==7.10.7
 pytest-github-actions-annotate-failures==0.4.2
 httpx==0.28.1
 ruff==0.17.3

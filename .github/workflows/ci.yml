@@ -36,8 +36,9 @@ jobs:
         run: python -m mypy
       - name: Scan dependencies for known vulnerabilities
         run: python -m pip_audit -r requirements-api.txt -r ui/requirements.txt -r requirements-dev.txt
-      - name: Test
-        run: python -m pytest -q
+      - name: Test, with coverage
+        # 87% when the floor was set. It stays a little below, so a small change doesn't fail CI. See D43.
+        run: python -m pytest -q --cov --cov-report=term --cov-fail-under=85
       - name: Evaluation quality gate
         run: python -m evaluation.quality_gate
 

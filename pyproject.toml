@@ -3,6 +3,13 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = ["integration: needs a real PostgreSQL with pgvector, but no model API"]
 
+[tool.coverage.run]
+source = ["app", "pipeline", "evaluation", "integrations", "ops"]
+omit = ["evaluation/review_app.py"]  # run by Streamlit's test runner in its own process, so it isn't measured
+
+[tool.coverage.report]
+skip_empty = true
+
 [tool.ruff]
 line-length = 120
 target-version = "py313"

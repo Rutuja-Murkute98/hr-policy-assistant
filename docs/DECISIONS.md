@@ -385,7 +385,7 @@ GitHub Actions.
 **Trade-offs:** One more test dependency, and GitHub limits how many annotations a step shows, so a large failure may not
 list every test.
 
-## D37. A deployment is checked from the outside, and its database by trying to read across organisations
+## D40. A deployment is checked from the outside, and its database by trying to read across organisations
 
 **Decision:** Two scripts check a deployment. `ops/check_deployment.py` calls the running API over HTTP, as the chat screen does,
 and needs only `httpx`. `ops/check_database_security.py` connects to the database, switches to the app's role, and counts rows it
@@ -400,6 +400,51 @@ model call, so CI can start the real containers with no model key.
 **Trade-offs:** The full deployment check uses about 25 model calls, so it's run by hand after a deploy, not on a schedule. The CI
 check proves the stack starts and the request path works, not that answers are good: that stays with the evaluation. The database
 check reads every protected table, which is slow on a large database.
+
+## D41. Labels are reviewed on a local screen, and real questions wait as candidates
+
+**Decision:** `evaluation/review_app.py` is a Streamlit screen run on the owner's PC. It edits `golden_set.json` and
+`agent_set.json` directly and refuses labels the tests would reject. Unanswered questions and answers rated down come from a new
+admin endpoint, are downloaded from the admin screen, and are imported into `candidates.json`. They only join the golden set when
+the reviewer promotes and labels them.
+
+**Why:** The labels live in the repository, so every review shows up as a normal git diff, and the deployed app can't write to the
+repository anyway. Streamlit is already in the project and needs no new dependency. A candidate has no labels, so in the golden set
+it would count as answerable with nothing to check and quietly lower the results.
+
+**Trade-offs:** Reviewing needs a checkout of the repository and Python, not just a browser. Moving candidates from the live app is
+a manual download and import, so it happens only when someone does it.
+
+## D42. Several judges from any vendor, with their agreement, and a citation score that needs no model
+
+**Decision:** Judges are set as `provider:model`, with `--judge` or `EVAL_JUDGES`, using the same provider code as the app. Every
+judge's verdict is kept, the first is the main one, and agreement between each pair is reported with Cohen's kappa. The judge also
+says whether an answer is relevant. A new deterministic score, `statements_cited`, is the share of an answer's statements that
+carry an inline citation. The report has a separate block for approved items only. RAGAS isn't used.
+
+**Why:** A judge from the answering model's vendor may share its blind spots, and agreement between two judges shows how far either
+can be trusted. Keeping older single-judge results readable means earlier runs still compare. RAGAS would add a large dependency
+and its own model calls for scores the existing judge already gives, so it wasn't worth it here. The citation score caught two saved
+answers with no inline citation that every other metric passed.
+
+**Trade-offs:** Only the Gemini judge has run live, because there's no key for another vendor here. More judges means more calls.
+The citation score can't tell whether a cited excerpt really supports the statement: the judge checks that.
+
+## D43. The evaluation runs every night with the real model, and coverage has a floor
+
+**Decision:** A scheduled GitHub Actions workflow runs half the golden set every night, through the full workflow, judges it, and
+fails if a result drops below the quality gate's floors. The indexed database is saved with `ops/backup.py` in the Actions cache,
+and only rebuilt when the policies, chunking or schema change. CI also measures test coverage with `pytest-cov`, and fails below a
+floor.
+
+**Why:** The committed-report gate (D12) proves a measurement was recorded, not that it still holds. A nightly run with the real
+model catches a regression from a model or provider change that no code change shows. Re-indexing every night would use about 540
+of the free tier's 1,000 daily embeddings, on the key the live app also uses. Half the set keeps the nightly cost down, and the other
+half can be run by hand.
+
+**Trade-offs:** It uses about 200 model calls a night from the same free quota as the live app, and needs a `GOOGLE_API_KEY`
+repository secret, without which it skips. Scheduled runs only happen on the default branch. Two pinned test dependencies are added.
+A coverage floor can be met by tests that run code without checking it, so it guards against untested code, not weak tests.
 
 ## D12. CI quality gate reads a committed report
 

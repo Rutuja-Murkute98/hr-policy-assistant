@@ -12,7 +12,7 @@ been deployed or pushed yet.
 | `ops/check_database_security.py` | New | Proves Row-Level Security holds on a given database by reading every protected table as the app's role, for each organisation, for none and for an unknown one. Read-only |
 | `.github/workflows/ci.yml` | Changed | The containers job now starts the Compose stack and runs the deployment check without the model, instead of only building the images |
 | `DEPLOY.md` | Changed | The upgrade steps use both checks, and a new "Checking a deployment" section |
-| `docs/DECISIONS.md` | D37 added | Why the checks work this way |
+| `docs/DECISIONS.md` | D40 added | Why the checks work this way |
 | `tests/unit/test_deployment_check.py` | New, 11 tests | Every check against a pretend API, including failures, leaks and a down API |
 | `tests/integration/test_database_security_check.py` | New, 5 tests | Real PostgreSQL, including a table without a policy, an app role that can skip Row-Level Security, and the app role reading password hashes |
 

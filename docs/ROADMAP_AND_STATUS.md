@@ -17,7 +17,8 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 5 | Observability, load test, deployment guides, backups | Built, waiting for owner review |
 | 6 | Optional advanced features | Folded into Phases 12, 14 and 15 of the improvement plan |
 | 7 | Prove it live: deployment and database checks, CI starts the stack, live run on Render and Neon | Part 1 built and tested locally. Part 2 (the live run) waits for the owner. See [the Phase 7 report](../evaluation/reports/phase7_report.md) |
-| 8 to 19 | Trusted evaluation, speed, runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
+| 8 | Evaluation you can trust: label review screen, real questions as candidates, judges from any vendor, nightly run, coverage | Part 1 built and tested. The label review itself waits for the owner. See [the Phase 8 report](../evaluation/reports/phase8_report.md) |
+| 9 to 19 | Speed, runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
 
 ## Phase 7 status
 
@@ -28,6 +29,21 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Compose stack started in CI | Implemented and tested | Passed on GitHub in CI run #11: the stack started and the deployment check passed without the model |
 | Live deployment on Render, Neon and Streamlit | Planned | Waits for the owner. See the Phase 7 report |
 | Real OIDC sign-in, Neon backup and restore, load test on the deployment | Planned | Waits for the owner's access |
+
+## Phase 8 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Label review screen (`evaluation/review_app.py`) | Implemented and tested | 21 tests, 3 of them driving the screen. Opened in a real browser. It refuses any label the tests would reject |
+| Questions from real use as candidates | Implemented and tested | Admin endpoint on real PostgreSQL, with masking checked. The admin screen's download button wasn't clicked in a browser |
+| Judges from any vendor, kept side by side, with agreement | Implemented and tested | Fakes for several judges. Only the Gemini judge has run live: there's no key for another vendor |
+| Relevance verdict and the `statements_cited` score | Implemented and tested | The verdict ran live on 4 answers. The score ran on 2 saved runs of 123 answers |
+| Separate results for approved items | Implemented and tested | Empty until labels are approved |
+| Nightly evaluation in GitHub Actions | Implemented, not tested | The same steps were rehearsed locally with the real model. Needs a `GOOGLE_API_KEY` secret and a merge to `main` |
+| Coverage floor in CI | Implemented, not tested | 87% measured locally, with the floor at 85%. Runs on GitHub after a push |
+| Golden set grown to 200, agent set to 100 | Planned | Part 2 of this phase |
+| Draft test questions for new uploads | Planned | Part 2 of this phase |
+| Owner review of at least 90% of items | Planned | Waits for the owner |
 
 ## Phase 1 status
 

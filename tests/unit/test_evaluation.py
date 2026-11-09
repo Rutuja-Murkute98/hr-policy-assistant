@@ -12,7 +12,7 @@ from evaluation.metrics import (
     recall_at_k,
     reciprocal_rank,
 )
-from evaluation.quality_gate import FLOORS, check
+from evaluation.quality_gate import FLOORS, below_floors, check
 from pipeline.chunk_documents import load_chunks
 
 RETRIEVED = ["a", "b", "c", "d", "e", "f"]
@@ -126,6 +126,12 @@ def test_gate_passes_on_good_current_results():
 
 def test_gate_fails_when_the_code_changed_since_the_evaluation():
     assert "changed since" in check({"fingerprint": "old", "metrics": GOOD}, "new")[0]
+
+
+def test_a_fresh_run_with_nothing_to_measure_fails_as_unmeasured_not_as_low():
+    problems = below_floors({**GOOD, "refused_when_it_should": 0.0, "refusal_checked": 0})
+    assert problems == ["refused_when_it_should wasn't measured: the run had no items for it."]
+    assert below_floors({**GOOD, "refusal_checked": 15}) == []
 
 
 def test_gate_fails_on_a_low_or_missing_metric():

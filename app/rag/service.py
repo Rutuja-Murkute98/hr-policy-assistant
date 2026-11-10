@@ -67,8 +67,10 @@ def _field(partial: object, name: str, default: object = None) -> object:
 
 
 class RagService:
-    def __init__(self, store, llm, reranker=None, hybrid: bool = config.HYBRID_SEARCH, profile=None):
+    def __init__(self, store, llm, reranker=None, hybrid: bool = config.HYBRID_SEARCH, profile=None,
+                 query_cache=None):
         self.store = store
+        self.query_cache = query_cache  # reuses the vectors of questions asked before, if set
         self.profile = profile or config.tenant
         self.tenant_id = getattr(store, "tenant_id", config.TENANT_ID)
         self.llm = llm
@@ -92,7 +94,10 @@ class RagService:
         If timing is given, it's filled with the milliseconds spent on embedding and on the search itself.
         """
         started = time.perf_counter()
-        vector = self.store.embeddings.embed_query(question)
+        if self.query_cache is not None:
+            vector = self.query_cache.embed_query(self.store.embeddings, question)
+        else:
+            vector = self.store.embeddings.embed_query(question)
         embedded = time.perf_counter()
         found = self.store.candidates(vector, question, config.FETCH_K, use_keywords=self.hybrid,
                                       filters=filters or SearchFilters(tenant_id=self.tenant_id))

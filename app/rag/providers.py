@@ -101,6 +101,14 @@ def get_chat_model():
     return FallbackModel(primary, fallback)
 
 
+def get_router_model():
+    """A separate model for reading messages, if one is set. It's called once per message, so a faster one helps."""
+    if not config.ROUTER_MODEL:
+        return None
+    provider = config.ROUTER_PROVIDER or config.LLM_PROVIDER
+    return _create("chat", "ROUTER_PROVIDER", CHAT_MODELS, provider, config.ROUTER_MODEL, **provider_options(provider))
+
+
 def get_embeddings():
     return _create("embeddings", "EMBEDDING_PROVIDER", EMBEDDING_MODELS,
                    config.EMBEDDING_PROVIDER, config.EMBEDDING_MODEL)

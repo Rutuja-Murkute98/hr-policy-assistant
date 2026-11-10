@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     out_of_scope_override_confidence: float = 4.5  # a search this strong overrules an "out of scope" label
     self_service_enabled: bool = True
 
+    # Speed: see docs/DECISIONS.md, D46 and D47
+    cache_question_embeddings: bool = True  # a question asked before reuses its vector
+    search_while_understanding: bool = True  # a first message is searched while the model reads it
+    # A separate model to understand messages, such as a smaller, faster one. Empty uses the chat model.
+    router_provider: Literal["", "google", "anthropic", "openai", "ollama"] = ""
+    router_model: str = ""
+
     # Stored conversations
     conversation_retention_days: int = Field(default=90, ge=1)
     audit_retention_days: int = Field(default=365, ge=1)
@@ -204,6 +211,10 @@ USE_CATEGORY_ROUTING = settings.use_category_routing
 GRADE_MIN_CONFIDENCE = settings.grade_min_confidence
 OUT_OF_SCOPE_OVERRIDE_CONFIDENCE = settings.out_of_scope_override_confidence
 SELF_SERVICE_ENABLED = settings.self_service_enabled
+CACHE_QUESTION_EMBEDDINGS = settings.cache_question_embeddings
+SEARCH_WHILE_UNDERSTANDING = settings.search_while_understanding
+ROUTER_PROVIDER = settings.router_provider
+ROUTER_MODEL = settings.router_model
 CONVERSATION_RETENTION_DAYS = settings.conversation_retention_days
 AUDIT_RETENTION_DAYS = settings.audit_retention_days
 SUMMARISE_AFTER_MESSAGES = settings.summarise_after_messages

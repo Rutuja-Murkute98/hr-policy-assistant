@@ -80,7 +80,7 @@ flowchart TB
 
 ## 📊 Evaluation results
 
-Measured on 200 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels, and 58 agent questions in [`evaluation/data/agent_set.json`](evaluation/data/agent_set.json).
+Measured on 200 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels, and 100 agent questions in [`evaluation/data/agent_set.json`](evaluation/data/agent_set.json).
 
 > **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 8 report](evaluation/reports/phase8_report.md).
 
@@ -101,7 +101,7 @@ venv\Scripts\streamlit run evaluation/review_app.py
 | **p95 seconds per answer** | **37.66** | Under 6: **not met** | Inflated: the model was overloaded and the timing included waits between retries. Phase 9 fixes the measurement |
 | **Cross-tenant leaks in tests** | **0** | 0 | Isolation tests at the database, store and API levels |
 
-**Agent test:** intent, routing, tool selection, tool success and approval compliance all scored 1.000 on 58 clear-cut questions.
+**Agent test, 100 questions:** intent and routing 0.950, tool choice 0.944, and tool success, approvals and leave details all 1.000. The misses are among the 42 harder questions added in Phase 8.
 
 **This isn't proof of production readiness.** These were measured on one PC with sample data. See [the final report](docs/FINAL_REPORT.md).
 

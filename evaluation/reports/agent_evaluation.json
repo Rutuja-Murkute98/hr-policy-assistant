@@ -1,24 +1,40 @@
 {
  "review": {
-  "unreviewed": 58,
+  "unreviewed": 100,
   "approved": 0
  },
  "chat_model": "gemini-3.5-flash-lite",
- "items": 58,
- "intent_accuracy": 1.0,
- "routing_accuracy": 1.0,
- "tool_selection_accuracy": 1.0,
+ "items": 100,
+ "intent_accuracy": 0.95,
+ "routing_accuracy": 0.95,
+ "tool_selection_accuracy": 0.944,
  "tool_success_rate": 1.0,
- "tool_calls": 27,
+ "tool_calls": 45,
  "approval_compliance": 1.0,
- "approval_actions": 9,
+ "approval_actions": 16,
  "leave_argument_accuracy": 1.0,
- "median_seconds": 3.64,
- "mean_seconds": 3.83,
+ "median_seconds": 4.06,
+ "mean_seconds": 7.91,
  "failures": {
-  "intent": [],
-  "route": [],
-  "tool": [],
+  "intent": [
+   "balance-009",
+   "scope-009",
+   "scope-011",
+   "attack-007",
+   "attack-009"
+  ],
+  "route": [
+   "balance-009",
+   "scope-009",
+   "scope-011",
+   "attack-007",
+   "attack-009"
+  ],
+  "tool": [
+   "balance-009",
+   "attack-007",
+   "attack-009"
+  ],
   "tool_run": [],
   "approval": [],
   "arguments": [],

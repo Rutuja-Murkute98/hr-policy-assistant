@@ -1,4 +1,70 @@
 {
  "status": "Questions from real use, waiting to be reviewed. They aren't evaluated until promoted.",
- "items": []
+ "items": [
+  {
+   "id": "candidate-001",
+   "question": "How quickly are reasonable accommodation requests answered?",
+   "source": "new_section",
+   "asked": 1,
+   "answer": "",
+   "comment": "",
+   "last_seen": "",
+   "status": "new",
+   "relevant_chunks": [
+    "Diversity_Equity_and_Inclusion_Policy > At a Glance > 0"
+   ],
+   "must_contain": [
+    "requests answered within 10 working days"
+   ]
+  },
+  {
+   "id": "candidate-002",
+   "question": "What are employment decisions based on at Rutuja Talent Nexus?",
+   "source": "new_section",
+   "asked": 1,
+   "answer": "",
+   "comment": "",
+   "last_seen": "",
+   "status": "new",
+   "relevant_chunks": [
+    "Diversity_Equity_and_Inclusion_Policy > 3. Our Commitments > 3.1. Equal Opportunity Employment > 0"
+   ],
+   "must_contain": [
+    "merit, qualifications, and demonstrated performance"
+   ]
+  },
+  {
+   "id": "candidate-003",
+   "question": "How does Rutuja Talent Nexus help reduce unconscious bias during the selection process?",
+   "source": "new_section",
+   "asked": 1,
+   "answer": "",
+   "comment": "",
+   "last_seen": "",
+   "status": "new",
+   "relevant_chunks": [
+    "Diversity_Equity_and_Inclusion_Policy > 3. Our Commitments > 3.2. Inclusive Hiring > 0"
+   ],
+   "must_contain": [
+    "Structured interview processes",
+    "standardised evaluation criteria"
+   ]
+  },
+  {
+   "id": "candidate-004",
+   "question": "How often is a pay equity audit conducted?",
+   "source": "new_section",
+   "asked": 1,
+   "answer": "",
+   "comment": "",
+   "last_seen": "",
+   "status": "new",
+   "relevant_chunks": [
+    "Diversity_Equity_and_Inclusion_Policy > 3. Our Commitments > 3.3. Pay Equity > 0"
+   ],
+   "must_contain": [
+    "annual pay equity audit"
+   ]
+  }
+ ]
 }

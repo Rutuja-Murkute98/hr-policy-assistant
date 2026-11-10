@@ -80,9 +80,9 @@ flowchart TB
 
 ## 📊 Evaluation results
 
-Measured on 123 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels, and 58 agent questions in [`evaluation/data/agent_set.json`](evaluation/data/agent_set.json).
+Measured on 200 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels, and 58 agent questions in [`evaluation/data/agent_set.json`](evaluation/data/agent_set.json).
 
-> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 3 report](evaluation/reports/phase3_report.md).
+> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 8 report](evaluation/reports/phase8_report.md).
 
 **To review the labels,** open the review screen. It shows each question, the policy text it should find and what the bot said, and saves your decisions to the label files. It needs no API key:
 
@@ -92,13 +92,13 @@ venv\Scripts\streamlit run evaluation/review_app.py
 
 | Check | Result | Target | What it measures |
 |---|---:|---:|---|
-| **Recall@5** | **0.938** | 0.90 or more | Whether search finds the labelled chunks |
-| **Expected facts in answers** | **0.966** | | Keyword check against known answers |
-| **Correct refusals** | **0.923** | 100%: **not met** | Off-topic, unknown and "ignore your rules" questions. One miss is a likely wrong label |
-| **Wrongly refused** | **0.031** | | Answerable questions the bot refused |
+| **Recall@5** | **0.925** | 0.90 or more | Whether search finds the labelled chunks |
+| **Expected facts in answers** | **0.926** | | Keyword check against known answers. Lowest on the 9 questions where two policies disagree |
+| **Correct refusals** | **1.000** | 100% | Off-topic, unknown and "ignore your rules" questions, 40 of them |
+| **Wrongly refused** | **0.044** | | Answerable questions the bot refused |
 | **Citations valid** | **1.000** | 95% or more | Citations point to chunks that were retrieved |
-| **Judge: correct** | **1.000** | | Judged by a different Gemini model, using only the retrieved text |
-| **p95 seconds per answer** | **10.78** | Under 6: **not met** | Mostly model time, on the free tier, for answers that succeeded |
+| **Judge: correct** | **0.980** | | Judged by a different Gemini model, using only the retrieved text |
+| **p95 seconds per answer** | **37.66** | Under 6: **not met** | Inflated: the model was overloaded and the timing included waits between retries. Phase 9 fixes the measurement |
 | **Cross-tenant leaks in tests** | **0** | 0 | Isolation tests at the database, store and API levels |
 
 **Agent test:** intent, routing, tool selection, tool success and approval compliance all scored 1.000 on 58 clear-cut questions.

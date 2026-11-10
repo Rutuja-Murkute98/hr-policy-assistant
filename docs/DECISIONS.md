@@ -446,6 +446,32 @@ half can be run by hand.
 repository secret, without which it skips. Scheduled runs only happen on the default branch. Two pinned test dependencies are added.
 A coverage floor can be met by tests that run code without checking it, so it guards against untested code, not weak tests.
 
+## D44. The quality gate fingerprints the labels that change a result, not the whole label file
+
+**Decision:** The fingerprint behind the CI quality gate (D12) now covers the answering code and, for each golden item that isn't
+rejected, only its question, history, category, chunks, facts and refusal flag. Approving an item or editing its notes leaves it
+unchanged. Rejecting an item or changing its labels changes it.
+
+**Why:** It used to hash the whole golden-set file, so every approval made with the review screen (D41) would fail CI until the
+full evaluation was run again, which costs most of a day's free model quota. That would have made reviewing expensive and slow,
+which is the opposite of what Phase 8 needs. Approval doesn't change any result, so it shouldn't change the fingerprint.
+
+**Trade-offs:** The block of results for approved items only (D42) isn't covered by the fingerprint, so it can be out of date
+after a review until the evaluation runs again. The nightly run (D43) refreshes it.
+
+## D45. Questions are drafted for policy sections that no test covers
+
+**Decision:** `python -m evaluation.candidates draft` asks the chat model for one question per policy section that no golden item
+labels, skipping boilerplate sections and very short ones. Each draft keeps only facts found word for word in its section, and
+waits in `candidates.json` with its section already labelled, for the reviewer to check and promote.
+
+**Why:** New policies, and neglected parts of old ones, otherwise get no tests: when Phase 8 started, 8 of the 33 policies had one
+labelled chunk or none. Drafting from the section itself gives the reviewer a starting point with its labels already in place.
+
+**Trade-offs:** A drafted question is the model's idea of what an employee asks, so it can be easier or more literal than real
+questions, and the reviewer must check it. It works from the policy files in the repository, so a policy uploaded only through the
+admin screen isn't covered until its file is added here. It uses one model call per section.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

@@ -1,19 +1,29 @@
 {
- "fingerprint": "35d2d7d6a7656b9fb1f4fe7f28cb47501d6bd344e63f7c4336bf386730939289",
+ "fingerprint": "cfede700905f7f8f852d2b3122b89ddda941590188761083f7ad2f56b9790191",
  "metrics": {
-  "recall_at_5": 0.928,
-  "facts_correct": 0.966,
-  "facts_checked": 87,
+  "recall_at_5": 0.925,
+  "facts_correct": 0.926,
+  "facts_checked": 148,
   "refused_when_it_should": 1.0,
-  "refusal_checked": 26,
-  "false_refusals": 0.031,
+  "refusal_checked": 40,
+  "false_refusals": 0.044,
   "citations_valid": 1.0,
-  "citations_on_target": 0.968,
-  "citations_checked": 94,
-  "seconds_p50": 4.0,
-  "seconds_p95": 6.89,
+  "citations_on_target": 0.974,
+  "citations_checked": 153,
+  "seconds_p50": 4.72,
+  "seconds_p95": 37.66,
+  "statements_cited": 0.987,
   "judge_faithful": 1.0,
-  "judge_correct": 0.989,
-  "judged": 94
+  "judge_correct": 0.98,
+  "judge_relevant": 1.0,
+  "judged": 153,
+  "judges": {
+   "google:gemini-3.1-flash-lite": {
+    "faithful": 1.0,
+    "correct": 0.98,
+    "relevant": 1.0,
+    "judged": 153
+   }
+  }
  }
 }

@@ -179,8 +179,8 @@ schedule with the real model, and grows from real feedback.
 **Why:** every current result carries the warning "draft labels". Later phases can't claim gains on
 labels nobody has checked.
 
-**Progress:** part 1, the tools (review screen, candidates, judges, citation score, nightly run and coverage), is
-built and tested. Part 2 grows the sets and drafts questions for uploads. The review itself waits for the owner. See
+**Progress:** built and tested: the review screen, candidates, judges, citation score, nightly run, coverage, the
+sets grown to 200 and 100, and drafted questions. The review itself waits for the owner. See
 [the Phase 8 report](../evaluation/reports/phase8_report.md).
 
 **Work**

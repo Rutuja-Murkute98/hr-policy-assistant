@@ -17,7 +17,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 5 | Observability, load test, deployment guides, backups | Built, waiting for owner review |
 | 6 | Optional advanced features | Folded into Phases 12, 14 and 15 of the improvement plan |
 | 7 | Prove it live: deployment and database checks, CI starts the stack, live run on Render and Neon | Part 1 built and tested locally. Part 2 (the live run) waits for the owner. See [the Phase 7 report](../evaluation/reports/phase7_report.md) |
-| 8 | Evaluation you can trust: label review screen, real questions as candidates, judges from any vendor, nightly run, coverage | Part 1 built and tested. The label review itself waits for the owner. See [the Phase 8 report](../evaluation/reports/phase8_report.md) |
+| 8 | Evaluation you can trust: label review screen, real questions as candidates, judges from any vendor, nightly run, coverage | Built and tested. The label review itself waits for the owner. See [the Phase 8 report](../evaluation/reports/phase8_report.md) |
 | 9 to 19 | Speed, runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
 
 ## Phase 7 status
@@ -41,8 +41,8 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Separate results for approved items | Implemented and tested | Empty until labels are approved |
 | Nightly evaluation in GitHub Actions | Implemented, not tested | The same steps were rehearsed locally with the real model. Needs a `GOOGLE_API_KEY` secret and a merge to `main` |
 | Coverage floor in CI | Implemented, not tested | 87% measured locally, with the floor at 85%. Runs on GitHub after a push |
-| Golden set grown to 200, agent set to 100 | Planned | Part 2 of this phase |
-| Draft test questions for new uploads | Planned | Part 2 of this phase |
+| Golden set grown to 200, agent set to 100 | Implemented and tested | Every fact checked against its chunks. All 200 golden items run with the real model. All unreviewed |
+| Draft test questions for sections with no test | Implemented and tested | Fakes, and a live run. Covers policy files in the repository, not ones only uploaded through the admin screen |
 | Owner review of at least 90% of items | Planned | Waits for the owner |
 
 ## Phase 1 status

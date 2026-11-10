@@ -49,8 +49,10 @@ METRICS_FILE = REPORTS / "latest_metrics.json"
 K = config.RETRIEVE_K
 PAUSE_SECONDS = 4.5   # stay under the chat model's free-tier limit
 FINGERPRINT_FILES = ["app/rag/retrieval.py", "app/rag/service.py", "app/rag/prompt.py", "app/rag/store.py",
-                     "app/config.py", "app/agent/graph.py", "app/agent/prompts.py", "app/workflow.py",
-                     "evaluation/data/golden_set.json"]
+                     "app/config.py", "app/agent/graph.py", "app/agent/prompts.py", "app/workflow.py"]
+# The parts of a golden item that change a result. Approving an item or editing its notes doesn't, so CI stays green
+# through a review. Rejecting one does, as it leaves the evaluation.
+LABEL_FIELDS = ("id", "category", "question", "history", "relevant_chunks", "must_contain", "must_refuse")
 EVAL_USER = "E1001"  # a fake employee, as the chat screen would send
 JUDGE_TIMEOUT_SECONDS = 90
 DEFAULT_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL", "gemini-3.1-flash-lite")
@@ -59,11 +61,14 @@ DEFAULT_JUDGE_MODEL = os.getenv("EVAL_JUDGE_MODEL", "gemini-3.1-flash-lite")
 EVAL_JUDGES = os.getenv("EVAL_JUDGES", "")
 
 
-def fingerprint() -> str:
+def fingerprint(items: list[dict] | None = None) -> str:
     """Identify the code and labels behind a result, so CI can tell if it's out of date."""
     digest = hashlib.sha256()
     for name in FINGERPRINT_FILES:
         digest.update((config.PROJECT_ROOT / name).read_bytes().replace(b"\r\n", b"\n"))
+    items = load_golden() if items is None else items
+    labels = [{field: item.get(field) for field in LABEL_FIELDS} for item in items]
+    digest.update(json.dumps(labels, sort_keys=True, ensure_ascii=False).encode())
     return digest.hexdigest()
 
 

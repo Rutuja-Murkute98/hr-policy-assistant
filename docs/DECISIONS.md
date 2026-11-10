@@ -472,6 +472,39 @@ labelled chunk or none. Drafting from the section itself gives the reviewer a st
 questions, and the reviewer must check it. It works from the policy files in the repository, so a policy uploaded only through the
 admin screen isn't covered until its file is added here. It uses one model call per section.
 
+## D46. Every step of an answer is timed, and question vectors are cached in PostgreSQL
+
+**Decision:** Each workflow step's time is stored with the answer's metrics, in a `step_ms` column, and summarised on the admin
+Usage tab. The evaluation times only the attempt that worked. A question's vector is kept in a `question_embeddings` table, keyed
+by organisation, embedder and a hash of the masked question, under Row-Level Security, and removed after the conversation
+retention period. `CACHE_QUESTION_EMBEDDINGS` turns it off.
+
+**Why:** Model time was one total, so the slow step couldn't be found, and the Phase 8 run reported a p95 of 37.66 s that was
+mostly waits between retries. With steps timed, searching turned out to take about a second per answer, mostly the embedding call,
+which a repeated question doesn't need. PostgreSQL is already there, so the cache needs no new service, and it survives the free
+API sleeping.
+
+**Trade-offs:** One more table, and a read and a write per new question. The key keeps letter case, so "Leave policy?" and "leave
+policy?" are cached separately. A vector is derived from a question, so it's handled like the question: per organisation, and
+deleted on the same schedule.
+
+## D47. A first message is searched while the model reads it, and a separate router model is allowed
+
+**Decision:** For a message with no chat before it, the search for the message as typed starts in a background thread while the
+model works out what the message is. If it's a policy question, or an off-topic one to check, that search is used, and otherwise it's
+dropped. A follow-up still waits for its rewritten question. `SEARCH_WHILE_UNDERSTANDING` turns it off. `ROUTER_MODEL` and
+`ROUTER_PROVIDER` can name a separate model for reading messages.
+
+**Why:** Reading the message and searching were done one after the other, though a first message can be searched as it is. On 20
+golden questions with the real model, the median answer fell from 3.77 s to 3.19 s, and to 2.94 s with the vector cache warm, with
+the same recall, facts and refusals. Reading every message is a full model call, so a smaller model there is the next lever. The
+setting lets that be measured without code changes.
+
+**Trade-offs:** A message that turns out to be a self-service request or about an old policy version still costs one search, which
+is thrown away. The search runs on the raw wording rather than the model's rewrite, which made no difference on this sample. A router
+from another provider sends each message to that provider too. The p95 target isn't met: the slowest answers are the model's own
+spikes, which this doesn't touch.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

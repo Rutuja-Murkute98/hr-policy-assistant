@@ -18,7 +18,8 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 6 | Optional advanced features | Folded into Phases 12, 14 and 15 of the improvement plan |
 | 7 | Prove it live: deployment and database checks, CI starts the stack, live run on Render and Neon | Part 1 built and tested locally. Part 2 (the live run) waits for the owner. See [the Phase 7 report](../evaluation/reports/phase7_report.md) |
 | 8 | Evaluation you can trust: label review screen, real questions as candidates, judges from any vendor, nightly run, coverage | Built and tested. The label review itself waits for the owner. See [the Phase 8 report](../evaluation/reports/phase8_report.md) |
-| 9 to 19 | Speed, runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
+| 9 | Speed and quota: step timings, early search, question vector cache, router model setting | Part 1 built and measured: median 3.77 s to 2.94 s. p95 target not met. See [the Phase 9 report](../evaluation/reports/phase9_report.md) |
+| 10 to 19 | Runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
 
 ## Phase 7 status
 
@@ -29,6 +30,18 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Compose stack started in CI | Implemented and tested | Passed on GitHub in CI run #11: the stack started and the deployment check passed without the model |
 | Live deployment on Render, Neon and Streamlit | Planned | Waits for the owner. See the Phase 7 report |
 | Real OIDC sign-in, Neon backup and restore, load test on the deployment | Planned | Waits for the owner's access |
+
+## Phase 9 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Per-step timings, stored and shown on the Usage tab | Implemented and tested | Workflow, metrics and screen tests, and real runs |
+| Evaluation times only the attempt that worked | Implemented and tested | Unit test with a failing first attempt |
+| Search a first message while it's read | Implemented and tested | 6 workflow tests. Median 3.77 s to 3.19 s on 20 real questions, same quality |
+| Question vector cache | Implemented and tested | 5 tests on real PostgreSQL. Median 2.94 s warm |
+| Separate router model | Implemented, not tested | Tested with a scripted model only |
+| Answer cache, skipping the read for simple messages, async path | Planned | Part 2 |
+| p95 under 6 s | Not met | 8.97 s here with a warm cache. The model's own spikes set the tail |
 
 ## Phase 8 status
 

@@ -235,6 +235,10 @@ least 10 active people.
 `understand` (which already combines intent and rewriting in one call) and then the answer, plus a
 second search when evidence is weak.
 
+**Progress:** part 1 is built and measured: step timings, the early search and the question vector cache cut the
+median from 3.77 s to 2.94 s on 20 real questions. The p95 target isn't met. Part 2 tries a router model, an answer
+cache and the async path. See [the Phase 9 report](../evaluation/reports/phase9_report.md).
+
 **Work**
 
 - [ ] Measure first: add per-step timings for `understand`, embedding, search, retry and answer to the

@@ -1,0 +1,78 @@
+{
+ "name": "speed_off",
+ "review": {
+  "approved": 0,
+  "rejected": 0,
+  "unreviewed": 20
+ },
+ "metrics": {
+  "recall_at_5": 0.975,
+  "facts_correct": 1.0,
+  "facts_checked": 20,
+  "refused_when_it_should": 0.0,
+  "refusal_checked": 0,
+  "false_refusals": 0.0,
+  "citations_valid": 1.0,
+  "citations_on_target": 0.95,
+  "citations_checked": 20,
+  "seconds_p50": 3.77,
+  "seconds_p95": 9.22,
+  "statements_cited": 1.0,
+  "steps_ms": {
+   "generate": {
+    "p50": 1484,
+    "p95": 6776,
+    "count": 20
+   },
+   "retrieve": {
+    "p50": 1080,
+    "p95": 1410,
+    "count": 20
+   },
+   "understand": {
+    "p50": 1226,
+    "p95": 6600,
+    "count": 20
+   }
+  }
+ },
+ "approved_only": null,
+ "by_category": {
+  "normal": {
+   "recall_at_5": 0.975,
+   "facts_correct": 1.0,
+   "facts_checked": 20,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 0.95,
+   "citations_checked": 20,
+   "seconds_p50": 3.77,
+   "seconds_p95": 9.22,
+   "statements_cited": 1.0,
+   "steps_ms": {
+    "generate": {
+     "p50": 1484,
+     "p95": 6776,
+     "count": 20
+    },
+    "retrieve": {
+     "p50": 1080,
+     "p95": 1410,
+     "count": 20
+    },
+    "understand": {
+     "p50": 1226,
+     "p95": 6600,
+     "count": 20
+    }
+   }
+  }
+ },
+ "failures": {
+  "wrongly_answered": [],
+  "wrongly_refused": [],
+  "missing_facts": []
+ }
+}

@@ -9,7 +9,7 @@ import time
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 from langchain_core.documents import Document
@@ -29,7 +29,8 @@ from app.memory import ConversationStore, summarise_if_long
 from app.metrics import AnswerMetrics, MetricsStore
 from app.observability import Tracing, UsageCallback, estimated_cost
 from app.pii import mask
-from app.rag.providers import get_chat_model
+from app.rag.embedding_cache import QuestionEmbeddingCache
+from app.rag.providers import get_chat_model, get_router_model
 from app.rag.rerank import get_reranker
 from app.rag.retrieval import SearchFilters
 from app.rag.service import RagAnswer, RagService
@@ -48,6 +49,7 @@ class WorkflowAnswer(RagAnswer):
     tool: str = ""
     tool_status: str = ""
     message_id: int | None = None  # the stored answer, which feedback refers to
+    step_ms: dict = field(default_factory=dict)  # milliseconds per workflow step
 
 
 class TenantSaver(PostgresSaver):
@@ -72,7 +74,7 @@ class TenantSaver(PostgresSaver):
 
 class ChatWorkflow:
     def __init__(self, rag: RagService, llm, engine, checkpointer, hrms=None, tenant_id: str = config.TENANT_ID,
-                 today=date.today, tracing: Tracing | None = None):
+                 today=date.today, tracing: Tracing | None = None, router=None):
         if rag.tenant_id != tenant_id:
             raise ValueError("This search service belongs to another tenant")
         scoped = tenant_scoped(engine, tenant_id)
@@ -86,11 +88,14 @@ class ChatWorkflow:
         self.runner = ToolRunner(scoped, hrms or MockHRMS(scoped, tenant_id))
         self.knowledge = KnowledgeBase(scoped, rag.store, tenant_id, profile=rag.profile)
         self.metrics = MetricsStore(scoped, tenant_id)
+        if config.CACHE_QUESTION_EMBEDDINGS and rag.query_cache is None:
+            rag.query_cache = QuestionEmbeddingCache(scoped, tenant_id)
         self.tracing_callbacks = tracing.callbacks if tracing else []
         self.checkpointer = checkpointer
         if isinstance(checkpointer, PostgresSaver):
             self.checkpointer = TenantSaver(checkpointer.conn, tenant_id)  # type: ignore[arg-type]
-        self.graph = build_workflow(rag, llm, self.runner, tenant_id, self.checkpointer)
+        self.graph = build_workflow(rag, llm, self.runner, tenant_id, self.checkpointer,
+                                    router=router if router is not None else get_router_model())
         self._last_purge = 0.0
 
     @property
@@ -110,7 +115,8 @@ class ChatWorkflow:
             tool_status=values.get("tool_status") or "", embedding_ms=values.get("embedding_ms", 0.0),
             retrieval_ms=values.get("retrieval_ms", 0.0), llm_ms=usage.llm_ms, llm_calls=usage.llm_calls,
             input_tokens=usage.input_tokens, output_tokens=usage.output_tokens,
-            estimated_cost_usd=estimated_cost(usage.input_tokens, usage.output_tokens)))
+            estimated_cost_usd=estimated_cost(usage.input_tokens, usage.output_tokens),
+            step_ms=values.get("step_ms") or {}))
 
     def _forget_run(self, run_id: str) -> None:
         self.checkpointer.delete_thread(run_id)
@@ -125,7 +131,7 @@ class ChatWorkflow:
             answered=state.get("answered", True), abstain_reason=state.get("abstain_reason", ""),
             intent=state.get("intent", ""), conversation_id=conversation_id,
             pending_action=state.get("pending_action"), tool=state.get("tool", ""),
-            tool_status=state.get("tool_status", ""),
+            tool_status=state.get("tool_status", ""), step_ms=dict(state.get("step_ms") or {}),
         )
 
     def run_maintenance(self, force: bool = False) -> None:
@@ -139,6 +145,8 @@ class ChatWorkflow:
             self.knowledge.fail_interrupted()
         self.knowledge.purge_unanswered_older_than(config.CONVERSATION_RETENTION_DAYS)
         removed = self.conversations.purge_older_than(config.CONVERSATION_RETENTION_DAYS)
+        if self.rag.query_cache is not None:
+            self.rag.query_cache.purge_older_than(config.CONVERSATION_RETENTION_DAYS)
         if removed:
             logger.info("Removed %s conversations past the retention period", removed)
 

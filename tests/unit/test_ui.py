@@ -222,7 +222,9 @@ def test_an_hr_admin_does_not_need_the_shared_key(signed_in, monkeypatch):
         if "/admin/metrics" in url:
             return FakeResponse(body={"requests": 12, "failures": 1, "refusals": 2, "input_tokens": 100, "output_tokens": 20,
                                       "estimated_cost_usd": 0.0, "tool_calls": 3, "tool_failures": 0,
-                                      "latency_ms": {"total_p50": 4100, "total_p95": None}})
+                                      "latency_ms": {"total_p50": 4100, "total_p95": None},
+                                      "steps_ms": {"understand": {"p50": 1500, "p95": 2900, "count": 12},
+                                                   "generate": {"p50": 2400, "p95": None, "count": 10}}})
         return FakeResponse(body={"thumbs_up": 0, "thumbs_down": 0, "recent_negative": []} if "feedback" in url else [])
 
     monkeypatch.setattr(requests, "request", request)
@@ -231,4 +233,7 @@ def test_an_hr_admin_does_not_need_the_shared_key(signed_in, monkeypatch):
     assert not [box for box in app.text_input if box.label == "Admin key"]
     assert [tab.label for tab in app.tabs][-4:] == ["Usage", "People", "API keys", "Audit log"]
     assert {metric.label: metric.value for metric in app.metric}["Typical answer"] == "4.1 s"
+    steps = next(frame.value for frame in app.dataframe if "Step" in frame.value.columns)
+    assert list(steps["Step"]) == ["Reading the message", "Writing the answer"]
+    assert list(steps["Typical"]) == [1.5, 2.4]
     assert all(headers == {"Authorization": "Bearer a-token"} for headers in seen)

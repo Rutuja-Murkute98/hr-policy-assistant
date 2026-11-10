@@ -297,7 +297,9 @@ def test_past_questions_ask_for_history_in_the_search(shared, monkeypatch):
     original = workflow.rag.search
     monkeypatch.setattr(workflow.rag, "search", lambda question, filters, timing=None: seen.append(filters) or original(question, filters, timing))
     workflow.ask("What did the leave policy say before?")
-    assert seen[0].include_history is True
+    # The search started while understanding can't know yet, so it's discarded and the real one includes history
+    assert seen[-1].include_history is True
+    assert all(not filters.include_history for filters in seen[:-1])
 
 
 # Conversations
@@ -715,3 +717,80 @@ def test_a_saved_chat_is_listed_with_its_first_question_as_the_title(shared):
     workflow = make(shared)
     workflow.ask("How much earned leave do I get?", user_id="E1001")
     assert workflow.conversations.conversations("E1001")[0]["title"] == "How much earned leave do I get?"
+
+
+# Speed: step timings, the search made while understanding, and a separate router model
+
+def counting_searches(monkeypatch, workflow, fail_first=False):
+    """Record each search's query, and optionally make the first one fail."""
+    queries: list[str] = []
+    original = workflow.rag.search
+
+    def search(question, filters, timing=None):
+        queries.append(question)
+        if fail_first and len(queries) == 1:
+            raise RuntimeError("database busy")
+        return original(question, filters, timing)
+
+    monkeypatch.setattr(workflow.rag, "search", search)
+    return queries
+
+
+def test_each_step_of_an_answer_is_timed_and_kept_with_its_metrics(shared):
+    workflow = make(shared)
+    answer = workflow.ask("How many earned leave days?")
+    assert {"understand", "retrieve", "generate"} <= set(answer.step_ms)
+    assert all(milliseconds >= 0 for milliseconds in answer.step_ms.values())
+    with shared.engine.connect() as connection:
+        stored = connection.execute(text("SELECT step_ms FROM answer_metrics ORDER BY id DESC LIMIT 1")).scalar()
+    assert set(stored) == set(answer.step_ms)
+    steps = workflow.metrics.summary()["steps_ms"]
+    assert steps["understand"]["count"] >= 1 and steps["generate"]["p50"] is not None
+
+
+def test_a_first_message_is_searched_once_while_it_is_understood(shared, monkeypatch):
+    for early in (True, False):
+        monkeypatch.setattr(config, "SEARCH_WHILE_UNDERSTANDING", early)
+        workflow = make(shared)
+        queries = counting_searches(monkeypatch, workflow)
+        answer = workflow.ask("How many earned leave days?")
+        assert queries == ["How many earned leave days?"], early
+        assert answer.sources and answer.sources[0]["file"] == "Leave_Policy.md"
+
+
+def test_a_follow_up_is_only_searched_after_it_is_rewritten(shared, monkeypatch):
+    llm = ScriptedLLM(standalone="How many earned leave days do employees on probation get?")
+    workflow = make(shared, llm)
+    queries = counting_searches(monkeypatch, workflow)
+    workflow.ask("And on probation?", history=[{"role": "user", "content": "How many earned leave days?"},
+                                              {"role": "assistant", "content": "Eighteen."}])
+    assert queries == ["How many earned leave days do employees on probation get?"]
+
+
+def test_an_early_search_is_dropped_for_a_tool_request(shared, monkeypatch):
+    llm = ScriptedLLM(intent="personal_data_request", tool="get_leave_balance")
+    workflow = make(shared, llm)
+    queries = counting_searches(monkeypatch, workflow)
+    answer = workflow.ask("How many leave days do I have left?", user_id="E1001")
+    assert answer.tool == "get_leave_balance"
+    assert len(queries) == 1  # the early search ran, and only cost that
+    assert not answer.sources
+
+
+def test_a_failed_early_search_is_simply_done_again(shared, monkeypatch):
+    workflow = make(shared)
+    queries = counting_searches(monkeypatch, workflow, fail_first=True)
+    answer = workflow.ask("How many earned leave days?")
+    assert len(queries) == 2
+    assert answer.answered and answer.sources
+
+
+def test_a_router_model_reads_messages_and_the_main_model_writes_answers(shared):
+    router, writer = ScriptedLLM(), ScriptedLLM()
+    rag = RagService(shared.index, writer)
+    workflow = ChatWorkflow(rag, writer, shared.engine, shared.saver, today=lambda: TODAY, router=router)
+    answer = workflow.ask("How many earned leave days?")
+    assert answer.answered
+    assert any("Latest message: How many earned leave days?" in seen for seen in router.seen)
+    assert not any("Latest message:" in seen for seen in writer.seen)
+    assert writer.seen  # the answer itself came from the main model

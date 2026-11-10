@@ -301,14 +301,15 @@ def run_answers(args) -> None:
     for number, item in enumerate(items, start=1):
         if item["id"] in saved:
             continue
-        started = time.perf_counter()
-        result = call_with_retry(lambda item=item: ask_item(service, item, args.workflow))
+        # Only the attempt that worked is timed, so waits between retries on a busy model don't count
+        result, seconds = call_with_retry(lambda item=item: timed(lambda: ask_item(service, item, args.workflow)))
         saved[item["id"]] = {
             "answer": result.answer, "answered": result.answered, "abstain_reason": result.abstain_reason,
             "cited": [source["chunk_id"] for source in result.sources],
             "retrieved": [chunk.id for chunk in result.chunks],
             "excerpts": [chunk.page_content for chunk in result.chunks],
-            "question_used": result.question_used, "seconds": round(time.perf_counter() - started, 2),
+            "question_used": result.question_used, "seconds": round(seconds, 2),
+            "step_ms": dict(getattr(result, "step_ms", {}) or {}),
             "intent": getattr(result, "intent", ""), "tool": getattr(result, "tool", ""),
             "category_asked": getattr(result, "category", ""),
         }
@@ -322,6 +323,23 @@ def run_answers(args) -> None:
     write_answer_report(args.name, items, saved)
     if args.workflow:
         service.close()
+
+
+def timed(call):
+    """Return the call's result and how many seconds it took."""
+    started = time.perf_counter()
+    result = call()
+    return result, time.perf_counter() - started
+
+
+def step_percentiles(rows: list[dict]) -> dict[str, dict]:
+    """Median and p95 milliseconds of each workflow step, over the answers that went through it."""
+    steps: dict[str, list[float]] = {}
+    for row in rows:
+        for step, milliseconds in (row.get("step_ms") or {}).items():
+            steps.setdefault(step, []).append(milliseconds)
+    return {step: {"p50": round(percentile(values, 0.5)), "p95": round(percentile(values, 0.95)), "count": len(values)}
+            for step, values in sorted(steps.items())}
 
 
 def select_items(items: list[dict], split: str = "all", limit: int = 0) -> list[dict]:
@@ -395,6 +413,9 @@ def answer_metrics(items: list[dict], rows: dict[str, dict]) -> dict:
         "seconds_p95": round(percentile(seconds, 0.95), 2),
         "statements_cited": round(mean(cited_shares), 3) if cited_shares else None,
     }
+    steps = step_percentiles([rows[i["id"]] for i in items])
+    if steps:  # runs from before steps were timed have none
+        metrics["steps_ms"] = steps
     judges = {name for verdicts in verdicts_by_item for name in verdicts}
     by_judge = {name: judge_scores([verdicts[name] for verdicts in verdicts_by_item if name in verdicts])
                 for name in sorted(judges)}

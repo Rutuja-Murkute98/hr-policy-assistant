@@ -3,8 +3,9 @@
 Kept in PostgreSQL because the free stack has no metrics service, a free server's memory is lost when it
 sleeps, and each organisation should only see its own numbers.
 """
+import json
 import logging
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 from sqlalchemy import Engine, text
 
@@ -30,13 +31,18 @@ class AnswerMetrics:
     input_tokens: int = 0
     output_tokens: int = 0
     estimated_cost_usd: float = 0.0
+    step_ms: dict = field(default_factory=dict)  # milliseconds per workflow step
 
 
+# The steps whose timings are summarised. Others are still stored.
+TIMED_STEPS = ("understand", "confirm_out_of_scope", "retrieve", "rewrite_query", "generate", "select_tool")
 INSERT = text(
     "INSERT INTO answer_metrics (tenant_id, kind, total_ms, failed, intent, answered, abstain_reason, tool, "
-    "tool_status, embedding_ms, retrieval_ms, llm_ms, llm_calls, input_tokens, output_tokens, estimated_cost_usd) "
+    "tool_status, embedding_ms, retrieval_ms, llm_ms, llm_calls, input_tokens, output_tokens, estimated_cost_usd, "
+    "step_ms) "
     "VALUES (:tenant_id, :kind, :total_ms, :failed, :intent, :answered, :abstain_reason, :tool, :tool_status, "
-    ":embedding_ms, :retrieval_ms, :llm_ms, :llm_calls, :input_tokens, :output_tokens, :estimated_cost_usd)"
+    ":embedding_ms, :retrieval_ms, :llm_ms, :llm_calls, :input_tokens, :output_tokens, :estimated_cost_usd, "
+    "CAST(:step_ms AS jsonb))"
 )
 SUMMARY = text(
     "SELECT count(*) AS requests, count(*) FILTER (WHERE failed) AS failures, "
@@ -53,6 +59,16 @@ SUMMARY = text(
     "count(*) FILTER (WHERE tool <> '') AS tool_calls, "
     "count(*) FILTER (WHERE tool_status IN ('failed', 'blocked', 'unknown_tool')) AS tool_failures "
     "FROM answer_metrics WHERE tenant_id = :tenant_id AND created_at >= now() - make_interval(days => :days)"
+)
+STEPS = text(
+    "SELECT " + ", ".join(
+        f"percentile_cont(0.5) WITHIN GROUP (ORDER BY (step_ms->>'{step}')::float) "
+        f"FILTER (WHERE step_ms ? '{step}') AS {step}_p50, "
+        f"percentile_cont(0.95) WITHIN GROUP (ORDER BY (step_ms->>'{step}')::float) "
+        f"FILTER (WHERE step_ms ? '{step}') AS {step}_p95, "
+        f"count(*) FILTER (WHERE step_ms ? '{step}') AS {step}_count" for step in TIMED_STEPS)
+    + " FROM answer_metrics WHERE tenant_id = :tenant_id AND NOT failed "
+    "AND created_at >= now() - make_interval(days => :days)"
 )
 FEEDBACK = text(
     "SELECT count(*) FILTER (WHERE rating > 0) AS up, count(*) FILTER (WHERE rating < 0) AS down FROM feedback "
@@ -73,7 +89,8 @@ class MetricsStore:
         """Save one answer's numbers. A failure here only loses a measurement, never the answer."""
         try:
             with self.engine.begin() as connection:
-                connection.execute(INSERT, {**asdict(metrics), "tenant_id": self.tenant_id})
+                connection.execute(INSERT, {**asdict(metrics), "tenant_id": self.tenant_id,
+                                            "step_ms": json.dumps(metrics.step_ms)})
         except Exception as error:
             logger.warning("Couldn't save an answer's metrics: %s", type(error).__name__)
 
@@ -81,6 +98,7 @@ class MetricsStore:
         scope = {"tenant_id": self.tenant_id, "days": days}
         with self.engine.begin() as connection:
             row = connection.execute(SUMMARY, scope).one()
+            steps = connection.execute(STEPS, scope).one()._mapping
             feedback = connection.execute(FEEDBACK, scope).one()
         answered_or_refused = row.requests - row.failures
         return {
@@ -93,6 +111,10 @@ class MetricsStore:
                            "embedding_p50": _whole(row.embedding_p50),
                            "retrieval_p50": _whole(row.retrieval_p50), "retrieval_p95": _whole(row.retrieval_p95),
                            "llm_p50": _whole(row.llm_p50), "llm_p95": _whole(row.llm_p95)},
+            # Where the time goes, step by step: the slowest step is the one to work on
+            "steps_ms": {step: {"p50": _whole(steps[f"{step}_p50"]), "p95": _whole(steps[f"{step}_p95"]),
+                                "count": steps[f"{step}_count"]}
+                         for step in TIMED_STEPS if steps[f"{step}_count"]},
             "llm_calls": row.llm_calls,
             "input_tokens": row.input_tokens,
             "output_tokens": row.output_tokens,

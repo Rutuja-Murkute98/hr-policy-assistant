@@ -6,9 +6,12 @@
     understand -> select_tool -> clarify | execute_tool | retrieve (no tool fits a question)
                   select_tool -> prepare_approval -> wait_for_approval -> execute_tool
 """
+import functools
 import logging
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
-from typing import TypedDict
+from typing import Annotated, TypedDict
 
 from langchain_core.documents import Document
 from langgraph.config import get_stream_writer
@@ -34,6 +37,16 @@ from app.rag.retrieval import SearchFilters
 from app.rag.service import GREETING, RagAnswer, RagService
 
 logger = logging.getLogger("hr_helpdesk")
+# Searches started while a message is being understood. Shared, as each one is short and memory is tight.
+PREFETCH = ThreadPoolExecutor(max_workers=4, thread_name_prefix="prefetch")
+
+
+def add_step_times(old: dict | None, new: dict | None) -> dict:
+    """Merge step timings. A step that runs twice, such as a search after a retry, counts both times."""
+    merged = dict(old or {})
+    for step, milliseconds in (new or {}).items():
+        merged[step] = merged.get(step, 0.0) + milliseconds
+    return merged
 
 
 class WorkflowState(TypedDict, total=False):
@@ -65,6 +78,18 @@ class WorkflowState(TypedDict, total=False):
     tool_args: dict
     tool_status: str
     pending_action: dict | None
+    prefetched: dict | None  # a search made while the message was being understood
+    step_ms: Annotated[dict, add_step_times]  # milliseconds spent in each step
+
+
+def timed_step(step):
+    """Run a workflow step and record how long it took, so the slow step of an answer can be found."""
+    @functools.wraps(step)
+    def run(state: WorkflowState) -> dict:
+        started = time.perf_counter()
+        result = step(state) or {}
+        return {**result, "step_ms": {step.__name__: round((time.perf_counter() - started) * 1000, 1)}}
+    return run
 
 
 def _to_documents(chunks: list[dict]) -> list[Document]:
@@ -87,9 +112,32 @@ def _say(state: WorkflowState, text: str, **fields) -> dict:
     return {"answer": text, **fields}
 
 
-def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, checkpointer):
+def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, checkpointer, router=None):
+    """router reads each message, and can be a smaller, faster model than llm, which writes the answers."""
     profile = rag.profile
     known_tools = langchain_tools()
+    router = router or llm
+
+    def search_filters(state: WorkflowState, include_history: bool = False) -> SearchFilters:
+        given = state.get("filters") or {}
+        return SearchFilters(tenant_id=tenant_id, policy=given.get("policy"), category=given.get("category"),
+                             effective_on=given.get("effective_on"), include_history=include_history)
+
+    def can_prefetch(state: WorkflowState) -> bool:
+        """Only a first message can be searched as typed: a follow-up needs rewriting first."""
+        return (config.SEARCH_WHILE_UNDERSTANDING and not config.USE_CATEGORY_ROUTING
+                and not state.get("history") and not state.get("summary"))
+
+    def use_prefetch(future: Future, state: WorkflowState, question: str) -> dict:
+        """Wait for the search started earlier, and keep it for the next step. A failed one is just done again."""
+        try:
+            chunks, confidence, timing = future.result()
+        except Exception:
+            logger.exception("A search made while understanding failed, so it will be done again")
+            return {}
+        return {"prefetched": {"query": question, "confidence": confidence,
+                               "chunks": [{"id": c.id, "page_content": c.page_content, "metadata": c.metadata}
+                                          for c in chunks]}, **timing}
 
     def timed_search(state: WorkflowState, query: str, filters: SearchFilters) -> tuple[list[Document], float, dict]:
         """Search, and add the time it took to what this answer has used so far."""
@@ -103,18 +151,34 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         question = state["question"]
         if GREETING.fullmatch(question.strip()):  # needs no model call
             return {"intent": "greeting", "standalone": question, "category": ""}
+        # Most first messages are policy questions, so their search runs while the model reads them
+        future = None
+        if can_prefetch(state):
+            future = PREFETCH.submit(timed_search, state, question, search_filters(state))
         try:
-            result = llm.with_structured_output(Understanding).invoke(
+            result = router.with_structured_output(Understanding).invoke(
                 build_understanding_messages(question, state.get("summary", ""), state.get("history", []), profile))
         except Exception:
             # The policy path is the safest default: it can still abstain
             logger.exception("Understanding a message failed, so it was treated as a policy question")
-            return {"intent": "policy_question", "standalone": question, "category": ""}
+            fallback = {"intent": "policy_question", "standalone": question, "category": ""}
+            return {**fallback, **(use_prefetch(future, state, question) if future else {})}
         standalone = result.standalone_question.strip()
         if not standalone or len(standalone) > config.MAX_QUESTION_CHARS:
             standalone = question
-        return {"intent": result.intent, "standalone": standalone, "asks_about_past": result.asks_about_past,
-                "category": result.category if result.category in categories_of(profile) else ""}
+        understood = {"intent": result.intent, "standalone": standalone, "asks_about_past": result.asks_about_past,
+                      "category": result.category if result.category in categories_of(profile) else ""}
+        searches_next = result.intent in ("policy_question", "out_of_scope") and not result.asks_about_past
+        if future and searches_next:
+            return {**understood, **use_prefetch(future, state, question)}
+        return understood  # a tool request, or a question about old versions, doesn't use it
+
+    def prefetched(state: WorkflowState) -> tuple[list[Document], float] | None:
+        """The search made while understanding, if this is the first search of the answer."""
+        found = state.get("prefetched")
+        if not found or state.get("retried") or state.get("first_search"):
+            return None
+        return _to_documents(found["chunks"]), found["confidence"]
 
     def route_intent(state: WorkflowState) -> str:
         intent = state["intent"]
@@ -131,8 +195,12 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
 
     def confirm_out_of_scope(state: WorkflowState) -> dict:
         """Check the label against the policies, since wrongly refusing a real question is costly."""
-        filters = SearchFilters(tenant_id=tenant_id)
-        chunks, confidence, timing = timed_search(state, state["standalone"], filters)
+        early = prefetched(state)
+        if early:
+            chunks, confidence = early
+            timing: dict = {}
+        else:
+            chunks, confidence, timing = timed_search(state, state["standalone"], SearchFilters(tenant_id=tenant_id))
         if chunks and confidence >= config.OUT_OF_SCOPE_OVERRIDE_CONFIDENCE:
             return {"intent": "policy_question", "category": "", **timing}
         return timing
@@ -155,7 +223,13 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         # Narrow by topic the first time only. FAQ and glossary chunks are "general", so they stay in.
         if config.USE_CATEGORY_ROUTING and state.get("category") and not filters.category and not state.get("retried"):
             filters.categories = [state["category"], profile.default_category]
-        chunks, confidence, timing = timed_search(state, state.get("search_query") or state["standalone"], filters)
+        early = prefetched(state)
+        if early and not filters.categories:
+            chunks, confidence = early
+            timing: dict = {}
+        else:
+            chunks, confidence, timing = timed_search(state, state.get("search_query") or state["standalone"],
+                                                      filters)
         found = {"chunks": [{"id": c.id, "page_content": c.page_content, "metadata": c.metadata} for c in chunks],
                  "confidence": confidence}
         first = state.get("first_search")
@@ -265,7 +339,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
     graph = StateGraph(WorkflowState)
     for step in (understand, greet, confirm_out_of_scope, refuse, needs_identity, retrieve, rewrite_query, abstain,
                  generate, select_tool, clarify, prepare_approval, wait_for_approval, declined, execute_tool):
-        graph.add_node(step.__name__, step)
+        graph.add_node(step.__name__, timed_step(step))
     graph.add_edge(START, "understand")
     graph.add_conditional_edges("understand", route_intent,
                                 ["greet", "confirm_out_of_scope", "needs_identity", "retrieve", "select_tool"])

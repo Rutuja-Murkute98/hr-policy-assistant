@@ -141,3 +141,25 @@ def test_a_run_can_use_one_fixed_half_and_a_limit():
     assert [i["id"] for i in select_items(items, "check")] == [f"normal-{n:03d}" for n in (1, 3, 5, 7, 9)]
     assert len(select_items(items, "tune", 2)) == 2
     assert select_items(items) == items
+
+
+def test_only_the_attempt_that_worked_is_timed():
+    calls = []
+
+    def flaky():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("503 busy")
+        return "answer"
+
+    result, seconds = run_eval.call_with_retry(lambda: run_eval.timed(flaky), wait=0.2)
+    assert result == "answer" and len(calls) == 2
+    assert seconds < 0.2  # the wait between attempts isn't counted
+
+
+def test_step_times_are_summarised_per_step():
+    rows = [{"step_ms": {"understand": 1000, "generate": 3000}}, {"step_ms": {"understand": 2000}},
+            {"answer": "from a run before steps were timed"}]
+    assert run_eval.step_percentiles(rows) == {
+        "generate": {"p50": 3000, "p95": 3000, "count": 1},
+        "understand": {"p50": 1000, "p95": 2000, "count": 2}}

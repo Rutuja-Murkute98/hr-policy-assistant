@@ -255,6 +255,11 @@ def show_api_keys() -> None:
             st.rerun()
 
 
+STEP_NAMES = {"understand": "Reading the message", "confirm_out_of_scope": "Checking an off-topic message",
+              "retrieve": "Searching the policies", "rewrite_query": "Rewording a weak search",
+              "generate": "Writing the answer", "select_tool": "Choosing a self-service action"}
+
+
 def show_usage() -> None:
     days = st.selectbox("Period", [1, 7, 30, 90], index=1, format_func=lambda value: f"Last {value} days")
     usage, problem = call_api("GET", f"/admin/metrics?days={days}")
@@ -272,6 +277,11 @@ def show_usage() -> None:
     second.metric("Tokens", f"{usage['input_tokens'] + usage['output_tokens']:,}")
     third.metric("Estimated cost", f"${usage['estimated_cost_usd']:.2f}")
     fourth.metric("Tool failures", f"{usage['tool_failures']} of {usage['tool_calls']}")
+    if usage.get("steps_ms"):
+        st.caption("Where the time goes, in seconds per step. The slowest step is the one to work on.")
+        st.dataframe([{"Step": STEP_NAMES.get(step, step), "Typical": round((times["p50"] or 0) / 1000, 1),
+                       "Slowest 5% from": round((times["p95"] or 0) / 1000, 1), "Answers": times["count"]}
+                      for step, times in usage["steps_ms"].items()], hide_index=True, use_container_width=True)
     st.caption("Counts and times only: no questions or answers are stored here. The cost uses the prices in "
                "the server's settings, and is 0 on a free tier.")
 

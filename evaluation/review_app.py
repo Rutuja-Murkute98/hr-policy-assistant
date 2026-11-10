@@ -160,7 +160,8 @@ def candidates_page(path: Path, golden_path: Path) -> None:
     candidates = review.load(path)
     waiting = [item for item in candidates["items"] if item["status"] == "new"]
     st.metric("Waiting", len(waiting))
-    st.caption("Add more with: python -m evaluation.candidates import <file downloaded from the admin screen>")
+    st.caption("Add more with: python -m evaluation.candidates import <file from the admin screen>, "
+               "or python -m evaluation.candidates draft for policy sections with no test")
     item = choose_item(waiting, "candidate_item")
     if item is None:
         return
@@ -170,6 +171,11 @@ def candidates_page(path: Path, golden_path: Path) -> None:
         st.markdown(f"**The bot said:** {item['answer']}")
     if item["comment"]:
         st.markdown(f"**Their comment:** {item['comment']}")
+    for chunk_id in item.get("relevant_chunks", []):
+        with st.expander(f"Drafted from: {chunk_id}"):
+            st.text(review.chunk_texts().get(chunk_id, "This chunk no longer exists."))
+    if item.get("must_contain"):
+        st.caption("Proposed facts: " + " · ".join(item["must_contain"]))
     category = st.selectbox("Category in the golden set", sorted(CATEGORIES),
                             index=sorted(CATEGORIES).index("unanswerable" if item["source"] == "unanswered"
                                                            else "normal"))

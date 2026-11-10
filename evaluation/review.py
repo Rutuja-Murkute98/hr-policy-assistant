@@ -19,7 +19,7 @@ AGENT_FILE = DATA / "agent_set.json"
 CANDIDATES_FILE = DATA / "candidates.json"
 CACHE = DATA.parent.parent / ".cache"
 CANDIDATE_STATES = {"new", "promoted", "dismissed"}
-CANDIDATE_SOURCES = {"unanswered", "thumbs_down"}
+CANDIDATE_SOURCES = {"unanswered", "thumbs_down", "new_section"}
 INTENTS = {"policy_question", "personal_data_request", "action_request", "out_of_scope", "greeting"}
 ROUTES = {"rag", "self_service", "refuse", "greeting", "needs_identity"}
 EMPTY_CANDIDATES = {"status": "Questions from real use, waiting to be reviewed. They aren't evaluated until promoted.",
@@ -126,11 +126,15 @@ def add_candidates(candidates: dict, golden: dict, new: list[dict]) -> int:
         if not question or normalise(question) in seen or source not in CANDIDATE_SOURCES:
             continue
         seen.add(normalise(question))
-        candidates["items"].append({
+        candidate = {
             "id": next_id(candidates["items"], "candidate"), "question": question, "source": source,
             "asked": int(entry.get("asked") or 1), "answer": str(entry.get("answer") or ""),
             "comment": str(entry.get("comment") or ""), "last_seen": str(entry.get("last_seen") or ""),
-            "status": "new"})
+            "status": "new"}
+        if entry.get("relevant_chunks"):  # a drafted question already knows the section it's about
+            candidate |= {"relevant_chunks": list(entry["relevant_chunks"]),
+                          "must_contain": list(entry.get("must_contain") or [])}
+        candidates["items"].append(candidate)
         added += 1
     return added
 
@@ -142,10 +146,13 @@ def promote_candidate(candidates: dict, golden: dict, candidate_id: str, categor
     candidate = find(candidates, candidate_id)
     if candidate["status"] != "new":
         raise ReviewError(f"{candidate_id} has already been {candidate['status']}")
+    refuse = category == "unanswerable"
+    origin = "drafted from a policy section" if candidate["source"] == "new_section" else \
+        f"from real use, {candidate['source'].replace('_', ' ')}"
     item = {"id": next_id(golden["items"], category), "category": category, "question": candidate["question"],
-            "history": [], "relevant_chunks": [], "must_contain": [], "must_refuse": category == "unanswerable",
-            "review_status": "unreviewed",
-            "notes": f"From real use ({candidate['source'].replace('_', ' ')}, {candidate_id}). Needs labels."}
+            "history": [], "relevant_chunks": [] if refuse else list(candidate.get("relevant_chunks", [])),
+            "must_contain": [] if refuse else list(candidate.get("must_contain", [])), "must_refuse": refuse,
+            "review_status": "unreviewed", "notes": f"{origin.capitalize()} ({candidate_id}). Check its labels."}
     golden["items"].append(item)
     candidate["status"] = "promoted"
     return item
@@ -155,6 +162,28 @@ def dismiss_candidate(candidates: dict, candidate_id: str) -> dict:
     candidate = find(candidates, candidate_id)
     candidate["status"] = "dismissed"
     return candidate
+
+
+BOILERPLATE_SECTIONS = ("Policy Review", "Roles and Responsibilities", "Policy Brief", "Scope")
+MIN_DRAFT_CHARS = 200  # a shorter section is usually a heading's lead-in, not something to ask about
+
+
+def uncovered_chunks(golden: dict, texts: dict[str, str], policy: str = "") -> list[str]:
+    """Policy sections no golden item labels, in file order: new sections land here, and so do neglected ones."""
+    covered = {chunk for item in golden["items"] for chunk in item["relevant_chunks"]}
+    return [chunk_id for chunk_id, text in texts.items()
+            if chunk_id not in covered and (not policy or chunk_id.split(" > ")[0] == policy)
+            and not any(f"> {section}" in chunk_id or f". {section}" in chunk_id for section in BOILERPLATE_SECTIONS)
+            and len(text.partition("\n\n")[2]) >= MIN_DRAFT_CHARS]
+
+
+def checked_draft(chunk_id: str, text: str, question: str, facts: list[str]) -> dict | None:
+    """Keep a drafted question only with facts that really are in its section, as the tests require."""
+    kept = [fact.strip() for fact in facts if fact.strip() and fact.strip().lower() in text.lower()]
+    if not question.strip():
+        return None
+    return {"question": question.strip(), "source": "new_section", "relevant_chunks": [chunk_id],
+            "must_contain": kept[:3]}
 
 
 @cache

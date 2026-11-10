@@ -205,3 +205,63 @@ def test_a_candidate_is_promoted_from_the_screen(screen):
     promoted = [entry for entry in review.load(data / "golden_set.json")["items"]
                 if entry["question"] == "Is there an on-site gym?"]
     assert promoted and promoted[0]["category"] == "unanswerable"
+
+
+# Drafting questions for sections with no test
+
+def test_uncovered_sections_skip_labelled_boilerplate_and_short_ones():
+    texts = {CHUNK: "x\n\n" + "Earned leave is 18 days. " * 10,
+             "Leave_Policy > 5. Sick Leave > 0": "x\n\n" + "Twelve days of sick leave a year. " * 10,
+             "Leave_Policy > 13. Policy Review > 0": "x\n\n" + "Reviewed annually by HR. " * 10,
+             "Leave_Policy > 6. Short > 0": "x\n\nToo short.",
+             "Attendance_Policy > 3. Hours > 0": "x\n\n" + "Core hours are 10 to 4. " * 10}
+    data = golden(item())
+    assert review.uncovered_chunks(data, texts) == ["Leave_Policy > 5. Sick Leave > 0",
+                                                    "Attendance_Policy > 3. Hours > 0"]
+    assert review.uncovered_chunks(data, texts, "Attendance_Policy") == ["Attendance_Policy > 3. Hours > 0"]
+
+
+def test_a_draft_keeps_only_facts_found_in_its_section():
+    text = "Leave Policy > 5\n\nEmployees get twelve days of sick leave a year."
+    draft = review.checked_draft("c1", text, " How much sick leave do I get? ", ["twelve days", "15 days", " "])
+    assert draft == {"question": "How much sick leave do I get?", "source": "new_section", "relevant_chunks": ["c1"],
+                     "must_contain": ["twelve days"]}
+    assert review.checked_draft("c1", text, "  ", ["twelve days"]) is None
+
+
+class FakeWriter:
+    def __init__(self):
+        self.calls = 0
+
+    def with_structured_output(self, schema):
+        return self
+
+    def invoke(self, messages):
+        self.calls += 1
+        excerpt = messages[1][1]
+        return candidates_cli.DraftQuestion(question=f"What does section {self.calls} say?",
+                                            facts=[excerpt.split("\n\n", 1)[1][:12], "not in the text"])
+
+
+def test_drafting_adds_labelled_candidates_once_and_promotes_them_with_their_labels(tmp_path):
+    golden_file, waiting_file = tmp_path / "golden_set.json", tmp_path / "candidates.json"
+    golden_file.write_text(json.dumps(golden(item())), encoding="utf-8")
+    writer = FakeWriter()
+    added = candidates_cli.draft(writer, "Disciplinary_Policy", 2, waiting_file, golden_file, pause_seconds=0,
+                                 retry=lambda call: call())
+    assert added == 2 and writer.calls == 2
+    waiting = review.load(waiting_file)
+    first = waiting["items"][0]
+    assert first["source"] == "new_section" and first["relevant_chunks"][0].startswith("Disciplinary_Policy > ")
+    assert first["must_contain"] and "not in the text" not in first["must_contain"]
+    # A second run drafts the next sections, not the same ones again
+    candidates_cli.draft(writer, "Disciplinary_Policy", 1, waiting_file, golden_file, pause_seconds=0,
+                         retry=lambda call: call())
+    chunks = [entry["relevant_chunks"][0] for entry in review.load(waiting_file)["items"]]
+    assert len(chunks) == len(set(chunks)) == 3
+
+    data, waiting = review.load(golden_file), review.load(waiting_file)
+    promoted = review.promote_candidate(waiting, data, first["id"], "normal")
+    assert promoted["relevant_chunks"] == first["relevant_chunks"]
+    assert promoted["must_contain"] == first["must_contain"]
+    assert "Drafted from a policy section" in promoted["notes"]

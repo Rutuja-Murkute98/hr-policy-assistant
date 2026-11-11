@@ -83,8 +83,6 @@ Quality was identical in all three: recall 0.975, expected facts 1.000, no answe
 
 ## What the owner must do
 
-1. **Run all 200 golden questions again** so the quality gate passes, over two days because of the free quota:
-   `venv\Scripts\python -m evaluation.run_eval answers --name phase9 --workflow`, then the same command the next day to finish,
-   then `venv\Scripts\python -m evaluation.quality_gate --record phase9`. Or I can do this in the next session.
+1. Decide whether `unanswerable-009` should stay a refusal or become an answerable question with the chunk that answers it.
 2. Decide whether a second key or a paid tier is acceptable for a router model, as the plan asks. Part 2 can measure
    `gemini-3.1-flash-lite`, the judge's model, as a router without one.

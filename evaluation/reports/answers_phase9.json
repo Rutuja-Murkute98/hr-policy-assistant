@@ -1,0 +1,499 @@
+{
+ "name": "phase9",
+ "review": {
+  "approved": 0,
+  "rejected": 0,
+  "unreviewed": 200
+ },
+ "metrics": {
+  "recall_at_5": 0.941,
+  "facts_correct": 0.926,
+  "facts_checked": 148,
+  "refused_when_it_should": 0.975,
+  "refusal_checked": 40,
+  "false_refusals": 0.037,
+  "citations_valid": 1.0,
+  "citations_on_target": 0.974,
+  "citations_checked": 154,
+  "seconds_p50": 4.69,
+  "seconds_p95": 12.16,
+  "statements_cited": 0.99,
+  "steps_ms": {
+   "confirm_out_of_scope": {
+    "p50": 0,
+    "p95": 0,
+    "count": 27
+   },
+   "generate": {
+    "p50": 1696,
+    "p95": 6019,
+    "count": 180
+   },
+   "refuse": {
+    "p50": 0,
+    "p95": 0,
+    "count": 20
+   },
+   "retrieve": {
+    "p50": 0,
+    "p95": 1699,
+    "count": 180
+   },
+   "rewrite_query": {
+    "p50": 1293,
+    "p95": 5316,
+    "count": 22
+   },
+   "select_tool": {
+    "p50": 5426,
+    "p95": 5426,
+    "count": 1
+   },
+   "understand": {
+    "p50": 1695,
+    "p95": 6377,
+    "count": 200
+   }
+  },
+  "judge_faithful": 0.994,
+  "judge_correct": 0.981,
+  "judge_relevant": 1.0,
+  "judged": 155,
+  "judges": {
+   "google:gemini-3.1-flash-lite": {
+    "faithful": 0.994,
+    "correct": 0.981,
+    "relevant": 1.0,
+    "judged": 155
+   }
+  }
+ },
+ "approved_only": null,
+ "by_category": {
+  "adversarial": {
+   "recall_at_5": 1.0,
+   "facts_correct": 1.0,
+   "facts_checked": 4,
+   "refused_when_it_should": 1.0,
+   "refusal_checked": 14,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 1.0,
+   "citations_checked": 4,
+   "seconds_p50": 4.59,
+   "seconds_p95": 14.8,
+   "statements_cited": 0.875,
+   "steps_ms": {
+    "confirm_out_of_scope": {
+     "p50": 0,
+     "p95": 0,
+     "count": 13
+    },
+    "generate": {
+     "p50": 1497,
+     "p95": 4620,
+     "count": 8
+    },
+    "refuse": {
+     "p50": 0,
+     "p95": 0,
+     "count": 10
+    },
+    "retrieve": {
+     "p50": 0,
+     "p95": 1460,
+     "count": 8
+    },
+    "rewrite_query": {
+     "p50": 1389,
+     "p95": 1389,
+     "count": 1
+    },
+    "select_tool": {
+     "p50": 5426,
+     "p95": 5426,
+     "count": 1
+    },
+    "understand": {
+     "p50": 1793,
+     "p95": 7016,
+     "count": 18
+    }
+   },
+   "judge_faithful": 1.0,
+   "judge_correct": 0.75,
+   "judge_relevant": 1.0,
+   "judged": 4,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 1.0,
+     "correct": 0.75,
+     "relevant": 1.0,
+     "judged": 4
+    }
+   }
+  },
+  "ambiguous": {
+   "recall_at_5": 0.819,
+   "facts_correct": 0.778,
+   "facts_checked": 9,
+   "refused_when_it_should": 1.0,
+   "refusal_checked": 1,
+   "false_refusals": 0.333,
+   "citations_valid": 1.0,
+   "citations_on_target": 1.0,
+   "citations_checked": 8,
+   "seconds_p50": 6.62,
+   "seconds_p95": 14.4,
+   "statements_cited": 1.0,
+   "steps_ms": {
+    "generate": {
+     "p50": 1576,
+     "p95": 7502,
+     "count": 13
+    },
+    "retrieve": {
+     "p50": 0,
+     "p95": 3740,
+     "count": 13
+    },
+    "rewrite_query": {
+     "p50": 1236,
+     "p95": 4898,
+     "count": 4
+    },
+    "understand": {
+     "p50": 1875,
+     "p95": 5980,
+     "count": 13
+    }
+   },
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judge_relevant": 1.0,
+   "judged": 8,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 1.0,
+     "correct": 1.0,
+     "relevant": 1.0,
+     "judged": 8
+    }
+   }
+  },
+  "conflict": {
+   "recall_at_5": 1.0,
+   "facts_correct": 0.333,
+   "facts_checked": 9,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 1.0,
+   "citations_checked": 9,
+   "seconds_p50": 6.61,
+   "seconds_p95": 9.49,
+   "statements_cited": 1.0,
+   "steps_ms": {
+    "generate": {
+     "p50": 1731,
+     "p95": 4739,
+     "count": 9
+    },
+    "retrieve": {
+     "p50": 0,
+     "p95": 1,
+     "count": 9
+    },
+    "understand": {
+     "p50": 3598,
+     "p95": 7121,
+     "count": 9
+    }
+   },
+   "judge_faithful": 0.889,
+   "judge_correct": 0.778,
+   "judge_relevant": 1.0,
+   "judged": 9,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 0.889,
+     "correct": 0.778,
+     "relevant": 1.0,
+     "judged": 9
+    }
+   }
+  },
+  "exception": {
+   "recall_at_5": 0.932,
+   "facts_correct": 0.905,
+   "facts_checked": 21,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 0.955,
+   "citations_checked": 22,
+   "seconds_p50": 3.72,
+   "seconds_p95": 8.45,
+   "statements_cited": 1.0,
+   "steps_ms": {
+    "generate": {
+     "p50": 1721,
+     "p95": 5660,
+     "count": 22
+    },
+    "retrieve": {
+     "p50": 0,
+     "p95": 1625,
+     "count": 22
+    },
+    "rewrite_query": {
+     "p50": 1293,
+     "p95": 5316,
+     "count": 2
+    },
+    "understand": {
+     "p50": 1773,
+     "p95": 6384,
+     "count": 22
+    }
+   },
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judge_relevant": 1.0,
+   "judged": 22,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 1.0,
+     "correct": 1.0,
+     "relevant": 1.0,
+     "judged": 22
+    }
+   }
+  },
+  "follow_up": {
+   "recall_at_5": 0.95,
+   "facts_correct": 0.944,
+   "facts_checked": 18,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.05,
+   "citations_valid": 1.0,
+   "citations_on_target": 1.0,
+   "citations_checked": 19,
+   "seconds_p50": 5.52,
+   "seconds_p95": 10.49,
+   "statements_cited": 1.0,
+   "steps_ms": {
+    "generate": {
+     "p50": 1515,
+     "p95": 5819,
+     "count": 20
+    },
+    "retrieve": {
+     "p50": 1517,
+     "p95": 1764,
+     "count": 20
+    },
+    "understand": {
+     "p50": 1549,
+     "p95": 6377,
+     "count": 20
+    }
+   },
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judge_relevant": 1.0,
+   "judged": 19,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 1.0,
+     "correct": 1.0,
+     "relevant": 1.0,
+     "judged": 19
+    }
+   }
+  },
+  "multi_hop": {
+   "recall_at_5": 0.917,
+   "facts_correct": 1.0,
+   "facts_checked": 20,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.0,
+   "citations_valid": 1.0,
+   "citations_on_target": 0.955,
+   "citations_checked": 22,
+   "seconds_p50": 4.92,
+   "seconds_p95": 12.16,
+   "statements_cited": 1.0,
+   "steps_ms": {
+    "generate": {
+     "p50": 2020,
+     "p95": 5745,
+     "count": 22
+    },
+    "retrieve": {
+     "p50": 0,
+     "p95": 2319,
+     "count": 22
+    },
+    "rewrite_query": {
+     "p50": 1115,
+     "p95": 1371,
+     "count": 4
+    },
+    "understand": {
+     "p50": 1889,
+     "p95": 5266,
+     "count": 22
+    }
+   },
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judge_relevant": 1.0,
+   "judged": 22,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 1.0,
+     "correct": 1.0,
+     "relevant": 1.0,
+     "judged": 22
+    }
+   }
+  },
+  "normal": {
+   "recall_at_5": 0.958,
+   "facts_correct": 1.0,
+   "facts_checked": 67,
+   "refused_when_it_should": 0.0,
+   "refusal_checked": 0,
+   "false_refusals": 0.014,
+   "citations_valid": 1.0,
+   "citations_on_target": 0.971,
+   "citations_checked": 70,
+   "seconds_p50": 4.0,
+   "seconds_p95": 9.1,
+   "statements_cited": 0.986,
+   "steps_ms": {
+    "generate": {
+     "p50": 1668,
+     "p95": 5872,
+     "count": 71
+    },
+    "retrieve": {
+     "p50": 0,
+     "p95": 1,
+     "count": 71
+    },
+    "rewrite_query": {
+     "p50": 1001,
+     "p95": 1211,
+     "count": 2
+    },
+    "understand": {
+     "p50": 1569,
+     "p95": 5461,
+     "count": 71
+    }
+   },
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judge_relevant": 1.0,
+   "judged": 70,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 1.0,
+     "correct": 1.0,
+     "relevant": 1.0,
+     "judged": 70
+    }
+   }
+  },
+  "unanswerable": {
+   "recall_at_5": 0.0,
+   "facts_correct": 0.0,
+   "facts_checked": 0,
+   "refused_when_it_should": 0.96,
+   "refusal_checked": 25,
+   "false_refusals": 0.0,
+   "citations_valid": 0.0,
+   "citations_on_target": 0.0,
+   "citations_checked": 0,
+   "seconds_p50": 6.69,
+   "seconds_p95": 15.46,
+   "statements_cited": null,
+   "steps_ms": {
+    "confirm_out_of_scope": {
+     "p50": 0,
+     "p95": 1,
+     "count": 14
+    },
+    "generate": {
+     "p50": 1555,
+     "p95": 6617,
+     "count": 15
+    },
+    "refuse": {
+     "p50": 0,
+     "p95": 0,
+     "count": 10
+    },
+    "retrieve": {
+     "p50": 1268,
+     "p95": 2048,
+     "count": 15
+    },
+    "rewrite_query": {
+     "p50": 1485,
+     "p95": 5915,
+     "count": 9
+    },
+    "understand": {
+     "p50": 1615,
+     "p95": 4085,
+     "count": 25
+    }
+   },
+   "judge_faithful": 1.0,
+   "judge_correct": 1.0,
+   "judge_relevant": 1.0,
+   "judged": 1,
+   "judges": {
+    "google:gemini-3.1-flash-lite": {
+     "faithful": 1.0,
+     "correct": 1.0,
+     "relevant": 1.0,
+     "judged": 1
+    }
+   }
+  }
+ },
+ "failures": {
+  "wrongly_answered": [
+   "unanswerable-009"
+  ],
+  "wrongly_refused": [
+   "normal-054",
+   "ambiguous-008",
+   "follow_up-009",
+   "ambiguous-009",
+   "ambiguous-010",
+   "ambiguous-013"
+  ],
+  "missing_facts": [
+   "follow_up-003",
+   "conflict-001",
+   "conflict-002",
+   "exception-008",
+   "exception-016",
+   "ambiguous-009",
+   "ambiguous-010",
+   "conflict-006",
+   "conflict-007",
+   "conflict-008",
+   "conflict-009"
+  ]
+ }
+}

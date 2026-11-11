@@ -23,7 +23,7 @@ need no new model.** Part 2 tries a faster router model, an answer cache for rep
 | New tests | 6 workflow tests, 5 cache tests, 2 timing tests, 1 screen test |
 | Integration tests near the changes | 251 passed, plus the new ones |
 | ruff, mypy | Passed |
-| CI quality gate | **Fails until all 200 golden questions are run again.** The answering code changed, as it should for this phase. That run needs about 650 model calls, more than a day's free quota, so it's resumed over two days |
+| CI quality gate | **Passes.** All 200 golden questions were answered on the Phase 9 code and judged, then recorded |
 
 ## Measured with the real model
 
@@ -45,6 +45,26 @@ Quality was identical in all three: recall 0.975, expected facts 1.000, no answe
   and the writing step. Gemini was busy again: 7 calls were retried across the passes, and those waits are no longer counted.
 - **Twenty questions is a small sample,** run one pass after another while the provider's load changed. The medians are a fair
   sign, the p95s less so.
+
+### All 200 golden questions on the Phase 9 code
+
+| Check | Phase 8 run | Phase 9 run |
+|---|---:|---:|
+| Recall@5 | 0.925 | 0.941 |
+| Expected facts in answers | 0.926 | 0.926 |
+| Correct refusals | 1.000 | 0.975 |
+| Wrongly refused | 0.044 | 0.037 |
+| Citations valid / on a labelled chunk | 1.000 / 0.974 | 1.000 / 0.974 |
+| Statements with an inline citation | 0.987 | 0.990 |
+| Judge: faithful, correct, relevant | 1.000, 0.980, 1.000 | 0.994, 0.981, 1.000 |
+| Seconds per answer, p50 / p95 | 4.72 / 37.66, with retry waits | 4.69 / **12.16** |
+
+- **The one missed refusal is `unanswerable-009`,** the item the Phase 5 report already flagged: the policy appears to answer it,
+  so the label is probably wrong. It's waiting for the owner's decision.
+- **The p95 of 12.16 s** is the first fair full-set figure, now that retry waits aren't counted. By step, reading the message is
+  1.7 s at the median and 6.4 s at p95, and writing the answer 1.7 s and 6.0 s. A weak search is reworded on 22 of 180 searched
+  questions, which adds 1.3 s at the median and 5.3 s at p95. Those three are where part 2 has to work.
+- Searching was done during reading for most questions: the separate search step is 0 ms at the median.
 
 ## Phase 9 status
 

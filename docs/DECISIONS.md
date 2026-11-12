@@ -505,6 +505,62 @@ is thrown away. The search runs on the raw wording rather than the model's rewri
 from another provider sends each message to that provider too. The p95 target isn't met: the slowest answers are the model's own
 spikes, which this doesn't touch.
 
+## D48. Checked answers to repeated first questions are cached, matched only by their exact words
+
+**Decision:** An answer that passed the citation check, to a first message the model read as a policy question, is kept in an
+`answer_cache` table. It's keyed by organisation, the answer model and a hash of its prompt, and a hash of the question's masked
+text with case, spacing and closing punctuation evened out. Each row records a hash of the organisation's `policy_documents` rows
+when its question was asked, and is only served while that hash is current, so any upload, change or removal stops it being used.
+Follow-ups, filtered searches, abstentions and anything that went near a self-service tool are never cached. Rows are under
+Row-Level Security and removed after the conversation retention period. `CACHE_ANSWERS` turns it off. Evaluations turn it off unless
+`--answer-cache` is given, so a re-run measures the model, not stored answers.
+
+**Why:** The plan allows matching by vector similarity, but only "within a similarity it was measured to be safe at", and nothing
+in the golden set measures that: it has no labelled pairs of questions that should and shouldn't share an answer. Two questions a
+few words apart can need different answers ("earned leave on probation" and "earned leave after probation"). Exact words are the
+one match that's safe without that measurement, and employees do repeat the common questions. A cached answer costs no model call
+and no quota.
+
+**Trade-offs:** A reworded question misses the cache. An answer is reused for up to the retention period while the documents stay
+the same, so a model or prompt improvement only reaches cached questions through the key, which includes both. The documents hash is
+one more query per first message, combined with the lookup.
+
+## D49. A clear first message with a strong search skips the model reading it
+
+**Decision:** With `SKIP_UNDERSTAND_WHEN_CLEAR` on, a first message is first checked against a list of words that can make it about
+the employee's own records, an action, an old policy version or the bot's own rules, such as "my", "apply", "balance", "was" or
+"ignore". If there are none, it's searched straight away, and if the best chunk's confidence is at least
+`SKIP_UNDERSTAND_CONFIDENCE` (4.5), it goes to the answer as a policy question with no model call to read it. Otherwise the model
+reads it as before, and the search already made is reused.
+
+**Why:** Reading the message was the slowest step after writing the answer: 1.7 s at the median and 6.4 s at p95 on all 200 golden
+questions. 4.5 is the strength at which a search already overrules the model's "out of scope" label (D47's route), so above it the
+model's reading can only change the route for a self-service or old-version request, which the word list catches. Measured with
+real searches and no chat model (`evaluation/fast_path_check.py`), 75 of the 180 golden first messages and 16 of the 100 agent
+messages would skip it, and every one of them was a policy question when the model read it in the recorded runs. That includes two
+off-topic agent messages that the strong-search rule already sends to the policy path, where the answer model says it can't find
+them.
+
+**Trade-offs:** A message that passes the word check but searches weakly now waits for its search before the model reads it, adding
+the search time to those messages. The word list is English, so other languages always go to the model, which is safe but slower. The
+answer model, not the router, then has to refuse a strong-searching question the policies don't answer, as it already did after the
+override.
+
+## D50. The request path stays synchronous, and answer length and prompt size are left as they are
+
+**Decision:** The API's endpoints stay plain functions, and `LLM_MAX_TOKENS` and the answer prompt are unchanged. The plan's async
+path and length tuning are not done in Phase 9.
+
+**Why:** FastAPI runs a plain endpoint, and a streamed answer's generator, on its thread pool, 40 threads by default, so a slow model
+call holds one thread, not the server. Rewriting the workflow and every store as async would only matter with more people at once than
+that, which the load test after deployment has to show first. On length: over the 246 answers stored in the last three days of
+evaluation runs, an answer used 119 output tokens at the median, 200 at p95 and 280 at most, from about 1,450 input tokens. The time to
+write an answer barely followed its length (correlation 0.04), so a lower cap or a shorter prompt has nothing to cut: the slow answers
+are the provider's delays.
+
+**Trade-offs:** Each waiting request holds a thread and its memory. If the load test shows threads running out, or memory near
+Render's 512 MB, the async path is the next step.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

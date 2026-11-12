@@ -1,6 +1,6 @@
 """The LangGraph workflow: understand the message, route it, then answer or act.
 
-    understand -> greet | needs_identity
+    understand -> cached_answer (the same first question on the same documents) | greet | needs_identity
     understand -> confirm_out_of_scope -> refuse | retrieve
     understand -> retrieve -> (weak evidence? rewrite -> retrieve, once) -> generate | abstain
     understand -> select_tool -> clarify | execute_tool | retrieve (no tool fits a question)
@@ -8,6 +8,8 @@
 """
 import functools
 import logging
+import operator
+import re
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import date
@@ -32,6 +34,7 @@ from app.agent.prompts import (
     out_of_scope_answer,
 )
 from app.agent.tools import TOOLS, ToolContext, ToolRunner, langchain_tools
+from app.rag.answer_cache import AnswerCache
 from app.rag.prompt import fallback_answer, greeting_answer
 from app.rag.retrieval import SearchFilters
 from app.rag.service import GREETING, RagAnswer, RagService
@@ -39,6 +42,19 @@ from app.rag.service import GREETING, RagAnswer, RagService
 logger = logging.getLogger("hr_helpdesk")
 # Searches started while a message is being understood. Shared, as each one is short and memory is tight.
 PREFETCH = ThreadPoolExecutor(max_workers=4, thread_name_prefix="prefetch")
+# Words that can make a message about the employee's own records, an action, an old policy version or the bot's
+# rules. A first message without any of them is most likely a plain policy question. See docs/DECISIONS.md, D49.
+NEEDS_MODEL = re.compile(
+    r"\b(?:my|me|mine|myself|i['’](?:m|d|ve|ll)|am i|did i|do i have|have i|i (?:need|want|would|have|got)|"
+    r"apply|book|raise|ticket|log|open|create|submit|cancel|approve|take|put in|show|check|"
+    r"payslip|salary slip|balance|left|remaining|e\d{3,}|"
+    r"used to|was|were|previous|previously|earlier|before the|old|older|former|until|in (?:19|20)\d\d|"
+    r"ignore|pretend|instructions|prompt|jailbreak)\b|system\s*:", re.IGNORECASE)
+
+
+def looks_like_policy_question(message: str) -> bool:
+    """A cheap check, with no model call: True only if nothing in the message needs the model to read it."""
+    return not NEEDS_MODEL.search(message)
 
 
 def add_step_times(old: dict | None, new: dict | None) -> dict:
@@ -79,7 +95,10 @@ class WorkflowState(TypedDict, total=False):
     tool_status: str
     pending_action: dict | None
     prefetched: dict | None  # a search made while the message was being understood
+    cached: dict | None  # an answer from the answer cache
+    documents_hash: str  # the documents a cacheable answer is written from
     step_ms: Annotated[dict, add_step_times]  # milliseconds spent in each step
+    degraded: Annotated[list, operator.add]  # steps whose model call failed, so a fallback was used
 
 
 def timed_step(step):
@@ -112,8 +131,10 @@ def _say(state: WorkflowState, text: str, **fields) -> dict:
     return {"answer": text, **fields}
 
 
-def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, checkpointer, router=None):
-    """router reads each message, and can be a smaller, faster model than llm, which writes the answers."""
+def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, checkpointer, router=None,
+                   answers: AnswerCache | None = None):
+    """router reads each message and rewords weak searches, and can be a smaller, faster model than llm, which
+    writes the answers. answers, if set, keeps checked answers to first questions."""
     profile = rag.profile
     known_tools = langchain_tools()
     router = router or llm
@@ -123,10 +144,16 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return SearchFilters(tenant_id=tenant_id, policy=given.get("policy"), category=given.get("category"),
                              effective_on=given.get("effective_on"), include_history=include_history)
 
+    def first_message(state: WorkflowState) -> bool:
+        return not state.get("history") and not state.get("summary")
+
     def can_prefetch(state: WorkflowState) -> bool:
         """Only a first message can be searched as typed: a follow-up needs rewriting first."""
-        return (config.SEARCH_WHILE_UNDERSTANDING and not config.USE_CATEGORY_ROUTING
-                and not state.get("history") and not state.get("summary"))
+        return config.SEARCH_WHILE_UNDERSTANDING and not config.USE_CATEGORY_ROUTING and first_message(state)
+
+    def can_cache(state: WorkflowState) -> bool:
+        """Only a first message without filters is the same question every time it's asked."""
+        return answers is not None and first_message(state) and not any((state.get("filters") or {}).values())
 
     def use_prefetch(future: Future, state: WorkflowState, question: str) -> dict:
         """Wait for the search started earlier, and keep it for the next step. A failed one is just done again."""
@@ -138,6 +165,15 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return {"prefetched": {"query": question, "confidence": confidence,
                                "chunks": [{"id": c.id, "page_content": c.page_content, "metadata": c.metadata}
                                           for c in chunks]}, **timing}
+
+    def search_now(state: WorkflowState, question: str) -> dict:
+        """Search before the model reads the message, to see whether it needs to."""
+        done: Future = Future()
+        try:
+            done.set_result(timed_search(state, question, search_filters(state)))
+        except Exception as error:
+            done.set_exception(error)
+        return use_prefetch(done, state, question)
 
     def timed_search(state: WorkflowState, query: str, filters: SearchFilters) -> tuple[list[Document], float, dict]:
         """Search, and add the time it took to what this answer has used so far."""
@@ -151,9 +187,24 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         question = state["question"]
         if GREETING.fullmatch(question.strip()):  # needs no model call
             return {"intent": "greeting", "standalone": question, "category": ""}
+        cacheable: dict = {}
+        if can_cache(state):
+            assert answers is not None
+            cached, documents_hash = answers.lookup(question)
+            if cached:  # it was a policy question when it was answered, on these same documents
+                return {"intent": "policy_question", "standalone": question, "category": "", "cached": cached}
+            cacheable = {"documents_hash": documents_hash}
+        searched: dict | None = None
+        if can_prefetch(state) and config.SKIP_UNDERSTAND_WHEN_CLEAR and looks_like_policy_question(question):
+            # A strong search would overrule an "out of scope" label anyway, so the model isn't needed to say so
+            searched = search_now(state, question)
+            found = searched.get("prefetched")
+            if found and found["chunks"] and found["confidence"] >= config.SKIP_UNDERSTAND_CONFIDENCE:
+                return {"intent": "policy_question", "standalone": question, "category": "",
+                        "asks_about_past": False, **cacheable, **searched}
         # Most first messages are policy questions, so their search runs while the model reads them
         future = None
-        if can_prefetch(state):
+        if can_prefetch(state) and searched is None:
             future = PREFETCH.submit(timed_search, state, question, search_filters(state))
         try:
             result = router.with_structured_output(Understanding).invoke(
@@ -161,17 +212,19 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         except Exception:
             # The policy path is the safest default: it can still abstain
             logger.exception("Understanding a message failed, so it was treated as a policy question")
-            fallback = {"intent": "policy_question", "standalone": question, "category": ""}
-            return {**fallback, **(use_prefetch(future, state, question) if future else {})}
+            fallback = {"intent": "policy_question", "standalone": question, "category": "", "degraded": ["understand"]}
+            return {**fallback, **(searched or (use_prefetch(future, state, question) if future else {}))}
         standalone = result.standalone_question.strip()
         if not standalone or len(standalone) > config.MAX_QUESTION_CHARS:
             standalone = question
         understood = {"intent": result.intent, "standalone": standalone, "asks_about_past": result.asks_about_past,
                       "category": result.category if result.category in categories_of(profile) else ""}
         searches_next = result.intent in ("policy_question", "out_of_scope") and not result.asks_about_past
-        if future and searches_next:
-            return {**understood, **use_prefetch(future, state, question)}
-        return understood  # a tool request, or a question about old versions, doesn't use it
+        if not searches_next:
+            return understood  # a tool request, or a question about old versions, doesn't use it or the cache
+        if searched is not None:
+            return {**understood, **cacheable, **searched}
+        return {**understood, **cacheable, **(use_prefetch(future, state, question) if future else {})}
 
     def prefetched(state: WorkflowState) -> tuple[list[Document], float] | None:
         """The search made while understanding, if this is the first search of the answer."""
@@ -181,6 +234,8 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return _to_documents(found["chunks"]), found["confidence"]
 
     def route_intent(state: WorkflowState) -> str:
+        if state.get("cached"):
+            return "cached_answer"
         intent = state["intent"]
         if intent == "greeting":
             return "greet"
@@ -189,6 +244,11 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         if intent in ("personal_data_request", "action_request"):
             return "select_tool" if state.get("user_id") and config.SELF_SERVICE_ENABLED else "needs_identity"
         return "retrieve"
+
+    def cached_answer(state: WorkflowState) -> dict:
+        cached = state["cached"] or {}
+        return _say(state, cached["answer"], answered=True, abstain_reason="", sources=cached["sources"],
+                    chunks=cached["chunks"], standalone=cached.get("question_used") or state["standalone"])
 
     def greet(state: WorkflowState) -> dict:
         return _say(state, greeting_answer(profile), answered=True)
@@ -245,13 +305,14 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
 
     def rewrite_query(state: WorkflowState) -> dict:
         try:
-            rewritten = llm.invoke(build_retry_messages(state["standalone"])).text.strip()
+            rewritten = router.invoke(build_retry_messages(state["standalone"])).text.strip()
         except Exception:
             logger.exception("Rewriting a weak search failed, so the search was repeated without the topic filter")
             rewritten = ""
+        failed = {} if rewritten else {"degraded": ["rewrite_query"]}
         usable = rewritten and len(rewritten) <= config.MAX_QUESTION_CHARS
         # Only the search is reworded. The model still answers what the employee asked.
-        return {"retried": True, "search_query": rewritten if usable else state["standalone"],
+        return {**failed, "retried": True, "search_query": rewritten if usable else state["standalone"],
                 "first_search": {"chunks": state["chunks"], "confidence": state["confidence"]}}
 
     def abstain(state: WorkflowState) -> dict:
@@ -269,6 +330,11 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
                 assert isinstance(value, RagAnswer)
                 final = value
         assert final is not None
+        cacheable = state.get("documents_hash") and state["intent"] == "policy_question"
+        if answers is not None and final.answered and cacheable:
+            answers.save(state["question"], state["documents_hash"],
+                         {"answer": final.answer, "sources": final.sources, "chunks": state["chunks"],
+                          "question_used": state["standalone"]})
         return {"answer": final.answer, "answered": final.answered, "abstain_reason": final.abstain_reason,
                 "sources": final.sources}
 
@@ -337,18 +403,21 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return _say(state, outcome.message, answered=True, tool_status=outcome.status, pending_action=None)
 
     graph = StateGraph(WorkflowState)
-    for step in (understand, greet, confirm_out_of_scope, refuse, needs_identity, retrieve, rewrite_query, abstain,
-                 generate, select_tool, clarify, prepare_approval, wait_for_approval, declined, execute_tool):
+    for step in (understand, cached_answer, greet, confirm_out_of_scope, refuse, needs_identity, retrieve,
+                 rewrite_query, abstain, generate, select_tool, clarify, prepare_approval, wait_for_approval, declined,
+                 execute_tool):
         graph.add_node(step.__name__, timed_step(step))
     graph.add_edge(START, "understand")
     graph.add_conditional_edges("understand", route_intent,
-                                ["greet", "confirm_out_of_scope", "needs_identity", "retrieve", "select_tool"])
+                                ["cached_answer", "greet", "confirm_out_of_scope", "needs_identity", "retrieve",
+                                 "select_tool"])
     graph.add_conditional_edges("confirm_out_of_scope", route_out_of_scope, ["refuse", "retrieve"])
     graph.add_conditional_edges("retrieve", grade_evidence, ["rewrite_query", "generate", "abstain"])
     graph.add_edge("rewrite_query", "retrieve")
     graph.add_conditional_edges("select_tool", route_tool, ["clarify", "retrieve", "prepare_approval", "execute_tool"])
     graph.add_conditional_edges("prepare_approval", route_after_prepare, ["wait_for_approval", END])
     graph.add_conditional_edges("wait_for_approval", route_after_approval, ["execute_tool", "declined"])
-    for last in ("greet", "refuse", "needs_identity", "abstain", "generate", "clarify", "declined", "execute_tool"):
+    for last in ("cached_answer", "greet", "refuse", "needs_identity", "abstain", "generate", "clarify", "declined",
+                 "execute_tool"):
         graph.add_edge(last, END)
     return graph.compile(checkpointer=checkpointer)

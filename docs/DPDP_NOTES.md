@@ -31,6 +31,8 @@ squared with holding employees' personal data.
 | Profile details and photo | `users`, `user_profiles` | Until removed, or the account is | Given by the person, who can change or remove them |
 | Whether someone's chats are saved | `user_preferences` | Until removed | With saving off, questions and answers aren't stored, except actions such as leave requests |
 | Rate limit counts | `rate_limit_hits` | Minutes | Holds a user id or client id, and a time |
+| Question vectors | `question_embeddings` | Same as chats | A hash of the masked question and its vector. No text and no user |
+| Answers to repeated first questions | `answer_cache` | Same as chats | A hash of the masked question, and the checked policy answer. No user, so deleting a person's history doesn't remove it. Never kept for self-service requests |
 | Mock leave and tickets | `hr_leave_requests`, `hr_tickets` | Not removed: a real HR system would set this | Masked question. Fake data only |
 
 ## What the Act asks for, and where this stands

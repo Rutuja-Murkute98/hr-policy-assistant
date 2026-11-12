@@ -78,6 +78,7 @@ def shared(database_uri):
 def clean(shared, monkeypatch):
     with shared.engine.begin() as connection:
         connection.execute(text("DELETE FROM answer_metrics"))
+        connection.execute(text("DELETE FROM answer_cache"))  # tests ask the same questions
     monkeypatch.setattr(config, "ABSTENTION_MODE", "distance")
     monkeypatch.setattr(config, "MAX_DISTANCE", 0.9)
     monkeypatch.setattr(config, "MIN_BODY_CHARS", 10)

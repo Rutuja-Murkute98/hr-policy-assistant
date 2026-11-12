@@ -35,7 +35,8 @@ class AnswerMetrics:
 
 
 # The steps whose timings are summarised. Others are still stored.
-TIMED_STEPS = ("understand", "confirm_out_of_scope", "retrieve", "rewrite_query", "generate", "select_tool")
+TIMED_STEPS = ("cached_answer", "understand", "confirm_out_of_scope", "retrieve", "rewrite_query", "generate",
+               "select_tool")
 INSERT = text(
     "INSERT INTO answer_metrics (tenant_id, kind, total_ms, failed, intent, answered, abstain_reason, tool, "
     "tool_status, embedding_ms, retrieval_ms, llm_ms, llm_calls, input_tokens, output_tokens, estimated_cost_usd, "

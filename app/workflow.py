@@ -29,7 +29,9 @@ from app.memory import ConversationStore, summarise_if_long
 from app.metrics import AnswerMetrics, MetricsStore
 from app.observability import Tracing, UsageCallback, estimated_cost
 from app.pii import mask
+from app.rag.answer_cache import AnswerCache, answer_key
 from app.rag.embedding_cache import QuestionEmbeddingCache
+from app.rag.prompt import build_messages
 from app.rag.providers import get_chat_model, get_router_model
 from app.rag.rerank import get_reranker
 from app.rag.retrieval import SearchFilters
@@ -50,6 +52,7 @@ class WorkflowAnswer(RagAnswer):
     tool_status: str = ""
     message_id: int | None = None  # the stored answer, which feedback refers to
     step_ms: dict = field(default_factory=dict)  # milliseconds per workflow step
+    degraded: list = field(default_factory=list)  # steps whose model call failed, so a fallback was used
 
 
 class TenantSaver(PostgresSaver):
@@ -90,12 +93,18 @@ class ChatWorkflow:
         self.metrics = MetricsStore(scoped, tenant_id)
         if config.CACHE_QUESTION_EMBEDDINGS and rag.query_cache is None:
             rag.query_cache = QuestionEmbeddingCache(scoped, tenant_id)
+        self.answers: AnswerCache | None = None
+        if config.CACHE_ANSWERS:
+            collection = getattr(getattr(rag.store, "store", None), "collection_name", config.COLLECTION_NAME)
+            model = answer_key(f"{config.LLM_PROVIDER}:{config.CHAT_MODEL}", build_messages("", [], rag.profile))
+            self.answers = AnswerCache(scoped, tenant_id, collection, model)
         self.tracing_callbacks = tracing.callbacks if tracing else []
         self.checkpointer = checkpointer
         if isinstance(checkpointer, PostgresSaver):
             self.checkpointer = TenantSaver(checkpointer.conn, tenant_id)  # type: ignore[arg-type]
         self.graph = build_workflow(rag, llm, self.runner, tenant_id, self.checkpointer,
-                                    router=router if router is not None else get_router_model())
+                                    router=router if router is not None else get_router_model(),
+                                    answers=self.answers)
         self._last_purge = 0.0
 
     @property
@@ -132,6 +141,7 @@ class ChatWorkflow:
             intent=state.get("intent", ""), conversation_id=conversation_id,
             pending_action=state.get("pending_action"), tool=state.get("tool", ""),
             tool_status=state.get("tool_status", ""), step_ms=dict(state.get("step_ms") or {}),
+            degraded=list(state.get("degraded") or []),
         )
 
     def run_maintenance(self, force: bool = False) -> None:
@@ -147,6 +157,8 @@ class ChatWorkflow:
         removed = self.conversations.purge_older_than(config.CONVERSATION_RETENTION_DAYS)
         if self.rag.query_cache is not None:
             self.rag.query_cache.purge_older_than(config.CONVERSATION_RETENTION_DAYS)
+        if self.answers is not None:
+            self.answers.purge_older_than(config.CONVERSATION_RETENTION_DAYS)
         if removed:
             logger.info("Removed %s conversations past the retention period", removed)
 

@@ -255,8 +255,9 @@ def show_api_keys() -> None:
             st.rerun()
 
 
-STEP_NAMES = {"understand": "Reading the message", "confirm_out_of_scope": "Checking an off-topic message",
-              "retrieve": "Searching the policies", "rewrite_query": "Rewording a weak search",
+STEP_NAMES = {"cached_answer": "Answering a repeated question", "understand": "Reading the message",
+              "confirm_out_of_scope": "Checking an off-topic message", "retrieve": "Searching the policies",
+              "rewrite_query": "Rewording a weak search",
               "generate": "Writing the answer", "select_tool": "Choosing a self-service action"}
 
 

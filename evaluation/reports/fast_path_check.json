@@ -1,0 +1,120 @@
+{
+ "strength_setting": 4.5,
+ "agent_set": {
+  "messages": 100,
+  "pass_text_check": 26,
+  "4.0": {
+   "skipped": 19,
+   "not_policy_question": [
+    "scope-009",
+    "scope-011"
+   ]
+  },
+  "4.5": {
+   "skipped": 16,
+   "not_policy_question": [
+    "scope-009",
+    "scope-011"
+   ]
+  },
+  "5.0": {
+   "skipped": 14,
+   "not_policy_question": [
+    "scope-009"
+   ]
+  },
+  "6.0": {
+   "skipped": 3,
+   "not_policy_question": []
+  }
+ },
+ "agent_set_against_the_recorded_run": {
+  "messages": 100,
+  "pass_text_check": 26,
+  "4.0": {
+   "skipped": 19,
+   "not_policy_question": []
+  },
+  "4.5": {
+   "skipped": 16,
+   "not_policy_question": []
+  },
+  "5.0": {
+   "skipped": 14,
+   "not_policy_question": []
+  },
+  "6.0": {
+   "skipped": 3,
+   "not_policy_question": []
+  }
+ },
+ "golden_first_messages": {
+  "messages": 180,
+  "pass_text_check": 99,
+  "4.0": {
+   "skipped": 82,
+   "not_policy_question": [
+    "unanswerable-023"
+   ]
+  },
+  "4.5": {
+   "skipped": 75,
+   "not_policy_question": []
+  },
+  "5.0": {
+   "skipped": 60,
+   "not_policy_question": []
+  },
+  "6.0": {
+   "skipped": 24,
+   "not_policy_question": []
+  }
+ },
+ "golden_must_refuse": {
+  "messages": 180,
+  "pass_text_check": 99,
+  "4.0": {
+   "skipped": 82,
+   "not_policy_question": [
+    "unanswerable-008",
+    "unanswerable-009",
+    "unanswerable-011",
+    "unanswerable-016",
+    "unanswerable-017",
+    "unanswerable-023",
+    "unanswerable-025",
+    "adversarial-011"
+   ]
+  },
+  "4.5": {
+   "skipped": 75,
+   "not_policy_question": [
+    "unanswerable-008",
+    "unanswerable-009",
+    "unanswerable-011",
+    "unanswerable-016",
+    "unanswerable-017",
+    "unanswerable-025",
+    "adversarial-011"
+   ]
+  },
+  "5.0": {
+   "skipped": 60,
+   "not_policy_question": [
+    "unanswerable-008",
+    "unanswerable-009",
+    "unanswerable-011",
+    "unanswerable-016",
+    "unanswerable-025"
+   ]
+  },
+  "6.0": {
+   "skipped": 24,
+   "not_policy_question": [
+    "unanswerable-011",
+    "unanswerable-016",
+    "unanswerable-025"
+   ]
+  }
+ }
+}

@@ -236,8 +236,10 @@ least 10 active people.
 second search when evidence is weak.
 
 **Progress:** part 1 is built and measured: step timings, the early search and the question vector cache cut the
-median from 3.77 s to 2.94 s on 20 real questions. The p95 target isn't met. Part 2 tries a router model, an answer
-cache and the async path. See [the Phase 9 report](../evaluation/reports/phase9_report.md).
+median from 3.77 s to 2.94 s on 20 real questions. The p95 target isn't met. Part 2 is built and tested: an answer cache
+for repeated first questions, skipping the model for clear first messages (same intent as the model on every message it skips), and
+the router rewording weak searches. The async path and length tuning were deferred with measured reasons. Its timings, the router
+trial and the 200-question re-run wait for Gemini to stop failing. See [the Phase 9 report](../evaluation/reports/phase9_report.md).
 
 **Work**
 

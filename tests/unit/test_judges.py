@@ -163,3 +163,13 @@ def test_step_times_are_summarised_per_step():
     assert run_eval.step_percentiles(rows) == {
         "generate": {"p50": 3000, "p95": 3000, "count": 1},
         "understand": {"p50": 1000, "p95": 2000, "count": 2}}
+
+
+def test_an_answer_where_a_model_call_fell_back_is_retried_not_measured():
+    from types import SimpleNamespace
+
+    from evaluation.run_eval import call_with_retry, complete
+
+    answers = iter([SimpleNamespace(degraded=["understand"]), SimpleNamespace(degraded=[])])
+    result = call_with_retry(lambda: complete(next(answers)), wait=0)
+    assert result.degraded == []

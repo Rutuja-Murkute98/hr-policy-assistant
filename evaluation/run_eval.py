@@ -268,6 +268,16 @@ def call_with_retry(call, tries: int = 4, wait: float = 30):
     raise RuntimeError("unreachable")
 
 
+def complete(result):
+    """Treat an answer where a model call failed and a fallback was used as a failed attempt, so it's retried.
+
+    The fallback is right for an employee, but it isn't what the model would have done, so it mustn't be measured.
+    """
+    if getattr(result, "degraded", None):
+        raise RuntimeError(f"A model call failed in: {', '.join(result.degraded)}")
+    return result
+
+
 def ask_item(service: Any, item: dict, workflow: bool):
     """Ask one question. Through the workflow, it's asked as a signed-in employee in a stored chat."""
     if not workflow:
@@ -281,9 +291,17 @@ def ask_item(service: Any, item: dict, workflow: bool):
         service.delete_conversation(EVAL_USER, chat)
 
 
+def speed_settings() -> dict:
+    """The settings that change how an answer is reached, kept with each report."""
+    return {"chat_model": config.CHAT_MODEL, "router_model": config.ROUTER_MODEL or config.CHAT_MODEL,
+            "skip_understand_when_clear": config.SKIP_UNDERSTAND_WHEN_CLEAR, "cache_answers": config.CACHE_ANSWERS}
+
+
 def run_answers(args) -> None:
     from app.rag.rerank import get_reranker
 
+    # A stored answer would hide what the model does now, so the answer cache is only used when asked for
+    config.CACHE_ANSWERS = args.answer_cache
     items = select_items(load_golden(), args.split, args.limit)
     judges = parse_judges(args.judge or EVAL_JUDGES.split(","))
     for warning in check_judges(judges):
@@ -302,7 +320,8 @@ def run_answers(args) -> None:
         if item["id"] in saved:
             continue
         # Only the attempt that worked is timed, so waits between retries on a busy model don't count
-        result, seconds = call_with_retry(lambda item=item: timed(lambda: ask_item(service, item, args.workflow)))
+        result, seconds = call_with_retry(
+            lambda item=item: timed(lambda: complete(ask_item(service, item, args.workflow))))
         saved[item["id"]] = {
             "answer": result.answer, "answered": result.answered, "abstain_reason": result.abstain_reason,
             "cited": [source["chunk_id"] for source in result.sources],
@@ -452,7 +471,7 @@ def write_answer_report(name: str, items: list[dict], rows: dict[str, dict]) -> 
     }
     # Only approved items are trusted labels. Until the review is done, this is empty or small.
     approved = [i for i in items if i["review_status"] == "approved"]
-    report = {"name": name, "review": review_summary(items), "metrics": metrics,
+    report = {"name": name, "settings": speed_settings(), "review": review_summary(items), "metrics": metrics,
               "approved_only": answer_metrics(approved, rows) | {"items": len(approved)} if approved else None,
               "by_category": by_category, "failures": failures}
     save_json(REPORTS / f"answers_{name}.json", report)
@@ -473,5 +492,7 @@ if __name__ == "__main__":
     parser.add_argument("--limit", type=int, default=0, help="run at most this many items")
     parser.add_argument("--workflow", action="store_true", help="ask through the full workflow, as the API does")
     parser.add_argument("--judge-only", action="store_true", help="judge saved answers, and never add new ones")
+    parser.add_argument("--answer-cache", action="store_true",
+                        help="let the workflow reuse cached answers, which measures the cache, not the model")
     parsed = parser.parse_args()
     (run_retrieval if parsed.mode == "retrieval" else run_answers)(parsed)

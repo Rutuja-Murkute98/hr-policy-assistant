@@ -574,6 +574,27 @@ stopped by its 503 and 504 errors, and the evaluation now retries an answer whos
 **Trade-offs:** Every message uses the answer model's quota. The shortcut (D49) already avoids that call for 75 of the 180
 golden first messages.
 
+## D52. Each organisation's settings are stored as changes to the deployment's, and checked again on use
+
+**Decision:** A `tenant_settings` table holds, for each organisation, only the settings it has changed, as one validated JSON
+document with Row-Level Security. Each setting is read through one function: the organisation's value if it set one, otherwise
+the environment variable, otherwise the default in `app/config.py`. A process rereads an organisation's settings at most every
+10 seconds, and straight away after its own change, and rebuilds that organisation's workflow when they differ.
+
+**What an organisation can change:** its branding and HR email, its categories, its chat model from `ALLOWED_CHAT_MODELS`, the
+temperature, the search thresholds and number of excerpts, the refusal wording, the tone and answer length, and the switches for
+self-service, the answer cache and the shortcut (D49). Secrets, the model provider, the embedding model, rate limits and
+retention stay deployment settings: they cost money, protect the shared quota, or need legal sign-off.
+
+**Why:** Storing only the changes means a new deployment default reaches every organisation that didn't change it, and the
+evaluation, which uses no organisation settings, measures exactly what an organisation gets by default. Checking again every 10
+seconds lets a change reach every server process without a message bus. The organisation can only pick models the deployment
+owner listed, so it can't run up a bill or send its data to a provider nobody agreed to.
+
+**Trade-offs:** For up to 10 seconds, another process can still answer with the old settings. Rebuilding a workflow runs its
+cleanup again. With the default tone and length, the prompt is exactly as before, so the answer cache and the evaluation stay
+valid. The embedding model stays one per deployment until a change can start a re-index (Phase 10 part 2).
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

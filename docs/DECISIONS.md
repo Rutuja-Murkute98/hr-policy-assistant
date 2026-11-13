@@ -561,6 +561,19 @@ are the provider's delays.
 **Trade-offs:** Each waiting request holds a thread and its memory. If the load test shows threads running out, or memory near
 Render's 512 MB, the async path is the next step.
 
+## D51. No separate router model by default
+
+**Decision:** `ROUTER_MODEL` stays unset, so the answer model reads each message. The setting remains, for a deployment that
+needs the router's separate quota.
+
+**Why:** On the 100 agent messages, `gemini-3.1-flash-lite` as the router got 0.96 of intents right against 0.95 for the recorded
+run, so it reads messages as well. But it wasn't faster: reading a message took 1.54 s at the median and 6.77 s at p95, against
+1.70 s and 6.38 s for the answer model on the golden set. Its only gain is a quota of its own. A first trial on 12 November was
+stopped by its 503 and 504 errors, and the evaluation now retries an answer whose model call fell back, rather than scoring it.
+
+**Trade-offs:** Every message uses the answer model's quota. The shortcut (D49) already avoids that call for 75 of the 180
+golden first messages.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

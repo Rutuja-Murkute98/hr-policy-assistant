@@ -291,13 +291,13 @@ comes from `config/tenant.toml`. A platform needs each organisation to set its o
 
 **Work**
 
-- [ ] A `tenant_settings` table with Row-Level Security, holding a validated Pydantic model: branding,
+- [x] A `tenant_settings` table with Row-Level Security, holding a validated Pydantic model: branding,
       HR email, categories, model choice, retrieval thresholds, refusal wording, tone, answer length and
       feature switches such as self-service.
-- [ ] Settings are read through one function that falls back to the environment and then to the
+- [x] Settings are read through one function that falls back to the environment and then to the
       defaults, with a short cache that's cleared when a setting changes.
-- [ ] A Settings tab in the admin page, with validation and an audit log entry for each change.
-- [ ] Keep `tenant.toml` as the seed for a new organisation, imported once.
+- [x] A Settings tab in the admin page, with validation and an audit log entry for each change.
+- [x] Keep `tenant.toml` as the seed for a new organisation, imported once.
 - [ ] Assign a category to each uploaded document with the model, from the organisation's own list,
       shown to HR as a suggestion they confirm. This replaces the filename map.
 - [ ] Changing a setting that needs re-indexing, such as the embedding model, starts a re-index job
@@ -313,6 +313,11 @@ picked up without a restart; the audit log records it.
 
 **Done when** two organisations on the same deployment have different branding, models and thresholds,
 set from the admin page, and the isolation tests still pass.
+
+**Progress:** part 1 is built and tested: the table, the one function that reads each setting, the Settings tab with an
+audit entry per change, and the workflow rebuilt when settings change. Two organisations get different branding, models
+and thresholds in the tests on real PostgreSQL. Part 2, category suggestions and re-indexing, is next. See
+[the Phase 10 report](../evaluation/reports/phase10_report.md).
 
 ---
 

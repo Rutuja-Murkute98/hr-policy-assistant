@@ -18,8 +18,9 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 6 | Optional advanced features | Folded into Phases 12, 14 and 15 of the improvement plan |
 | 7 | Prove it live: deployment and database checks, CI starts the stack, live run on Render and Neon | Part 1 built and tested locally. Part 2 (the live run) waits for the owner. See [the Phase 7 report](../evaluation/reports/phase7_report.md) |
 | 8 | Evaluation you can trust: label review screen, real questions as candidates, judges from any vendor, nightly run, coverage | Built and tested. The label review itself waits for the owner. See [the Phase 8 report](../evaluation/reports/phase8_report.md) |
-| 9 | Speed and quota: step timings, early search, question vector cache, router model setting | Part 1 built and measured: median 3.77 s to 2.94 s. p95 target not met. See [the Phase 9 report](../evaluation/reports/phase9_report.md) |
-| 10 to 19 | Runtime settings, personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
+| 9 | Speed and quota: step timings, early search, question vector cache, answer cache, skipping the model on clear first messages | Built and measured: median 4.69 s to 3.12 s on all 200 questions. p95 target not met. See [the Phase 9 report](../evaluation/reports/phase9_report.md) |
+| 10 | Settings per organisation, changed while running | Part 1 built and tested. Part 2 (category suggestions, re-indexing) planned. See [the Phase 10 report](../evaluation/reports/phase10_report.md) |
+| 11 to 19 | Personal answers, documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
 
 ## Phase 7 status
 
@@ -39,9 +40,22 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Evaluation times only the attempt that worked | Implemented and tested | Unit test with a failing first attempt |
 | Search a first message while it's read | Implemented and tested | 6 workflow tests. Median 3.77 s to 3.19 s on 20 real questions, same quality |
 | Question vector cache | Implemented and tested | 5 tests on real PostgreSQL. Median 2.94 s warm |
-| Separate router model | Implemented, not tested | Tested with a scripted model only |
-| Answer cache, skipping the read for simple messages, async path | Planned | Part 2 |
-| p95 under 6 s | Not met | 8.97 s here with a warm cache. The model's own spikes set the tail |
+| Separate router model | Implemented, measured, not kept | `gemini-3.1-flash-lite` read messages as well but no faster (D51) |
+| Answer cache for repeated first questions | Implemented and tested | A repeated question takes 0.16 s |
+| Skipping the model on clear first messages | Implemented and tested | Same intent as the model on every message it skipped. Median 4.69 s to 3.12 s on 200 questions |
+| Async path, output length | Deferred, with measured reasons | D50 |
+| p95 under 6 s | Not met | 12.06 s on 200 questions. The model's own spikes set the tail |
+| Correct refusals | Lower | 0.900 against 0.975, on 4 questions. See the Phase 9 report |
+
+## Phase 10 status
+
+| Feature | Status | Evidence or gap |
+|---|---|---|
+| Each organisation's settings in `tenant_settings`, with Row-Level Security | Implemented and tested | 35 unit tests, 19 on real PostgreSQL, isolation tests |
+| A change used by the next answer, without a restart | Implemented and tested | Including a change made by another process |
+| Settings tab, with checks and an audit entry per change | Implemented and tested | 4 screen tests. Not opened in a browser |
+| Category suggestions for uploads, re-indexing when needed | Planned | Part 2 |
+| 200-question run on the Phase 10 code | Planned | Needed for the quality gate |
 
 ## Phase 8 status
 

@@ -49,7 +49,8 @@ def show_upload() -> None:
     with st.form("upload_form", clear_on_submit=True):
         upload = st.file_uploader("Policy file", type=FILE_TYPES, max_upload_size=5)
         title = st.text_input("Title (optional)", placeholder="Taken from the file if left empty")
-        categories = sorted({*ORGANISATION["document_categories"].values(), ORGANISATION["default_category"]})
+        categories = ORGANISATION.get("categories") or sorted(
+            {*ORGANISATION["document_categories"].values(), ORGANISATION["default_category"]})
         category = st.selectbox("Category (optional)", categories, index=None)
         version_label = st.text_input("Version label (optional)", placeholder="Such as 3.0")
         effective = st.date_input("Effective date (optional)", value=None, min_value=date(2000, 1, 1))
@@ -298,6 +299,127 @@ def show_audit() -> None:
             "created_at", "actor", "action", "target", "details"))
 
 
+TONES = {"neutral": "Plain", "friendly": "Friendly", "formal": "Formal"}
+LENGTHS = {"short": "Short", "normal": "Normal", "detailed": "Detailed"}
+SETTING_NAMES = {
+    "company_name": "Company name", "legal_name": "Legal name", "hr_email": "HR email", "product_name": "Product name",
+    "logo_initials": "Logo initials", "categories": "Categories", "default_category": "Default category",
+    "chat_model": "Answer model", "temperature": "Temperature", "min_confidence": "Evidence needed to answer",
+    "min_chunk_confidence": "Evidence needed per excerpt", "grade_min_confidence": "Reword searches below",
+    "out_of_scope_override_confidence": "Answer off-topic-looking questions above",
+    "skip_understand_confidence": "Skip reading clear questions above", "retrieve_k": "Excerpts per answer",
+    "refusal_wording": "Refusal wording", "tone": "Tone", "answer_length": "Answer length",
+    "self_service_enabled": "Self-service", "cache_answers": "Reuse answers to repeated questions",
+    "skip_understand_when_clear": "Skip reading clear first questions",
+}
+SCORE_HELP = ("How far the best match must stand out from the rest of the policies. Higher refuses more often, "
+              "lower risks answering from weak matches.")
+
+
+def settings_changes(new: dict, values: dict) -> dict:
+    """Only what the admin changed. An emptied refusal wording goes back to the standard one."""
+    changes = {name: value for name, value in new.items() if value != values[name]}
+    if "refusal_wording" in changes and not changes["refusal_wording"].strip():
+        changes["refusal_wording"] = None
+    return changes
+
+
+def score_input(column, name: str, values: dict, **options) -> float:
+    return column.number_input(SETTING_NAMES[name], 0.0, 10.0, value=float(values[name]), step=0.1, **options)
+
+
+def show_settings() -> None:
+    current, problem = call_api("GET", "/admin/settings")
+    if problem:
+        st.error(problem)
+        return
+    values, changed = current["effective"], current["changed"]
+    st.caption("These apply to this organisation only, from the next question. Anything not changed here follows "
+               "the server's settings. Every change is in the audit log.")
+    if changed:
+        st.caption("Changed here: " + ", ".join(SETTING_NAMES.get(name, name) for name in changed))
+    models = current["allowed_chat_models"]
+    new: dict = {}
+    with st.form("settings_form"):
+        st.subheader("Branding")
+        left, right = st.columns(2)
+        new["company_name"] = left.text_input("Company name", values["company_name"], max_chars=100)
+        new["legal_name"] = right.text_input("Legal name", values["legal_name"], max_chars=150)
+        new["product_name"] = left.text_input("Product name", values["product_name"], max_chars=60)
+        new["logo_initials"] = right.text_input("Logo initials", values["logo_initials"], max_chars=3)
+        new["hr_email"] = st.text_input("HR email", values["hr_email"], max_chars=200)
+
+        st.subheader("Answers")
+        left, right = st.columns(2)
+        new["tone"] = left.selectbox("Tone", list(TONES), index=list(TONES).index(values["tone"]),
+                                     format_func=TONES.get)
+        new["answer_length"] = right.selectbox("Answer length", list(LENGTHS),
+                                               index=list(LENGTHS).index(values["answer_length"]),
+                                               format_func=LENGTHS.get)
+        new["refusal_wording"] = st.text_area(
+            "Refusal wording", values["refusal_wording"], max_chars=400,
+            placeholder="Leave empty for the standard wording, which gives the HR email.",
+            help="What the bot says when the policies don't answer a question. {hr_email} and {company_name} "
+                 "are filled in.")
+
+        st.subheader("Topics")
+        typed = st.text_input("Categories", ", ".join(values["categories"]),
+                              help="Lowercase words, separated by commas, such as leave, payroll. New uploads "
+                                   "are filed under one of these. Policies already filed keep their category.")
+        new["categories"] = [category.strip().lower() for category in typed.split(",") if category.strip()]
+        new["default_category"] = st.text_input("Default category", values["default_category"], max_chars=30)
+
+        st.subheader("Model")
+        left, right = st.columns(2)
+        chosen = values["chat_model"]
+        new["chat_model"] = left.selectbox("Answer model", models,
+                                           index=models.index(chosen) if chosen in models else 0,
+                                           help="Only the models the server's owner allowed are listed.")
+        new["temperature"] = right.number_input("Temperature", 0.0, 2.0, value=values["temperature"], step=0.1,
+                                                placeholder="The model's default")
+
+        st.subheader("Search")
+        left, right = st.columns(2)
+        new["min_confidence"] = score_input(left, "min_confidence", values, help=SCORE_HELP)
+        new["min_chunk_confidence"] = score_input(right, "min_chunk_confidence", values)
+        new["grade_min_confidence"] = score_input(left, "grade_min_confidence", values)
+        new["out_of_scope_override_confidence"] = score_input(right, "out_of_scope_override_confidence", values)
+        new["skip_understand_confidence"] = score_input(left, "skip_understand_confidence", values)
+        new["retrieve_k"] = right.number_input(SETTING_NAMES["retrieve_k"], 1, int(current["max_excerpts"]),
+                                               value=int(values["retrieve_k"]), step=1)
+        st.caption("The server's values were measured on the test questions. Run the evaluation after changing them.")
+
+        st.subheader("Switches")
+        new["self_service_enabled"] = st.toggle(
+            SETTING_NAMES["self_service_enabled"], values["self_service_enabled"],
+            help="Leave balances, payslips, leave requests and tickets, each needing the employee's approval.")
+        new["cache_answers"] = st.toggle(SETTING_NAMES["cache_answers"], values["cache_answers"])
+        new["skip_understand_when_clear"] = st.toggle(SETTING_NAMES["skip_understand_when_clear"],
+                                                      values["skip_understand_when_clear"])
+        saved = st.form_submit_button("Save", type="primary")
+    if saved:
+        changes = settings_changes(new, values)
+        if not changes:
+            st.info("Nothing was changed.")
+        else:
+            _, problem = call_api("PATCH", "/admin/settings", json=changes)
+            if problem:
+                st.error(problem)
+            else:
+                st.session_state.admin_message = "Saved. The next question uses the new settings."
+                st.rerun()
+    if changed:
+        reset = st.multiselect("Put back to the server's setting", list(changed),
+                               format_func=lambda name: SETTING_NAMES.get(name, name))
+        if reset and st.button("Put back", key="reset_settings"):
+            _, problem = call_api("PATCH", "/admin/settings", json={name: None for name in reset})
+            if problem:
+                st.error(problem)
+            else:
+                st.session_state.admin_message = "Those settings now follow the server's again."
+                st.rerun()
+
+
 st.set_page_config(page_title="HR Helpdesk admin", page_icon=":material/admin_panel_settings:")
 st.markdown("[← Back to chat](/)")
 st.title("Policy admin")
@@ -323,9 +445,9 @@ with st.container():
     if "admin_message" in st.session_state:
         st.success(st.session_state.pop("admin_message"))
 
-documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab, usage_tab, users_tab, keys_tab, audit_tab = st.tabs(
-    [f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback", "Usage", "People",
-     "API keys", "Audit log"])
+(documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab, usage_tab, users_tab, keys_tab, settings_tab,
+ audit_tab) = st.tabs([f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback",
+                       "Usage", "People", "API keys", "Settings", "Audit log"])
 with documents_tab:
     show_documents(current)
 with upload_tab:
@@ -342,5 +464,7 @@ with users_tab:
     show_users()
 with keys_tab:
     show_api_keys()
+with settings_tab:
+    show_settings()
 with audit_tab:
     show_audit()

@@ -225,15 +225,84 @@ def test_an_hr_admin_does_not_need_the_shared_key(signed_in, monkeypatch):
                                       "latency_ms": {"total_p50": 4100, "total_p95": None},
                                       "steps_ms": {"understand": {"p50": 1500, "p95": 2900, "count": 12},
                                                    "generate": {"p50": 2400, "p95": None, "count": 10}}})
+        if "/admin/settings" in url:
+            return FakeResponse(body=SETTINGS)
         return FakeResponse(body={"thumbs_up": 0, "thumbs_down": 0, "recent_negative": []} if "feedback" in url else [])
 
     monkeypatch.setattr(requests, "request", request)
     app = AppTest.from_file(ADMIN_FILE, default_timeout=30).run()
     assert not app.exception
     assert not [box for box in app.text_input if box.label == "Admin key"]
-    assert [tab.label for tab in app.tabs][-4:] == ["Usage", "People", "API keys", "Audit log"]
+    assert [tab.label for tab in app.tabs][-5:] == ["Usage", "People", "API keys", "Settings", "Audit log"]
     assert {metric.label: metric.value for metric in app.metric}["Typical answer"] == "4.1 s"
     steps = next(frame.value for frame in app.dataframe if "Step" in frame.value.columns)
     assert list(steps["Step"]) == ["Reading the message", "Writing the answer"]
     assert list(steps["Typical"]) == [1.5, 2.4]
     assert all(headers == {"Authorization": "Bearer a-token"} for headers in seen)
+
+
+SETTINGS = {
+    "changed": {"tone": "formal"}, "allowed_chat_models": ["model-a", "model-b"], "max_excerpts": 20, "version": "v1",
+    "effective": {"company_name": "Globex", "legal_name": "Globex Ltd", "hr_email": "hr@globex.example",
+                  "product_name": "Globex HR", "logo_initials": "G", "tone": "formal", "answer_length": "normal",
+                  "refusal_wording": "", "categories": ["general", "leave"], "default_category": "general",
+                  "chat_model": "model-a", "temperature": None, "min_confidence": 3.0, "min_chunk_confidence": 2.5,
+                  "grade_min_confidence": 4.0, "out_of_scope_override_confidence": 4.5,
+                  "skip_understand_confidence": 4.5, "retrieve_k": 5, "self_service_enabled": True,
+                  "cache_answers": True, "skip_understand_when_clear": True},
+}
+
+
+@pytest.fixture
+def settings_screen(signed_in, monkeypatch):
+    """The admin screen, signed in as an HR admin, with the API's answers faked. Records what's sent."""
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: FakeResponse(body={**SESSION, "role": "hr_admin"}))
+    sent = []
+
+    def request(method, url, headers=None, **kwargs):
+        if method == "PATCH":
+            sent.append(kwargs.get("json"))
+            return FakeResponse(body=SETTINGS)
+        if "/admin/settings" in url:
+            return FakeResponse(body=SETTINGS)
+        if "/admin/metrics" in url:
+            return FakeResponse(body={"requests": 0, "failures": 0, "refusals": 0, "input_tokens": 0,
+                                      "output_tokens": 0, "estimated_cost_usd": 0.0, "tool_calls": 0,
+                                      "tool_failures": 0, "latency_ms": {"total_p50": None, "total_p95": None}})
+        return FakeResponse(body={"thumbs_up": 0, "thumbs_down": 0, "recent_negative": []} if "feedback" in url else [])
+
+    monkeypatch.setattr(requests, "request", request)
+    app = AppTest.from_file(ADMIN_FILE, default_timeout=30).run()
+    assert not app.exception
+    return app, sent
+
+
+def test_the_settings_tab_shows_the_values_answers_use(settings_screen):
+    app, _ = settings_screen
+    assert next(box for box in app.text_input if box.label == "Company name").value == "Globex"
+    assert next(box for box in app.selectbox if box.label == "Tone").value == "formal"
+    assert next(box for box in app.number_input if box.label == "Excerpts per answer").value == 5
+    assert any("Changed here: Tone" in caption.value for caption in app.caption)
+
+
+def test_saving_settings_sends_only_what_changed(settings_screen):
+    app, sent = settings_screen
+    next(box for box in app.text_input if box.label == "Company name").set_value("Globex Group")
+    next(box for box in app.number_input if box.label == "Excerpts per answer").set_value(3)
+    next(button for button in app.button if button.label == "Save").click().run()
+    assert not app.exception
+    assert sent == [{"company_name": "Globex Group", "retrieve_k": 3}]
+
+
+def test_saving_with_nothing_changed_sends_nothing(settings_screen):
+    app, sent = settings_screen
+    next(button for button in app.button if button.label == "Save").click().run()
+    assert sent == []
+    assert any(info.value == "Nothing was changed." for info in app.info)
+
+
+def test_a_setting_can_be_put_back_to_the_servers(settings_screen):
+    app, sent = settings_screen
+    next(box for box in app.multiselect if box.label == "Put back to the server's setting").set_value(["tone"]).run()
+    app.button(key="reset_settings").click().run()
+    assert sent == [{"tone": None}]

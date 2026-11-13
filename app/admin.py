@@ -6,12 +6,15 @@ restarting, unlike the copy saved in the policy folder.
 """
 import logging
 from datetime import date
+from typing import Annotated, Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Request, UploadFile
+from pydantic import ValidationError
 
 from app import config
 from app.identity import Principal
 from app.knowledge import DuplicateDocument, JobConflict, KnowledgeBase, NotFound, UploadDetails, UploadRejected
+from app.org_settings import SettingsError, effective_settings
 from app.security import admin_principal, audit, service_for
 from pipeline.extract import ExtractionError
 
@@ -126,3 +129,46 @@ def feedback_summary(base: KnowledgeBase = Depends(knowledge)):
 def test_candidates(base: KnowledgeBase = Depends(knowledge)):
     """Unanswered questions and answers rated down, to become test items once a reviewer has labelled them."""
     return base.test_candidates()
+
+
+def registry_of(request: Request):
+    registry = request.app.state.service
+    if not hasattr(registry, "settings"):
+        raise HTTPException(404, "Organisation settings need the server that holds every organisation")
+    return registry
+
+
+def settings_view(registry, tenant_id: str) -> dict:
+    profile = registry.profile_for(tenant_id)
+    if profile is None:
+        raise HTTPException(403, "This organisation isn't available")
+    return {"changed": profile.overrides.model_dump(exclude_none=True), "effective": effective_settings(profile),
+            "allowed_chat_models": config.ALLOWED_CHAT_MODELS, "max_excerpts": config.FETCH_K,
+            "version": profile.version}
+
+
+def readable(error: ValidationError) -> str:
+    return "; ".join(f"{'.'.join(str(part) for part in problem['loc']) or 'settings'}: {problem['msg']}"
+                     for problem in error.errors())
+
+
+@router.get("/settings")
+def get_settings(request: Request, principal: Principal = Depends(admin_principal)):
+    """This organisation's settings: what it changed, and the value answers use for each one."""
+    return settings_view(registry_of(request), principal.tenant_id)
+
+
+@router.patch("/settings")
+def change_settings(request: Request, changes: Annotated[dict[str, Any], Body()],
+                    principal: Principal = Depends(admin_principal)):
+    """Change some settings. A value of null puts that setting back to the deployment's. Takes effect at once."""
+    registry = registry_of(request)
+    try:
+        _, changed = registry.settings.save(principal.tenant_id, changes, principal.user_id or principal.source)
+    except ValidationError as error:
+        raise HTTPException(422, readable(error)) from None
+    except SettingsError as error:
+        raise HTTPException(422, str(error)) from None
+    if changed:
+        audit(request, principal, "settings_changed", ", ".join(sorted(changed)), changes=changed)
+    return settings_view(registry, principal.tenant_id)

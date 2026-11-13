@@ -6,15 +6,13 @@ from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 from app.config import Tenant, tenant
-
-
-def categories_of(profile: Tenant = tenant) -> list[str]:
-    return sorted({*profile.document_categories.values(), profile.default_category})
+from app.org_settings import categories_of
+from app.rag.prompt import own_wording
 
 
 def out_of_scope_answer(profile: Tenant = tenant) -> str:
-    return (f"I can only help with {profile.company_name} HR questions. "
-            f"For anything else, please contact the HR helpdesk at {profile.hr_email}.")
+    return own_wording(profile) or (f"I can only help with {profile.company_name} HR questions. "
+                                    f"For anything else, please contact the HR helpdesk at {profile.hr_email}.")
 
 
 def needs_identity_answer(profile: Tenant = tenant) -> str:
@@ -22,7 +20,7 @@ def needs_identity_answer(profile: Tenant = tenant) -> str:
             f"Please contact the HR helpdesk at {profile.hr_email}.")
 
 
-CATEGORIES = categories_of()
+CATEGORIES = categories_of(tenant)
 OUT_OF_SCOPE_ANSWER = out_of_scope_answer()
 NEEDS_IDENTITY_ANSWER = needs_identity_answer()
 CLARIFY_ANSWER = (

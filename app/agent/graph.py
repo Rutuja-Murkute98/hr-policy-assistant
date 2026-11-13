@@ -34,6 +34,7 @@ from app.agent.prompts import (
     out_of_scope_answer,
 )
 from app.agent.tools import TOOLS, ToolContext, ToolRunner, langchain_tools
+from app.org_settings import setting
 from app.rag.answer_cache import AnswerCache
 from app.rag.prompt import fallback_answer, greeting_answer
 from app.rag.retrieval import SearchFilters
@@ -195,11 +196,12 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
                 return {"intent": "policy_question", "standalone": question, "category": "", "cached": cached}
             cacheable = {"documents_hash": documents_hash}
         searched: dict | None = None
-        if can_prefetch(state) and config.SKIP_UNDERSTAND_WHEN_CLEAR and looks_like_policy_question(question):
+        shortcut = setting(profile, "skip_understand_when_clear")
+        if can_prefetch(state) and shortcut and looks_like_policy_question(question):
             # A strong search would overrule an "out of scope" label anyway, so the model isn't needed to say so
             searched = search_now(state, question)
             found = searched.get("prefetched")
-            if found and found["chunks"] and found["confidence"] >= config.SKIP_UNDERSTAND_CONFIDENCE:
+            if found and found["chunks"] and found["confidence"] >= setting(profile, "skip_understand_confidence"):
                 return {"intent": "policy_question", "standalone": question, "category": "",
                         "asks_about_past": False, **cacheable, **searched}
         # Most first messages are policy questions, so their search runs while the model reads them
@@ -242,7 +244,8 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         if intent == "out_of_scope":
             return "confirm_out_of_scope"
         if intent in ("personal_data_request", "action_request"):
-            return "select_tool" if state.get("user_id") and config.SELF_SERVICE_ENABLED else "needs_identity"
+            allowed = state.get("user_id") and setting(profile, "self_service_enabled")
+            return "select_tool" if allowed else "needs_identity"
         return "retrieve"
 
     def cached_answer(state: WorkflowState) -> dict:
@@ -261,7 +264,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
             timing: dict = {}
         else:
             chunks, confidence, timing = timed_search(state, state["standalone"], SearchFilters(tenant_id=tenant_id))
-        if chunks and confidence >= config.OUT_OF_SCOPE_OVERRIDE_CONFIDENCE:
+        if chunks and confidence >= setting(profile, "out_of_scope_override_confidence"):
             return {"intent": "policy_question", "category": "", **timing}
         return timing
 
@@ -298,7 +301,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         return {**found, **timing}
 
     def grade_evidence(state: WorkflowState) -> str:
-        weak = not state["chunks"] or state["confidence"] < config.GRADE_MIN_CONFIDENCE
+        weak = not state["chunks"] or state["confidence"] < setting(profile, "grade_min_confidence")
         if weak and not state.get("retried"):
             return "rewrite_query"
         return "generate" if state["chunks"] else "abstain"

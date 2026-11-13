@@ -28,6 +28,7 @@ from app.knowledge import KnowledgeBase
 from app.memory import ConversationStore, summarise_if_long
 from app.metrics import AnswerMetrics, MetricsStore
 from app.observability import Tracing, UsageCallback, estimated_cost
+from app.org_settings import Profile, SettingsStore, setting
 from app.pii import mask
 from app.rag.answer_cache import AnswerCache, answer_key
 from app.rag.embedding_cache import QuestionEmbeddingCache
@@ -94,9 +95,12 @@ class ChatWorkflow:
         if config.CACHE_QUESTION_EMBEDDINGS and rag.query_cache is None:
             rag.query_cache = QuestionEmbeddingCache(scoped, tenant_id)
         self.answers: AnswerCache | None = None
-        if config.CACHE_ANSWERS:
+        if setting(rag.profile, "cache_answers"):
             collection = getattr(getattr(rag.store, "store", None), "collection_name", config.COLLECTION_NAME)
-            model = answer_key(f"{config.LLM_PROVIDER}:{config.CHAT_MODEL}", build_messages("", [], rag.profile))
+            # A change to any of the organisation's settings, such as a threshold, starts a fresh cache
+            version = getattr(rag.profile, "version", "")
+            model = answer_key(f"{config.LLM_PROVIDER}:{setting(rag.profile, 'chat_model')}"
+                               + (f":{version}" if version else ""), build_messages("", [], rag.profile))
             self.answers = AnswerCache(scoped, tenant_id, collection, model)
         self.tracing_callbacks = tracing.callbacks if tracing else []
         self.checkpointer = checkpointer
@@ -291,9 +295,14 @@ def create_workflow() -> ChatWorkflow:
 
 
 class WorkflowRegistry:
-    """One workflow per organisation, sharing the database pools and model, as memory is tight."""
+    """One workflow per organisation, sharing the database pools and model, as memory is tight.
 
-    def __init__(self, store, llm, engine, checkpointer, reranker=None, tracing: Tracing | None = None):
+    An organisation's workflow is rebuilt when its settings change, which every process notices within
+    SETTINGS_CACHE_SECONDS, so a change needs no restart.
+    """
+
+    def __init__(self, store, llm, engine, checkpointer, reranker=None, tracing: Tracing | None = None,
+                 model_factory=get_chat_model):
         self.store = store
         self.llm = llm
         self.engine = engine
@@ -301,22 +310,42 @@ class WorkflowRegistry:
         self.reranker = reranker
         self.tracing = tracing or Tracing()
         self.organisations = Organisations(engine)
+        self.settings = SettingsStore(engine)
+        self.model_factory = model_factory
         self._workflows: dict[str, ChatWorkflow] = {}
+        self._models: dict[tuple, object] = {}
         self._lock = threading.Lock()
 
     def for_tenant(self, tenant_id: str) -> ChatWorkflow:
+        _, version = self.settings.read(tenant_id)
         with self._lock:
             workflow = self._workflows.get(tenant_id)
-            if workflow is None:
+            if workflow is None or getattr(workflow.rag.profile, "version", "") != version:
                 workflow = self._workflows[tenant_id] = self._build(tenant_id)
         return workflow
 
+    def profile_for(self, tenant_id: str) -> Profile | None:
+        """The organisation with its own settings applied, or None if it isn't available."""
+        base = config.tenant if tenant_id == config.TENANT_ID else self.organisations.get(tenant_id)
+        return None if base is None else self.settings.profile(tenant_id, base)
+
+    def model_for(self, profile: Profile):
+        """The organisation's answer model. Organisations that chose the same model share it."""
+        model, temperature = setting(profile, "chat_model"), profile.overrides.temperature
+        if model == config.CHAT_MODEL and temperature is None:
+            return self.llm
+        key = (model, temperature)
+        if key not in self._models:
+            self._models[key] = self.model_factory(model=model, temperature=temperature)
+        return self._models[key]
+
     def _build(self, tenant_id: str) -> ChatWorkflow:
-        profile = config.tenant if tenant_id == config.TENANT_ID else self.organisations.get(tenant_id)
+        profile = self.profile_for(tenant_id)
         if profile is None:
             raise OrganisationUnavailable(tenant_id)
-        rag = RagService(PolicyIndex(self.store, tenant_id), self.llm, self.reranker, profile=profile)
-        workflow = ChatWorkflow(rag, self.llm, self.engine, self.checkpointer, tenant_id=tenant_id,
+        llm = self.model_for(profile)
+        rag = RagService(PolicyIndex(self.store, tenant_id), llm, self.reranker, profile=profile)
+        workflow = ChatWorkflow(rag, llm, self.engine, self.checkpointer, tenant_id=tenant_id,
                                 tracing=self.tracing)
         workflow.run_maintenance(force=True)
         return workflow

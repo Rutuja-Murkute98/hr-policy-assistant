@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, SecretStr
 from app import config
 from app.config import Tenant
 from app.identity import MAX_PHOTO_BYTES, Identity, IdentityError, Principal, Profiles, photo_type
+from app.org_settings import public_profile
 from app.passwords import MAX_PASSWORD_CHARS, AccountProblem, PasswordAccounts, SignedIn
 from app.security import admin_principal, audit, current_principal, platform_principal, rate_limit, service_for
 
@@ -30,13 +31,17 @@ def identity_of(request: Request) -> Identity:
 def session_details(request: Request, principal: Principal) -> dict:
     """What the screens need to know about the signed-in person and their organisation."""
     identity = getattr(request.app.state, "identity", None)
-    profile = identity.organisations.get(principal.tenant_id) if identity else None
+    profile_for = getattr(getattr(request.app.state, "service", None), "profile_for", None)
+    if profile_for is not None:  # with the organisation's own branding applied
+        profile = profile_for(principal.tenant_id)
+    else:
+        profile = identity.organisations.get(principal.tenant_id) if identity else None
     if profile is None and principal.tenant_id == config.TENANT_ID:
         profile = config.tenant
     if profile is None:
         raise HTTPException(403, "This organisation isn't available")
     return {"user_id": principal.user_id, "email": principal.email, "display_name": principal.name,
-            "role": principal.role, "tenant_id": principal.tenant_id, "organisation": profile.model_dump()}
+            "role": principal.role, "tenant_id": principal.tenant_id, "organisation": public_profile(profile)}
 
 
 @router.post("/auth/session", tags=["accounts"])

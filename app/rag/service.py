@@ -101,9 +101,9 @@ class RagService:
         embedded = time.perf_counter()
         found = self.store.candidates(vector, question, config.FETCH_K, use_keywords=self.hybrid,
                                       filters=filters or SearchFilters(tenant_id=self.tenant_id))
-        candidates = keep_usable(found)
+        candidates = keep_usable(found, self.profile)
         confidence = max((candidate.confidence for candidate in found), default=0.0)
-        selected = select_chunks(candidates, self._rerank(question, candidates))
+        selected = select_chunks(candidates, self._rerank(question, candidates), self.profile)
         if timing is not None:
             timing["embedding_ms"] = (embedded - started) * 1000
             timing["retrieval_ms"] = (time.perf_counter() - embedded) * 1000

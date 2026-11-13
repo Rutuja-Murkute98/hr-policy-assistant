@@ -38,16 +38,17 @@ def _create(kind: str, setting: str, classes: dict, provider: str, model: str, *
     return model_class(model=model, **options)
 
 
-def chat_options() -> dict:
-    """Translate the settings into each provider's own names for them."""
+def chat_options(temperature: float | None = None) -> dict:
+    """Translate the settings into each provider's own names for them. A temperature given here wins."""
     options: dict = {}
-    if config.LLM_TEMPERATURE is not None:
-        options["temperature"] = config.LLM_TEMPERATURE
+    temperature = config.LLM_TEMPERATURE if temperature is None else temperature
+    if temperature is not None:
+        options["temperature"] = temperature
     return options
 
 
-def provider_options(provider: str) -> dict:
-    options = chat_options()
+def provider_options(provider: str, temperature: float | None = None) -> dict:
+    options = chat_options(temperature)
     if config.LLM_MAX_TOKENS is not None:
         options[MAX_TOKENS_NAME.get(provider, "max_tokens")] = config.LLM_MAX_TOKENS
     if provider != "ollama":  # Ollama runs locally and has neither setting
@@ -91,9 +92,10 @@ class FallbackModel:
         return FallbackModel(self.primary.bind_tools(tools), self.fallback.bind_tools(tools))
 
 
-def get_chat_model():
-    primary = _create("chat", "LLM_PROVIDER", CHAT_MODELS, config.LLM_PROVIDER, config.CHAT_MODEL,
-                      **provider_options(config.LLM_PROVIDER))
+def get_chat_model(model: str | None = None, temperature: float | None = None):
+    """The answer model. An organisation can choose another of the deployment's provider, and its temperature."""
+    primary = _create("chat", "LLM_PROVIDER", CHAT_MODELS, config.LLM_PROVIDER, model or config.CHAT_MODEL,
+                      **provider_options(config.LLM_PROVIDER, temperature))
     if not config.LLM_FALLBACK_PROVIDER:
         return primary
     fallback = _create("chat", "LLM_FALLBACK_PROVIDER", CHAT_MODELS, config.LLM_FALLBACK_PROVIDER,

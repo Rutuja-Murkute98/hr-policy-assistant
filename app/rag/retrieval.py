@@ -10,6 +10,8 @@ import numpy as np
 from langchain_core.documents import Document
 
 from app import config
+from app.config import Tenant
+from app.org_settings import setting
 
 
 @dataclass
@@ -48,26 +50,29 @@ def body_of(chunk: Document) -> str:
     return chunk.page_content.partition("\n\n")[2]
 
 
-def has_evidence(candidate: Candidate) -> bool:
+def has_evidence(candidate: Candidate, profile: Tenant | None = None) -> bool:
     if config.ABSTENTION_MODE == "confidence":
-        return candidate.confidence >= config.MIN_CHUNK_CONFIDENCE
+        return candidate.confidence >= setting(profile, "min_chunk_confidence")
     return candidate.distance <= config.MAX_DISTANCE
 
 
-def enough_evidence_overall(candidates: list[Candidate]) -> bool:
+def enough_evidence_overall(candidates: list[Candidate], profile: Tenant | None = None) -> bool:
     """Decide whether the question is worth answering at all, from its strongest chunk."""
     if config.ABSTENTION_MODE != "confidence":
         return True  # "distance" mode only judges each chunk
-    return any(candidate.confidence >= config.MIN_CONFIDENCE for candidate in candidates)
+    return any(candidate.confidence >= setting(profile, "min_confidence") for candidate in candidates)
 
 
-def keep_usable(candidates: list[Candidate]) -> list[Candidate]:
-    """Drop chunks without enough evidence, and ones that are only a lead-in or repeated text."""
-    if not enough_evidence_overall(candidates):
+def keep_usable(candidates: list[Candidate], profile: Tenant | None = None) -> list[Candidate]:
+    """Drop chunks without enough evidence, and ones that are only a lead-in or repeated text.
+
+    The thresholds are the organisation's, if the profile has its own.
+    """
+    if not enough_evidence_overall(candidates, profile):
         return []
     kept, seen = [], set()
     for candidate in sorted(candidates, key=lambda c: c.distance):
-        if not has_evidence(candidate):
+        if not has_evidence(candidate, profile):
             continue  # also applies to keyword matches, so off-topic questions are still refused
         if len(body_of(candidate.chunk)) < config.MIN_BODY_CHARS:
             continue
@@ -121,7 +126,8 @@ def mmr(relevance: np.ndarray, embeddings: np.ndarray, k: int, lambda_mult: floa
     return picked
 
 
-def select_chunks(candidates: list[Candidate], rerank_order: list[int] | None = None) -> list[Document]:
+def select_chunks(candidates: list[Candidate], rerank_order: list[int] | None = None,
+                  profile: Tenant | None = None) -> list[Document]:
     """Return the chunks to send to the LLM, with the most relevant first.
 
     rerank_order lists positions in candidates, best first. The candidates should already
@@ -130,10 +136,11 @@ def select_chunks(candidates: list[Candidate], rerank_order: list[int] | None = 
     if not candidates:
         return []
     relevance = relevance_scores(candidates, rerank_order)
+    retrieve_k = setting(profile, "retrieve_k")
     if config.USE_MMR:
         embeddings = np.array([candidate.embedding for candidate in candidates], dtype=float)
-        picked = mmr(relevance, embeddings, config.RETRIEVE_K, config.MMR_LAMBDA)
+        picked = mmr(relevance, embeddings, retrieve_k, config.MMR_LAMBDA)
     else:
         picked = list(range(len(candidates)))
     best_first = sorted(picked, key=lambda i: -relevance[i])
-    return [candidates[i].chunk for i in best_first[:config.RETRIEVE_K]]
+    return [candidates[i].chunk for i in best_first[:retrieve_k]]

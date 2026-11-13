@@ -33,6 +33,7 @@ squared with holding employees' personal data.
 | Rate limit counts | `rate_limit_hits` | Minutes | Holds a user id or client id, and a time |
 | Question vectors | `question_embeddings` | Same as chats | A hash of the masked question and its vector. No text and no user |
 | Answers to repeated first questions | `answer_cache` | Same as chats | A hash of the masked question, and the checked policy answer. No user, so deleting a person's history doesn't remove it. Never kept for self-service requests |
+| Organisation settings | `tenant_settings` | Until changed | The id of the admin who last changed them. Each change is also in `audit_events`. A refusal wording or HR email could name a person, so it's masked in the audit entry |
 | Mock leave and tickets | `hr_leave_requests`, `hr_tickets` | Not removed: a real HR system would set this | Masked question. Fake data only |
 
 ## What the Act asks for, and where this stands

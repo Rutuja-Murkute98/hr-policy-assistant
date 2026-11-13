@@ -19,6 +19,7 @@ from sqlalchemy import Engine, text
 from app import config
 from app.config import Tenant
 from app.guards import find_injection_signs, strip_invisible
+from app.org_settings import categories_of
 from app.pii import mask
 from app.rag.retrieval import body_of
 from app.tenancy import TenantEngine, tenant_scoped
@@ -62,8 +63,8 @@ def text_hash(content: str) -> str:
 
 
 def known_categories(profile: Tenant | None = None) -> set[str]:
-    profile = profile or config.tenant
-    return {*profile.document_categories.values(), profile.default_category}
+    """The organisation's own categories if it set them, otherwise those in its tenant file."""
+    return set(categories_of(profile or config.tenant))
 
 
 def overrides_of(row) -> dict:

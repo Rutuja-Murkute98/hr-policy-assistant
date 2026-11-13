@@ -82,6 +82,11 @@ class Settings(BaseSettings):
     router_provider: Literal["", "google", "anthropic", "openai", "ollama"] = ""
     router_model: str = ""
 
+    # Each organisation's own settings: see docs/DECISIONS.md, D52
+    # Comma-separated models of LLM_PROVIDER an organisation may pick, besides the deployment's own
+    allowed_chat_models: str = ""
+    settings_cache_seconds: float = Field(default=10.0, ge=0)  # how stale another process's view of a change can be
+
     # Stored conversations
     conversation_retention_days: int = Field(default=90, ge=1)
     audit_retention_days: int = Field(default=365, ge=1)
@@ -222,6 +227,9 @@ SKIP_UNDERSTAND_WHEN_CLEAR = settings.skip_understand_when_clear
 SKIP_UNDERSTAND_CONFIDENCE = settings.skip_understand_confidence
 ROUTER_PROVIDER = settings.router_provider
 ROUTER_MODEL = settings.router_model
+ALLOWED_CHAT_MODELS = list(dict.fromkeys(
+    [CHAT_MODEL, *(model.strip() for model in settings.allowed_chat_models.split(",") if model.strip())]))
+SETTINGS_CACHE_SECONDS = settings.settings_cache_seconds
 CONVERSATION_RETENTION_DAYS = settings.conversation_retention_days
 AUDIT_RETENTION_DAYS = settings.audit_retention_days
 SUMMARISE_AFTER_MESSAGES = settings.summarise_after_messages

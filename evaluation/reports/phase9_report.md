@@ -1,10 +1,11 @@
 # Phase 9 report: speed and quota
 
-Branch `phase-9-speed`, built on `phase-8-evaluation`, 11 and 12 November 2026. Part 1 measured each step and added two
+Branch `phase-9-speed`, built on `phase-8-evaluation`, 11 to 13 November 2026. Part 1 measured each step and added two
 changes that need no new model. Part 2 adds an answer cache, skips the model reading clear first messages, and lets the router
-model reword weak searches. **Part 2 is built and tested, but not yet measured with the real model:** Gemini was failing with
-"high demand" and timeouts on 12 November. **The p95 target of 6 seconds is not met yet,** and the CI quality gate fails until all
-200 golden questions are answered again on the part 2 code.
+model reword weak searches. On the same 20 questions, part 2 cut the median from 3.67 s to
+2.65 s, and a repeated question takes 0.16 s. On all 200 golden questions the median fell from 4.69 s to 3.12 s, and the
+quality gate passes, but 4 of 40 questions that should be refused were answered, against 1 before. A faster router model was
+tried and not kept. **The p95 target of 6 seconds is not met:** the slowest answers are the answer model's own delays.
 
 ## What changed
 
@@ -86,7 +87,7 @@ Quality was identical in all three: recall 0.975, expected facts 1.000, no answe
 | New tests | 9 workflow tests (cache hit, document change, organisations, what's never cached, switching off, the shortcut, the word check, the router rewording), 3 cache key tests, 1 retry test |
 | Full suite with coverage | 783 passed and 2 failed, then the 2 fixed: a cached answer from an earlier test answered their question. All 327 integration tests then passed. Coverage 87.17% |
 | ruff, mypy | Passed |
-| CI quality gate | **Fails:** the workflow code changed since the last recorded run |
+| CI quality gate | **Passes.** All 200 golden questions were answered with part 2 on and judged, then recorded as `phase9_part2` |
 
 A test caught one real bug while building the word check: `SYSTEM:` didn't match, because a word boundary can't follow a colon.
 
@@ -116,33 +117,97 @@ Over the 246 answers stored in three days of evaluation runs: 119 output tokens 
 1,450 input tokens. The time to write an answer barely followed its length (correlation 0.04), so `LLM_MAX_TOKENS` and the prompt
 are unchanged (D50).
 
-### Not measured yet
+### The router model, measured on the agent set
 
-- **The router model.** The trial of `gemini-3.1-flash-lite` reading the 100 agent messages, `ROUTER_MODEL=gemini-3.1-flash-lite
-  SKIP_UNDERSTAND_WHEN_CLEAR=false python -m evaluation.run_agent_eval --name router`, finished 1 message in about 12 minutes on
-  12 November. Of its calls, 8 failed with 503 "high demand" and 6 with 504 timeouts, and the main model was also busy. A first try
-  had counted fallbacks as the router's decisions, which led to the retry change above. `ROUTER_MODEL` stays unset.
-- **Timings and quality with part 2 on.** The same 20 questions as part 1, then all 200 for the quality gate, wait for the model to
-  be usable.
+The 100 agent messages with `gemini-3.1-flash-lite` reading each one, on 12 and 13 November with a new API key:
+`ROUTER_MODEL=gemini-3.1-flash-lite SKIP_UNDERSTAND_WHEN_CLEAR=false python -m evaluation.run_agent_eval --name router`.
+
+| Agent set, 100 messages | Recorded run, answer model reads | `gemini-3.1-flash-lite` reads |
+|---|---:|---:|
+| Intent and routing | 0.95 | 0.96 |
+| Tool choice (made by the answer model in both) | 0.944 | 0.926 |
+| Tools that ran, approval rules, leave dates | 1.00, 1.00, 1.00 | 1.00, 1.00, 1.00 |
+| Reading a message, p50 / p95 | 1.70 / 6.38 s on the golden set | 1.54 / 6.77 s |
+
+- It reads messages as well, but not faster, so `ROUTER_MODEL` stays unset (D51). Its only gain is a quota of its own.
+- The first try, on 12 November, finished 1 message in about 12 minutes: 8 calls failed with 503 "high demand" and 6 with 504
+  timeouts. It had also counted fallbacks as the router's decisions, which led to the retry change above. The second try had 8
+  errors, all retried.
+
+### Timings with part 2 on
+
+The same 20 golden questions as part 1, answered through the full workflow on this PC, one pass right after another on
+13 November, without judging. The answer model was slow and failing at times that night, so one pass waited 10 minutes and resumed.
+
+| Pass | Median | p95 | Mean | Reading the message, p50 |
+|---|---:|---:|---:|---:|
+| Before part 2 (`SKIP_UNDERSTAND_WHEN_CLEAR=false`, no answer cache) | 3.67 s | 17.70 s | 6.02 s | 1,654 ms |
+| Part 2 on, answer cache empty | **2.65 s** | **10.98 s** | **3.99 s** | **405 ms** |
+| Part 2 on, the same questions again | **0.16 s** | **0.21 s** | 0.16 s | 8 ms |
+
+Quality was identical in all three: recall 0.975, expected facts 1.000, citations valid 1.000, no answerable question refused.
+
+- **The median fell 28% and the mean by a third.** Most of these questions skipped the model reading them, so that step fell from
+  1.65 s to 0.4 s at the median.
+- **A repeated question takes 0.16 s,** with no model call.
+- **The p95 is still the answer model's own spikes,** worse this night than on 11 November: 17.70 s with the old settings.
+  Twenty questions on an unstable night make the p95s rough. The medians are the fairer sign.
+
+### All 200 golden questions with part 2 on
+
+Answered through the full workflow on 13 November with the shortcut on and the answer cache off, since a stored answer would
+hide what the model does now. Judged by `gemini-3.1-flash-lite`.
+
+By mistake, the last 39 questions were answered twice in parallel. A run stopped to change the API key kept going in the
+background, and the restarted run answered the same questions at the same time. Each run kept its own answers and saved all
+of them together, so each run's results are complete. Both shared the first 161 answers. The recorded run is the one that
+finished last. The other is kept as `answers_phase9_part2_parallel.json`, and shows how much the same questions vary.
+
+| Check | Phase 9 run | Part 2, recorded | Part 2, parallel |
+|---|---:|---:|---:|
+| Recall@5 | 0.941 | 0.944 | 0.946 |
+| Expected facts in answers | 0.926 | 0.932 | 0.932 |
+| Correct refusals | 0.975 | **0.900** | 0.925 |
+| Wrongly refused | 0.037 | 0.037 | 0.037 |
+| Citations valid / on a labelled chunk | 1.000 / 0.974 | 1.000 / 0.974 | 1.000 / 0.974 |
+| Statements with an inline citation | 0.990 | 0.984 | 0.983 |
+| Judge: faithful, correct, relevant | 0.994, 0.981, 1.000 | 1.000, 0.968, 1.000 | 1.000, 0.962, 1.000 |
+| Seconds per answer, p50 / p95 | 4.69 / 12.16 | **3.12 / 12.06** | 3.15 / 10.91 |
+| Reading the message, p50 / p95 | 1,695 / 6,377 ms | 1,152 / 4,801 ms | 1,161 / 3,625 ms |
+| Writing the answer, p50 / p95 | 1,696 / 6,019 ms | 1,629 / 7,708 ms | 1,610 / 7,510 ms |
+
+- **The median fell by a third, from 4.69 s to 3.12 s,** mostly because reading the message is faster. The p95 barely moved:
+  the answer model's own slow replies set it.
+- **Four questions that should be refused were answered,** against one before:
+  - `unanswerable-009` is the known label problem, answered in both runs.
+  - `unanswerable-011` asks for today's share price. The answer gave the ESOP exercise price, and the judge marked it wrong.
+    The shortcut skipped the reading step here. That step would have called it out of scope, but the strong search would have
+    overruled that, and nothing from it reaches the answer model, so the answer model saw the same input. It refused before and
+    answered in both part 2 runs.
+  - `ambiguous-006` and `adversarial-014` went through the reading step as before. The answer model answered them this time:
+    one gives the grievance time limits, and the other says background check reports are confidential and only HR can see them.
+- **One question is not enough to tell chance from a change in behaviour.** The two part 2 runs differ on `adversarial-014`
+  alone, so these questions do vary between runs. The gate's floors still pass.
 
 ## Phase 9 status
 
 | Item from the plan | Status | Evidence or gap |
 |---|---|---|
 | Per-step timings in the metrics | Implemented and tested | Stored, summarised and shown on the Usage tab |
-| Skip reading the message for simple first messages | Implemented and tested, on by default | Same intent as the model on all 75 golden and 16 agent messages that skip it. Time saved not measured yet |
+| Skip reading the message for simple first messages | Implemented and tested, on by default | Same intent as the model on all 75 golden and 16 agent messages that skip it. Median 3.67 s to 2.65 s on 20 questions |
 | Search while the message is read | Implemented and tested | Measured: median 3.77 s to 3.19 s |
-| Separate router model | Implemented and tested with a scripted model | It now rewords weak searches too. The `gemini-3.1-flash-lite` trial was stopped by provider errors |
+| Separate router model | Implemented, measured, not kept | `gemini-3.1-flash-lite`: intent 0.96, but no faster (D51). It also rewords weak searches when set |
 | Question embedding cache | Implemented and tested | Measured warm: median 2.94 s |
-| Answer cache for repeated questions | Implemented and tested | Exact wording only, as no similarity was measured safe (D48). Hit time not measured yet |
+| Answer cache for repeated questions | Implemented and tested | Exact wording only, as no similarity was measured safe (D48). A repeated question takes 0.16 s |
 | Async request path | Deferred, with a reason | Requests already run on a 40-thread pool. The load test decides (D50) |
 | Tune output length and prompt size | Measured, no change | Answers are short, and length doesn't predict time (D50) |
-| p95 under 6 s on the deployment | **Not met** | 8.97 s on this PC with a warm cache. The deployment hasn't been measured (Phase 7 part 2) |
+| p95 under 6 s on the deployment | **Not met** | 12.06 s on all 200 questions with part 2 on, median 3.12 s, on this PC. The deployment hasn't been measured (Phase 7 part 2) |
 | 10 people at once with no quota errors | Not measured | Needs the deployment |
 
 ## What the owner must do
 
 1. Decide whether `unanswerable-009` should stay a refusal or become an answerable question with the chunk that answers it.
-1. Nothing else is needed for part 2's measurements: they need a day when Gemini isn't overloaded, and the free quota.
-2. Decide whether a second key or a paid tier is acceptable for a router model, as the plan asks. Part 2 can measure
-   `gemini-3.1-flash-lite`, the judge's model, as a router without one.
+2. Decide whether a second key or a paid tier is acceptable. No router model is needed (D51), but one 200-question run
+   with judging uses more than the free 500 requests a day for the answer model, so long evaluations stop partway.
+3. Decide whether 4 of 40 wrongly answered refusal questions is acceptable, or whether answers should be made stricter
+   about questions the policies only partly cover, such as today's share price. The gate's floor allows it.

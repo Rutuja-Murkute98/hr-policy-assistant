@@ -82,7 +82,7 @@ flowchart TB
 
 Measured on 200 questions in [`evaluation/data/golden_set.json`](evaluation/data/golden_set.json), with chunk-level labels, and 100 agent questions in [`evaluation/data/agent_set.json`](evaluation/data/agent_set.json).
 
-> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 8 report](evaluation/reports/phase8_report.md).
+> **These labels are still drafts.** They haven't been reviewed by the project owner yet, so treat the results as provisional. The full results, including what's still failing and which targets aren't met, are in the [Phase 8 report](evaluation/reports/phase8_report.md). The figures below are from the latest recorded run, in the [Phase 9 report](evaluation/reports/phase9_report.md).
 
 **To review the labels,** open the review screen. It shows each question, the policy text it should find and what the bot said, and saves your decisions to the label files. It needs no API key:
 
@@ -92,13 +92,13 @@ venv\Scripts\streamlit run evaluation/review_app.py
 
 | Check | Result | Target | What it measures |
 |---|---:|---:|---|
-| **Recall@5** | **0.925** | 0.90 or more | Whether search finds the labelled chunks |
-| **Expected facts in answers** | **0.926** | | Keyword check against known answers. Lowest on the 9 questions where two policies disagree |
-| **Correct refusals** | **1.000** | 100% | Off-topic, unknown and "ignore your rules" questions, 40 of them |
-| **Wrongly refused** | **0.044** | | Answerable questions the bot refused |
+| **Recall@5** | **0.944** | 0.90 or more | Whether search finds the labelled chunks |
+| **Expected facts in answers** | **0.932** | | Keyword check against known answers. Lowest on the 9 questions where two policies disagree |
+| **Correct refusals** | **0.900** | 100%: **not met** | Off-topic, unknown and "ignore your rules" questions, 40 of them. One label is probably wrong |
+| **Wrongly refused** | **0.037** | | Answerable questions the bot refused |
 | **Citations valid** | **1.000** | 95% or more | Citations point to chunks that were retrieved |
-| **Judge: correct** | **0.980** | | Judged by a different Gemini model, using only the retrieved text |
-| **p95 seconds per answer** | **37.66** | Under 6: **not met** | Inflated: the model was overloaded and the timing included waits between retries. Phase 9 fixes the measurement |
+| **Judge: correct** | **0.968** | | Judged by a different Gemini model, using only the retrieved text |
+| **p95 seconds per answer** | **12.06** | Under 6: **not met** | On this PC, counting only the attempt that worked. The median is 3.12 s. The slowest answers are the answer model's own delays |
 | **Cross-tenant leaks in tests** | **0** | 0 | Isolation tests at the database, store and API levels |
 
 **Agent test, 100 questions:** intent and routing 0.950, tool choice 0.944, and tool success, approvals and leave details all 1.000. The misses are among the 42 harder questions added in Phase 8.

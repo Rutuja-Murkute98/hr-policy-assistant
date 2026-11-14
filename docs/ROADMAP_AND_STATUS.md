@@ -55,7 +55,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | A change used by the next answer, without a restart | Implemented and tested | Including a change made by another process |
 | Settings tab, with checks and an audit entry per change | Implemented and tested | 4 screen tests. Not opened in a browser |
 | Category suggestions for uploads, re-indexing when needed | Planned | Part 2 |
-| 200-question run on the Phase 10 code | Planned | Needed for the quality gate |
+| 200-question run on the Phase 10 code | Done | Same as the baseline within run-to-run variation. Quality gate passes |
 
 ## Phase 8 status
 

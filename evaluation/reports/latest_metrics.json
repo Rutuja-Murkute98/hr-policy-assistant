@@ -1,60 +1,65 @@
 {
- "fingerprint": "1ead411fd464b42b97310eaccc37d5cafe19e58df44e98db6e94da7b5d9ef418",
+ "fingerprint": "e5f159ca48d774e18321dcc386ba861a66a1215fe7494970a3a66c39b78da736",
  "metrics": {
-  "recall_at_5": 0.944,
-  "facts_correct": 0.932,
+  "recall_at_5": 0.942,
+  "facts_correct": 0.912,
   "facts_checked": 148,
   "refused_when_it_should": 0.9,
   "refusal_checked": 40,
-  "false_refusals": 0.037,
+  "false_refusals": 0.044,
   "citations_valid": 1.0,
   "citations_on_target": 0.974,
-  "citations_checked": 154,
-  "seconds_p50": 3.12,
-  "seconds_p95": 12.06,
-  "statements_cited": 0.984,
+  "citations_checked": 153,
+  "seconds_p50": 3.26,
+  "seconds_p95": 11.95,
+  "statements_cited": 0.98,
   "steps_ms": {
    "confirm_out_of_scope": {
     "p50": 0,
     "p95": 0,
-    "count": 25
+    "count": 24
    },
    "generate": {
-    "p50": 1629,
-    "p95": 7708,
-    "count": 178
+    "p50": 1582,
+    "p95": 8783,
+    "count": 179
    },
    "refuse": {
     "p50": 0,
     "p95": 0,
-    "count": 22
+    "count": 21
    },
    "retrieve": {
     "p50": 0,
-    "p95": 1368,
-    "count": 178
+    "p95": 1568,
+    "count": 179
    },
    "rewrite_query": {
-    "p50": 1454,
-    "p95": 6022,
-    "count": 20
+    "p50": 1218,
+    "p95": 10524,
+    "count": 21
+   },
+   "select_tool": {
+    "p50": 2726,
+    "p95": 2726,
+    "count": 1
    },
    "understand": {
-    "p50": 1152,
-    "p95": 4801,
+    "p50": 1193,
+    "p95": 2890,
     "count": 200
    }
   },
   "judge_faithful": 1.0,
-  "judge_correct": 0.968,
+  "judge_correct": 0.981,
   "judge_relevant": 1.0,
-  "judged": 158,
+  "judged": 157,
   "judges": {
    "google:gemini-3.1-flash-lite": {
     "faithful": 1.0,
-    "correct": 0.968,
+    "correct": 0.981,
     "relevant": 1.0,
-    "judged": 158
+    "judged": 157
    }
   }
  }

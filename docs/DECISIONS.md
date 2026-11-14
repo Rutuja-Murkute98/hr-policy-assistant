@@ -595,6 +595,34 @@ owner listed, so it can't run up a bill or send its data to a provider nobody ag
 cleanup again. With the default tone and length, the prompt is exactly as before, so the answer cache and the evaluation stay
 valid. The embedding model stays one per deployment until a change can start a re-index (Phase 10 part 2).
 
+## D53. The model suggests a category for an upload, and HR confirms it
+
+**Decision:** On the upload screen, HR can ask for a suggestion. The API reads the file as it would for an upload, sends the
+title and the first 4,000 characters to the organisation's answer model, and asks it to pick one of the organisation's own
+categories, with a one-line reason. The suggestion fills in the category, and HR changes it or uploads. Nothing is stored
+until HR uploads. Without a category, an upload still falls back to the tenant file's list of files, then the default.
+
+**Why:** A new organisation shouldn't need someone to edit `tenant.toml` to file its policies, and a person seeing the choice
+catches a wrong guess before it changes what searches find. The answer is checked against the list, so a document that tries
+to steer the model can't invent a category. The text is fenced as data, like policy excerpts in answers.
+
+**Trade-offs:** One model call per suggestion, only when asked. The file is read twice: once for the suggestion, once on upload.
+
+## D54. A new embedding model is applied by re-embedding into a staging table, then switching in one transaction
+
+**Decision:** When the deployment's embedding model changes, each organisation keeps searching its old collection, with
+the old model, while a background job re-embeds every one of its chunks, current and superseded, into `reindex_vectors`. When
+all are done, one transaction moves the chunks to the new collection with their new vectors, moves the document records,
+versions and jobs with them, and records the new model. The job resumes where it stopped, and an admin can retry it.
+
+**Why:** Before this, changing `EMBEDDING_MODEL` pointed search at an empty collection until someone ran a rebuild by hand, so
+every answer was a refusal. Chunk ids are unique across all collections, so embedding straight into the new collection would
+take chunks out of the old one while it's still being searched. A staging table avoids that, and the switch is all or nothing.
+
+**Trade-offs:** The old model is still called for questions until the switch, so both models need to work for that time.
+Embedding every chunk again costs quota: 539 calls for the sample policies. Uploads during the job go to the old collection,
+and the job embeds them too before switching.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

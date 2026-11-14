@@ -77,8 +77,17 @@ def load_json(path: Path) -> dict:
 
 
 def save_json(path: Path, data: Any) -> None:
+    """Save safely: a crash or power cut leaves the old file or the new one, never a half-written one.
+
+    A run's progress file holds hours of answers, and one stopped mid-write once lost them all.
+    """
     path.parent.mkdir(exist_ok=True, parents=True)
-    path.write_text(json.dumps(data, indent=1, ensure_ascii=False), encoding="utf-8", newline="\n")
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8", newline="\n") as file:
+        file.write(json.dumps(data, indent=1, ensure_ascii=False))
+        file.flush()
+        os.fsync(file.fileno())  # on disk before it replaces the old file
+    os.replace(temporary, path)
 
 
 def standalone_questions(items: list[dict]) -> dict[str, str]:

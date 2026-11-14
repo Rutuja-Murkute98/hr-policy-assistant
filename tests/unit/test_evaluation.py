@@ -149,3 +149,19 @@ def test_gate_fails_on_a_low_or_missing_metric():
     low = {**GOOD, "recall_at_5": 0.1}
     assert "below the floor" in check({"fingerprint": "same", "metrics": low}, "same")[0]
     assert "wasn't recorded" in check({"fingerprint": "same", "metrics": {}}, "same")[0]
+
+
+def test_progress_is_saved_whole_or_not_at_all(tmp_path, monkeypatch):
+    from evaluation import run_eval
+
+    progress = tmp_path / "answers.json"
+    run_eval.save_json(progress, {"normal-001": {"answered": True}})
+    assert run_eval.load_json(progress) == {"normal-001": {"answered": True}}
+
+    def power_cut(*args, **kwargs):
+        raise OSError("disk went away")
+
+    monkeypatch.setattr(run_eval.os, "replace", power_cut)
+    with pytest.raises(OSError):
+        run_eval.save_json(progress, {"normal-001": {"answered": True}, "normal-002": {"answered": False}})
+    assert run_eval.load_json(progress) == {"normal-001": {"answered": True}}  # the old file is untouched

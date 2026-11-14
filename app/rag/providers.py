@@ -111,6 +111,7 @@ def get_router_model():
     return _create("chat", "ROUTER_PROVIDER", CHAT_MODELS, provider, config.ROUTER_MODEL, **provider_options(provider))
 
 
-def get_embeddings():
+def get_embeddings(provider: str | None = None, model: str | None = None):
+    """The deployment's embedding model, or another one, such as the one an old collection was built with."""
     return _create("embeddings", "EMBEDDING_PROVIDER", EMBEDDING_MODELS,
-                   config.EMBEDDING_PROVIDER, config.EMBEDDING_MODEL)
+                   provider or config.EMBEDDING_PROVIDER, model or config.EMBEDDING_MODEL)

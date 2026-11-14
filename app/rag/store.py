@@ -43,6 +43,7 @@ IS_CURRENT = "COALESCE(e.cmetadata->>'is_current', 'true') = 'true' "
 STORED_CHUNKS = text(
     "SELECT e.id, e.document, e.cmetadata " + CHUNK_JOIN + "AND " + IS_CURRENT
 )
+ALL_CHUNKS = text("SELECT e.id, e.document, e.cmetadata " + CHUNK_JOIN)  # superseded versions too
 UPSERT_CHUNK = text(
     "INSERT INTO langchain_pg_embedding (id, collection_id, embedding, document, cmetadata) "
     "SELECT :id, c.uuid, CAST(:embedding AS vector), :document, CAST(:metadata AS jsonb) "
@@ -175,11 +176,16 @@ def clear_tenant_chunks(collection_name: str, tenant_id: str, database_uri: str 
 
 
 def count_chunks(collection_name: str = config.COLLECTION_NAME, database_uri: str | None = None) -> int:
-    """Count stored chunks. Makes no API calls, so /health can use it freely."""
+    """Count stored chunks. Makes no API calls, so /health can use it freely.
+
+    While a new embedding model is applied, the chunks are still in the old model's collection (app/reindex.py), so
+    those count too: searches use them until the switch.
+    """
     with psycopg.connect(database_uri or get_database_uri()) as conn:
         row = conn.execute(
             "SELECT count(*) FROM langchain_pg_embedding e "
-            f"JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE c.name = %s AND {IS_CURRENT}",
+            f"JOIN langchain_pg_collection c ON e.collection_id = c.uuid WHERE {IS_CURRENT} AND (c.name = %s "
+            "OR c.name IN (SELECT from_collection FROM reindex_runs WHERE status <> 'succeeded'))",
             (collection_name,),
         ).fetchone()
     return row[0] if row else 0
@@ -215,9 +221,14 @@ class PolicyIndex:
     the filters here. The library's own write methods run as the table owner, so they aren't used.
     """
 
-    def __init__(self, store: PGVector, tenant_id: str = config.TENANT_ID):
+    def __init__(self, store: PGVector, tenant_id: str = config.TENANT_ID, model: tuple[str, str] | None = None):
+        """model is the (provider, model) that made this collection's vectors, if it isn't the deployment's own.
+
+        That's only while a new embedding model is being applied: see app/reindex.py.
+        """
         self.store = store
         self.tenant_id = check_tenant_id(tenant_id)
+        self.model = model or (config.EMBEDDING_PROVIDER, config.EMBEDDING_MODEL)
         with store.session_maker() as session:
             secure_library_tables(session, config.TENANT_ID)  # also makes other server processes wait for this step
             if not session.execute(HAS_SEARCH_TEXT).first():
@@ -244,10 +255,10 @@ class PolicyIndex:
             row = session.execute(MODEL_FOR_COLLECTION, {"tenant_id": self.tenant_id,
                                                          "collection": self.store.collection_name}).first()
             if row:
-                if (row.provider, row.model) != (config.EMBEDDING_PROVIDER, config.EMBEDDING_MODEL):
+                if (row.provider, row.model) != self.model:
                     raise EmbeddingModelMismatch(
                         f"Collection {self.store.collection_name} uses {row.provider}/{row.model}, but the settings "
-                        f"ask for {config.EMBEDDING_PROVIDER}/{config.EMBEDDING_MODEL}. Change the settings back, "
+                        f"ask for {self.model[0]}/{self.model[1]}. Change the settings back, "
                         "or re-index with: python -m pipeline.embed_and_store --rebuild")
                 return
             dimension = session.execute(EXISTING_DIMENSION, {"collection": self.store.collection_name}).scalar()
@@ -256,8 +267,7 @@ class PolicyIndex:
 
     def _record_embedding_model(self, session, dimension: int) -> None:
         session.execute(SAVE_MODEL, {"tenant_id": self.tenant_id, "collection": self.store.collection_name,
-                                     "provider": config.EMBEDDING_PROVIDER, "model": config.EMBEDDING_MODEL,
-                                     "dimension": dimension})
+                                     "provider": self.model[0], "model": self.model[1], "dimension": dimension})
 
     def _check_dimension(self, dimension: int) -> None:
         with self._session() as session:
@@ -324,6 +334,13 @@ class PolicyIndex:
                                                    "default_tenant": config.TENANT_ID}).all()
         return {row.id: Document(id=row.id, page_content=row.document, metadata=row.cmetadata)
                 for row in rows}
+
+    def all_chunks(self) -> dict[str, Document]:
+        """Every chunk of this tenant, current and superseded, without its embedding, by id."""
+        with self._session() as session:
+            rows = session.execute(ALL_CHUNKS, {"collection": self.store.collection_name, "tenant_id": self.tenant_id,
+                                                "default_tenant": config.TENANT_ID}).all()
+        return {row.id: Document(id=row.id, page_content=row.document, metadata=row.cmetadata) for row in rows}
 
     def add(self, chunks: list[Document]) -> None:
         """Embed and store the chunks. A chunk whose id is already stored is replaced."""

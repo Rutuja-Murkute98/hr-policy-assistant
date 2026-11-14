@@ -15,6 +15,7 @@ from app import config
 from app.identity import Principal
 from app.knowledge import DuplicateDocument, JobConflict, KnowledgeBase, NotFound, UploadDetails, UploadRejected
 from app.org_settings import SettingsError, effective_settings
+from app.reindex import latest_run
 from app.security import admin_principal, audit, service_for
 from pipeline.extract import ExtractionError
 
@@ -188,3 +189,18 @@ def change_settings(request: Request, changes: Annotated[dict[str, Any], Body()]
     if changed:
         audit(request, principal, "settings_changed", ", ".join(sorted(changed)), changes=changed)
     return settings_view(registry, principal.tenant_id)
+
+
+@router.get("/reindex")
+def reindex_status(request: Request, principal: Principal = Depends(admin_principal)):
+    """The latest re-index for a new embedding model, if there was one. Searches use the old model until it's done."""
+    return {"run": latest_run(registry_of(request).engine, principal.tenant_id)}
+
+
+@router.post("/reindex/retry", status_code=202)
+def retry_reindex(request: Request, principal: Principal = Depends(admin_principal)):
+    """Run a failed re-index again. It carries on from the chunks it already embedded."""
+    if not registry_of(request).retry_reindex(principal.tenant_id):
+        raise HTTPException(409, "There's no failed re-index to retry")
+    audit(request, principal, "reindex_retried")
+    return latest_run(registry_of(request).engine, principal.tenant_id)

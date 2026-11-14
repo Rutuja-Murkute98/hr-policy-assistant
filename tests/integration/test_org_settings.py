@@ -256,3 +256,22 @@ def test_a_file_that_could_not_be_uploaded_gets_no_suggestion(world, settings_cl
     assert suggest(settings_client, gina(world), name="../Carer.md").status_code == 422
     assert suggest(settings_client, gina(world), body=b"   ").status_code == 422
     assert sent == []
+
+
+# A new embedding model, as the admin screen sees it
+
+def test_with_no_model_change_there_is_no_reindex_to_show_or_retry(world, settings_client):
+    assert settings_client.get("/admin/reindex", headers=harriet(world)).json() == {"run": None}
+    assert settings_client.post("/admin/reindex/retry", headers=harriet(world)).status_code == 409
+    assert settings_client.get("/admin/reindex", headers=alice(world)).status_code == 403
+
+
+def test_one_organisations_reindex_is_not_shown_to_another(world, settings_client):
+    with TenantEngine(world.engine, "globex").begin() as connection:
+        connection.execute(text("INSERT INTO reindex_runs (tenant_id, to_collection, from_collection, from_model, "
+                                "to_model, status) VALUES ('globex', 'new', 'old', 'a/b', 'c/d', 'failed')"))
+    assert settings_client.get("/admin/reindex", headers=gina(world)).json()["run"]["status"] == "failed"
+    assert settings_client.get("/admin/reindex", headers=harriet(world)).json() == {"run": None}
+    assert settings_client.post("/admin/reindex/retry", headers=harriet(world)).status_code == 409
+    with world.engine.begin() as connection:
+        connection.execute(text("DELETE FROM reindex_runs WHERE tenant_id = 'globex'"))

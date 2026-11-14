@@ -135,7 +135,30 @@ def show_documents(documents: list[dict]) -> None:
             st.rerun()
 
 
+def show_reindex() -> None:
+    """A re-index for a new embedding model, while it runs or if it failed. A finished one isn't news."""
+    status, problem = call_api("GET", "/admin/reindex")
+    run = (status or {}).get("run")
+    if problem or not run or run["status"] == "succeeded":
+        return
+    done = f"{run['embedded']} of {run['total']} sections" if run["total"] else "starting"
+    if run["status"] == "failed":
+        st.error(f"Moving to the new search model ({run['to_model']}) stopped at {done}. Answers still use the old "
+                 f"one, {run['from_model']}, so nothing is broken. {run['error'] or ''}")
+        if st.button("Retry the move", key="retry_reindex"):
+            _, problem = call_api("POST", "/admin/reindex/retry")
+            if problem:
+                st.error(problem)
+            else:
+                st.session_state.admin_message = "Retrying. It carries on from where it stopped."
+                st.rerun()
+    else:
+        st.info(f"Moving the policies to the new search model ({run['to_model']}): {done}. Answers use the old "
+                f"one, {run['from_model']}, until it's done.")
+
+
 def show_jobs() -> None:
+    show_reindex()
     jobs, problem = call_api("GET", "/admin/jobs")
     if problem:
         st.error(problem)

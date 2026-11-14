@@ -306,3 +306,27 @@ def test_a_setting_can_be_put_back_to_the_servers(settings_screen):
     next(box for box in app.multiselect if box.label == "Put back to the server's setting").set_value(["tone"]).run()
     app.button(key="reset_settings").click().run()
     assert sent == [{"tone": None}]
+
+
+def test_a_stopped_reindex_is_explained_with_a_retry(signed_in, monkeypatch):
+    monkeypatch.setattr(requests, "post", lambda *args, **kwargs: FakeResponse(body={**SESSION, "role": "hr_admin"}))
+    run = {"from_model": "google/old", "to_model": "google/new", "status": "failed", "total": 539, "embedded": 150,
+           "attempts": 1, "error": "RuntimeError: re-indexing stopped. Retry to continue.",
+           "started_at": "2026-11-14T10:00:00", "finished_at": None}
+
+    def request(method, url, headers=None, **kwargs):
+        if "/admin/reindex" in url:
+            return FakeResponse(body={"run": run})
+        if "/admin/metrics" in url:
+            return FakeResponse(body={"requests": 0, "failures": 0, "refusals": 0, "input_tokens": 0,
+                                      "output_tokens": 0, "estimated_cost_usd": 0.0, "tool_calls": 0,
+                                      "tool_failures": 0, "latency_ms": {"total_p50": None, "total_p95": None}})
+        if "/admin/settings" in url:
+            return FakeResponse(body=SETTINGS)
+        return FakeResponse(body={"thumbs_up": 0, "thumbs_down": 0, "recent_negative": []} if "feedback" in url else [])
+
+    monkeypatch.setattr(requests, "request", request)
+    app = AppTest.from_file(ADMIN_FILE, default_timeout=30).run()
+    assert not app.exception
+    assert any("150 of 539" in error.value and "nothing is broken" in error.value for error in app.error)
+    assert "retry_reindex" in {button.key for button in app.button}

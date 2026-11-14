@@ -214,6 +214,10 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `DELETE` | `/admin/documents/{filename}` | Removes a policy, keeping history unless `?purge=true` | HR admin |
 | `GET` | `/admin/jobs`, `/admin/jobs/{id}` | Shows indexing jobs | HR admin |
 | `POST` | `/admin/jobs/{id}/retry` | Retries a failed job | HR admin |
+| `POST` | `/admin/documents/suggest-category` | Suggests one of the organisation's categories for a file. Stores nothing | HR admin |
+| `GET`, `PATCH` | `/admin/settings` | Shows or changes the organisation's own settings. `null` puts one back. Each change is audited | HR admin |
+| `GET` | `/admin/reindex` | Shows the move to a new embedding model, if there is one | HR admin |
+| `POST` | `/admin/reindex/retry` | Carries on a move that stopped | HR admin |
 | `GET` | `/admin/unanswered`, `/admin/feedback` | Shows the reports | HR admin |
 | `GET`, `POST` | `/admin/users` | Lists people, or lets someone sign in | HR admin |
 | `PATCH` | `/admin/users/{id}` | Changes a role, or deactivates someone | HR admin |
@@ -270,7 +274,7 @@ Add these to `.env` to change how it works. `.env.example` lists them all.
 | Setting | What it does |
 |---|---|
 | `LLM_PROVIDER`, `LLM_MODEL` | Chat model: `google` (default), `anthropic`, `openai` or `ollama`. Install the provider's package, such as `langchain-anthropic`, and set its API key |
-| `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL` | Embedding model: `google` (default), `openai` or `ollama`. Each model gets its own collection, so run the indexing step and measure `MAX_DISTANCE` again |
+| `EMBEDDING_PROVIDER`, `EMBEDDING_MODEL` | Embedding model: `google` (default), `openai` or `ollama`. Each model gets its own collection. After a change, the API re-embeds each organisation's policies in the background and keeps answering with the old model until it's done, shown on the admin screen's Indexing jobs tab. Measure `MAX_DISTANCE` again |
 | `HYBRID_SEARCH` | Set to `false` to use vector search only |
 | `CONVERSATION_RETENTION_DAYS` | How long an unused chat is kept. The default is 90 |
 | `SELF_SERVICE_ENABLED` | Set to `false` to turn off the self-service tools |

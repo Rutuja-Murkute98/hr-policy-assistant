@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import date
+from typing import Any
 
 from langchain_core.documents import Document
 from langgraph.checkpoint.postgres import PostgresSaver
@@ -33,11 +34,12 @@ from app.pii import mask
 from app.rag.answer_cache import AnswerCache, answer_key
 from app.rag.embedding_cache import QuestionEmbeddingCache
 from app.rag.prompt import build_messages
-from app.rag.providers import get_chat_model, get_router_model
+from app.rag.providers import get_chat_model, get_embeddings, get_router_model
 from app.rag.rerank import get_reranker
 from app.rag.retrieval import SearchFilters
 from app.rag.service import RagAnswer, RagService
 from app.rag.store import PolicyIndex, get_database_uri, get_store
+from app.reindex import Reindex, find_old_index, queue_retry
 from app.tenancy import ENTER_TENANT, check_tenant_id, secure_library_tables, tenant_scoped
 
 logger = logging.getLogger("hr_helpdesk")
@@ -298,12 +300,14 @@ class WorkflowRegistry:
     """One workflow per organisation, sharing the database pools and model, as memory is tight.
 
     An organisation's workflow is rebuilt when its settings change, which every process notices within
-    SETTINGS_CACHE_SECONDS, so a change needs no restart.
+    SETTINGS_CACHE_SECONDS, so a change needs no restart. After the embedding model changes, an organisation searches
+    its old collection until a background job has re-embedded it, then it's rebuilt on the new one (D54).
     """
 
     def __init__(self, store, llm, engine, checkpointer, reranker=None, tracing: Tracing | None = None,
-                 model_factory=get_chat_model):
-        self.store = store
+                 model_factory=get_chat_model, store_factory=None, embeddings_factory=get_embeddings,
+                 run_in_background: bool = True, reindex_wait_seconds: float | None = None):
+        self.store = store  # the collection for the deployment's embedding model
         self.llm = llm
         self.engine = engine
         self.checkpointer = checkpointer
@@ -312,17 +316,84 @@ class WorkflowRegistry:
         self.organisations = Organisations(engine)
         self.settings = SettingsStore(engine)
         self.model_factory = model_factory
+        self.store_factory = store_factory or (lambda name, embeddings: get_store(name, embeddings=embeddings))
+        self.embeddings_factory = embeddings_factory
+        self.run_in_background = run_in_background
+        self.reindex_wait_seconds = reindex_wait_seconds
         self._workflows: dict[str, ChatWorkflow] = {}
         self._models: dict[tuple, object] = {}
-        self._lock = threading.Lock()
+        self._old_stores: dict[str, Any] = {}
+        self._reindexing: set[str] = set()
+        self._index_checked: dict[str, float] = {}
+        self._lock = threading.RLock()  # a re-index run in this thread rebuilds the workflow it was started from
 
     def for_tenant(self, tenant_id: str) -> ChatWorkflow:
         _, version = self.settings.read(tenant_id)
         with self._lock:
             workflow = self._workflows.get(tenant_id)
-            if workflow is None or getattr(workflow.rag.profile, "version", "") != version:
+            if (workflow is None or getattr(workflow.rag.profile, "version", "") != version
+                    or self._moved_to_new_index(tenant_id, workflow)):
                 workflow = self._workflows[tenant_id] = self._build(tenant_id)
         return workflow
+
+    def forget(self, tenant_id: str) -> None:
+        """Build the organisation's workflow again on its next request."""
+        with self._lock:
+            self._workflows.pop(tenant_id, None)
+
+    def _moved_to_new_index(self, tenant_id: str, workflow: ChatWorkflow) -> bool:
+        """For a workflow on an old collection: whether a re-index, maybe in another process, has finished."""
+        if workflow.rag.store.store.collection_name == self.store.collection_name:
+            return False
+        now = time.monotonic()
+        if now - self._index_checked.get(tenant_id, 0.0) < config.SETTINGS_CACHE_SECONDS:
+            return False
+        self._index_checked[tenant_id] = now
+        return find_old_index(self.engine, tenant_id, self.store.collection_name) is None
+
+    def search_index(self, tenant_id: str) -> PolicyIndex:
+        """The organisation's index on the deployment's embedding model, or its old one while that's re-embedded."""
+        old = find_old_index(self.engine, tenant_id, self.store.collection_name)
+        if old is None:
+            return PolicyIndex(self.store, tenant_id)
+        if old.collection not in self._old_stores:
+            embeddings = self.embeddings_factory(provider=old.provider, model=old.model)
+            self._old_stores[old.collection] = self.store_factory(old.collection, embeddings)
+        index = PolicyIndex(self._old_stores[old.collection], tenant_id, model=(old.provider, old.model))
+        if self.start_reindex(tenant_id, index) and not self.run_in_background:
+            if find_old_index(self.engine, tenant_id, self.store.collection_name) is None:
+                return PolicyIndex(self.store, tenant_id)  # it finished already
+        return index
+
+    def start_reindex(self, tenant_id: str, old_index: PolicyIndex) -> bool:
+        """Start re-embedding here, unless it's running already or failed and waits for a retry."""
+        if tenant_id in self._reindexing:
+            return False
+        job = Reindex(self.engine, tenant_id, old_index, self.store, wait_seconds=self.reindex_wait_seconds)
+        if not job.claim():
+            return False
+        self._reindexing.add(tenant_id)
+        if self.run_in_background:
+            threading.Thread(target=self._reindex, args=(tenant_id, job), daemon=True,
+                             name=f"reindex-{tenant_id}").start()
+        else:
+            self._reindex(tenant_id, job)
+        return True
+
+    def retry_reindex(self, tenant_id: str) -> bool:
+        """Run a failed re-index again, carrying on from what it already embedded."""
+        if not queue_retry(self.engine, tenant_id):
+            return False
+        workflow = self.for_tenant(tenant_id)
+        return self.start_reindex(tenant_id, workflow.rag.store)
+
+    def _reindex(self, tenant_id: str, job: Reindex) -> None:
+        try:
+            finished = job.run()
+        finally:
+            self._reindexing.discard(tenant_id)
+        if finished and self.run_in_background:
+            self.forget(tenant_id)
 
     def profile_for(self, tenant_id: str) -> Profile | None:
         """The organisation with its own settings applied, or None if it isn't available."""
@@ -344,7 +415,7 @@ class WorkflowRegistry:
         if profile is None:
             raise OrganisationUnavailable(tenant_id)
         llm = self.model_for(profile)
-        rag = RagService(PolicyIndex(self.store, tenant_id), llm, self.reranker, profile=profile)
+        rag = RagService(self.search_index(tenant_id), llm, self.reranker, profile=profile)
         workflow = ChatWorkflow(rag, llm, self.engine, self.checkpointer, tenant_id=tenant_id,
                                 tracing=self.tracing)
         workflow.run_maintenance(force=True)

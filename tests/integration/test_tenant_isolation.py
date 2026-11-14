@@ -67,7 +67,7 @@ TENANT_TABLES = ("policy_documents", "conversations", "messages", "pending_actio
                  "hr_leave_requests", "hr_tickets", "document_versions", "indexing_jobs", "feedback",
                  "unanswered_questions", "embedding_models", "users", "api_keys", "audit_events",
                  "organisations", "langchain_pg_embedding", "checkpoints", "checkpoint_writes", "checkpoint_blobs",
-                 "tenant_settings")
+                 "tenant_settings", "reindex_runs", "reindex_vectors")
 CLEARED = ("audit_events", "api_keys", "users", "feedback", "unanswered_questions", "hr_tickets", "hr_leave_requests",
            "tool_audit_log", "pending_actions", "messages", "conversations", "indexing_jobs", "document_versions",
            "rate_limit_hits", "answer_cache", "tenant_settings")

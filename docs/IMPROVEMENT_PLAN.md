@@ -298,9 +298,9 @@ comes from `config/tenant.toml`. A platform needs each organisation to set its o
       defaults, with a short cache that's cleared when a setting changes.
 - [x] A Settings tab in the admin page, with validation and an audit log entry for each change.
 - [x] Keep `tenant.toml` as the seed for a new organisation, imported once.
-- [ ] Assign a category to each uploaded document with the model, from the organisation's own list,
+- [x] Assign a category to each uploaded document with the model, from the organisation's own list,
       shown to HR as a suggestion they confirm. This replaces the filename map.
-- [ ] Changing a setting that needs re-indexing, such as the embedding model, starts a re-index job
+- [x] Changing a setting that needs re-indexing, such as the embedding model, starts a re-index job
       instead of breaking search.
 
 **Files:** `app/config.py`, `app/tenancy.py`, `app/knowledge.py`, `app/admin.py`, `ui/pages/admin.py`,
@@ -316,8 +316,9 @@ set from the admin page, and the isolation tests still pass.
 
 **Progress:** part 1 is built and tested: the table, the one function that reads each setting, the Settings tab with an
 audit entry per change, and the workflow rebuilt when settings change. Two organisations get different branding, models
-and thresholds in the tests on real PostgreSQL. Part 2, category suggestions and re-indexing, is next. See
-[the Phase 10 report](../evaluation/reports/phase10_report.md).
+and thresholds in the tests on real PostgreSQL. Part 2 is built and tested too: the model suggests a category from the
+organisation's own list, and a new embedding model is applied by re-embedding in the background while search carries on.
+See [the Phase 10 report](../evaluation/reports/phase10_report.md).
 
 ---
 

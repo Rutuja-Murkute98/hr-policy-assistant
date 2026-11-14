@@ -1,10 +1,12 @@
 # Phase 10 report: settings per organisation, changed while running
 
-Branch `phase-10-settings`, built on `phase-9-speed`, 13 November 2026. **Part 1 is built and tested.** Each organisation
-can now change its own branding, categories, answer model, search thresholds, wording and switches on the admin screen,
-and the next question uses them, with no restart. Every change is checked, stored with Row-Level Security, and written to
-the audit log. With nothing changed, answers are made exactly as before. Part 2 has the model suggest a category for each
-upload, and re-indexes when a setting needs it.
+Branch `phase-10-settings`, built on `phase-9-speed`, 13 and 14 November 2026. **Both parts are built and tested.** Each
+organisation can now change its own branding, categories, answer model, search thresholds, wording and switches on the
+admin screen, and the next question uses them, with no restart. Every change is checked, stored with Row-Level Security,
+and written to the audit log. With nothing changed, answers are made exactly as before. Part 2 has the model suggest a
+category for each upload from the organisation's own list, for HR to confirm, and applies a new embedding model by
+re-embedding in the background while search carries on with the old one. **The quality gate needs one more recorded run**,
+because part 2 changed two files it fingerprints.
 
 ## Baseline
 
@@ -79,6 +81,37 @@ Answered through the full workflow on 14 November, with no organisation settings
 - **Run to run, the same code moves these scores by a few questions.** That is worth knowing before reading a small change as
   a gain or a loss.
 
+## Part 2: category suggestions, and a new embedding model without a break
+
+| File | Change | Why |
+|---|---|---|
+| `app/category_suggestion.py`, `app/knowledge.py`, `app/admin.py` | `POST /admin/documents/suggest-category` reads the file as an upload would, and asks the organisation's model to pick one of its categories. An answer outside the list becomes the default. Nothing is stored | A new organisation's policies are filed without editing `tenant.toml`, and HR sees the choice (D53) |
+| `ui/pages/admin.py` | A "Suggest a category" button on the Upload tab fills in the category, with the model's reason | |
+| `migrations/versions/0012_reindex.py`, `app/reindex.py` | `reindex_runs` tracks each move, and `reindex_vectors` holds new vectors until every chunk has one. One transaction then moves the chunks, document records, versions and jobs, and records the new model | Before this, changing `EMBEDDING_MODEL` pointed search at an empty collection, so every answer was a refusal (D54) |
+| `app/workflow.py`, `app/rag/store.py`, `app/rag/providers.py` | An organisation on an old collection searches it with the old model, and its re-index starts in the background. When it finishes, the next request uses the new collection | No answer is lost while it runs |
+| `app/main.py` health, through `count_chunks` | Counts the old collection while it's still searched | Otherwise `/health` returns 503 during a re-index, and a host could restart the server mid-job |
+| `ui/pages/admin.py` | The Indexing jobs tab says how far a move has got, or that it stopped, with a retry button | |
+
+### Tests for part 2
+
+| Run | Result |
+|---|---|
+| Category suggestions | 13 unit tests: a category outside the list is never suggested, the file can't close its own fence, only the start of a long file is sent. 7 API tests with Acme and Globex: each gets its own list, nothing is stored, only HR admins, a failing model asks HR to choose |
+| A new embedding model | 10 tests on real PostgreSQL with two fake embedders of different sizes: every chunk, current and old versions, moves with its id and a new vector. Document records, versions and the recorded model move too. Another organisation is untouched. A failure moves nothing, and a retry embeds only what's left. A chunk changed during the job gets a fresh vector. Changing back to a model used before re-indexes again. Health counts the old collection. The registry searches the old collection, then switches |
+| Admin routes and screen | 2 API tests, including that one organisation's re-index isn't shown to another, and 1 screen test |
+| Full suite with coverage | 879 passed. Coverage 88.00%. `app/reindex.py` 99%, `app/category_suggestion.py` 100% |
+| ruff, mypy | Passed |
+
+### Bugs found while building part 2
+
+- The fence that stops a policy closing its own `<excerpt>` tag only knows that tag, so the suggestion prompt uses it too,
+  rather than a new `<document>` tag a file could close.
+- Changing the model from A to B, back to A, then to B again would never have re-indexed the third time: a finished run for
+  B blocked a new one.
+- If the job ran in the same thread that was building the workflow, its "rebuild me" step would have waited forever on a
+  lock that thread held.
+- `/health` would have failed during every re-index, as described above.
+
 ## Not done, or not checked
 
 - **Not run against the live local API.** I tried to create a local test HR admin account to drive the real server, and the
@@ -89,6 +122,12 @@ Answered through the full workflow on 14 November, with no organisation settings
 - **Changing the categories doesn't re-file policies already uploaded.** New uploads use the new list.
 - **No measurement of a changed setting's effect on quality.** The Settings tab says so beside the thresholds: run the evaluation
   after changing them.
+- **The upload screen's suggestion button wasn't clicked in a browser.** The screen's test tool can't choose a file, so the
+  route is tested, and the screen code isn't.
+- **A re-index has only run with fake embedders.** A real one costs one embedding call per chunk, 539 for the sample policies.
+  An organisation's re-index starts on its first request after the change, so one nobody uses stays on the old model.
+- **The quality gate fails until the next recorded run,** because `app/workflow.py` and `app/rag/store.py` changed. Neither
+  change touches an answer when the embedding model is unchanged.
 
 ## Phase 10 status
 
@@ -98,12 +137,13 @@ Answered through the full workflow on 14 November, with no organisation settings
 | One function with fallback to the environment and defaults, and a short cache cleared on change | Implemented and tested | `setting()`, `SettingsStore`, a test of a change from another process |
 | Settings tab with validation and an audit entry per change | Implemented and tested | API tests and 4 screen tests. Not opened in a browser |
 | `tenant.toml` kept as the seed for a new organisation, imported once | Already true | `Organisations.ensure` adds it only if missing |
-| The model suggests a category for each upload, HR confirms | Planned | Part 2 |
-| A setting that needs re-indexing starts a re-index job | Planned | Part 2. The embedding model stays a deployment setting until then |
+| The model suggests a category for each upload, HR confirms | Implemented and tested | 20 tests. The button wasn't clicked in a browser |
+| A setting that needs re-indexing starts a re-index job | Implemented and tested | For the embedding model, which stays one per deployment (D52). 10 tests with fake embedders. Not run with a real model |
 | Two organisations with different branding, models and thresholds, and isolation tests passing | Implemented and tested | On real PostgreSQL with scripted models. Not shown on a deployment |
 
 ## What the owner must do
 
-1. Set `ALLOWED_CHAT_MODELS` if organisations should be able to choose another model, and decide which.
-2. If you want the live check on your PC, create an HR admin account with a password yourself, sign in at `/admin` and
+1. Approve another 200-question run, so the quality gate passes on part 2's code.
+2. Set `ALLOWED_CHAT_MODELS` if organisations should be able to choose another model, and decide which.
+3. If you want the live check on your PC, create an HR admin account with a password yourself, sign in at `/admin` and
    open the Settings tab. I couldn't create one.

@@ -66,6 +66,22 @@ def upload_document(
     return result
 
 
+@router.post("/documents/suggest-category")
+def suggest_document_category(request: Request, principal: Principal = Depends(admin_principal),
+                              file: UploadFile = File(...), title: str | None = Form(default=None, max_length=200)):
+    """Suggest one of this organisation's categories for a file, for HR to confirm. Nothing is stored."""
+    workflow = service_for(request, principal)
+    data = file.file.read(config.MAX_UPLOAD_BYTES + 1)
+    try:
+        return workflow.knowledge.suggest_category(workflow.llm, data, file.filename or "", title or None)
+    except (ExtractionError, UploadRejected) as rejected:
+        raise HTTPException(422, str(rejected)) from None
+    except Exception:
+        logger.exception("The model couldn't suggest a category")
+        raise HTTPException(503, "The model couldn't suggest a category just now. "
+                                 "Please choose one yourself.") from None
+
+
 @router.get("/documents/{filename}/versions")
 def document_versions(filename: str, base: KnowledgeBase = Depends(knowledge)):
     try:

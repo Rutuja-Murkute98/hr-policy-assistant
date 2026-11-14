@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import text
 
 from app import config
+from app.category_suggestion import CategorySuggestion
 from app.org_settings import SettingsStore
 from app.rag.prompt import StructuredAnswer
 from app.tenancy import TenantEngine
@@ -181,3 +182,77 @@ def test_settings_from_another_version_of_the_app_do_not_stop_answers(world, set
     shown = settings_client.get("/admin/settings", headers=harriet(world)).json()
     assert shown["changed"] == {"tone": "formal"}
     assert ask(world, settings_client, alice(world))["answer"] == "Forty days [1]."
+
+
+# Suggesting a category for an upload
+
+LEAVE_NOTE = b"# Carer Leave\n\n## 1. Days\n\nStaff can take five days of carer leave each year to look after family.\n"
+
+
+def suggesting(monkeypatch, world, category):
+    """Make the model answer with this category, or raise it if it's an error. Returns what the model was sent."""
+    sent: list = []
+
+    def structured(schema):
+        def invoke(messages):
+            sent.append(messages)
+            if isinstance(category, Exception):
+                raise category
+            return CategorySuggestion(category=category, reason="It's about time off.")
+
+        return SimpleNamespace(invoke=invoke)
+
+    monkeypatch.setattr(world.llm, "with_structured_output", structured)
+    return sent
+
+
+def suggest(client, headers, name="Carer_Leave.md", body=LEAVE_NOTE):
+    return client.post("/admin/documents/suggest-category", headers=headers, files={"file": (name, body)})
+
+
+def test_hr_gets_a_suggestion_from_their_own_categories(world, settings_client, monkeypatch):
+    sent = suggesting(monkeypatch, world, "leave")
+    response = suggest(settings_client, gina(world))
+    assert response.status_code == 200, response.text
+    assert response.json() == {"category": "leave", "suggested": True, "reason": "It's about time off.",
+                               "warnings": []}
+    assert "general, leave" in sent[0][0].content and "carer leave" in sent[0][1].content
+
+
+def test_a_category_from_another_organisation_is_never_suggested(world, settings_client, monkeypatch):
+    suggesting(monkeypatch, world, "leave")  # Globex has "leave", but Acme doesn't
+    assert suggest(settings_client, harriet(world)).json()["category"] == "general"
+
+
+def test_an_organisations_changed_categories_are_offered(world, settings_client, monkeypatch):
+    change(settings_client, harriet(world), categories=["people", "money"], default_category="people")
+    sent = suggesting(monkeypatch, world, "money")
+    assert suggest(settings_client, harriet(world)).json()["category"] == "money"
+    assert "money, people" in sent[0][0].content
+
+
+def test_a_suggestion_stores_nothing(world, settings_client, monkeypatch):
+    suggesting(monkeypatch, world, "leave")
+    before = owner_rows(world, "SELECT count(*) AS n FROM document_versions")[0].n
+    assert suggest(settings_client, gina(world)).status_code == 200
+    assert owner_rows(world, "SELECT count(*) AS n FROM document_versions")[0].n == before
+    assert owner_rows(world, "SELECT count(*) AS n FROM indexing_jobs")[0].n == 0
+
+
+def test_only_an_hr_admin_gets_suggestions(world, settings_client, monkeypatch):
+    sent = suggesting(monkeypatch, world, "leave")
+    assert suggest(settings_client, alice(world)).status_code == 403
+    assert sent == []
+
+
+def test_a_failing_model_asks_hr_to_choose(world, settings_client, monkeypatch):
+    suggesting(monkeypatch, world, RuntimeError("quota"))
+    response = suggest(settings_client, gina(world))
+    assert response.status_code == 503 and "choose one yourself" in response.json()["detail"]
+
+
+def test_a_file_that_could_not_be_uploaded_gets_no_suggestion(world, settings_client, monkeypatch):
+    sent = suggesting(monkeypatch, world, "leave")
+    assert suggest(settings_client, gina(world), name="../Carer.md").status_code == 422
+    assert suggest(settings_client, gina(world), body=b"   ").status_code == 422
+    assert sent == []

@@ -43,15 +43,41 @@ def call_api(method: str, path: str, **kwargs) -> tuple[object | None, str]:
         return None, f"Something went wrong (error {response.status_code}). Please try again."
 
 
+def show_category_suggestion(upload) -> str | None:
+    """Offer the model's suggestion for the chosen file, and return it so the form can start on it."""
+    if upload is None:
+        return None
+    if st.button("Suggest a category", key="suggest_category", icon=":material/auto_awesome:"):
+        suggestion, problem = call_api("POST", "/admin/documents/suggest-category",
+                                       files={"file": (upload.name, upload.getvalue())})
+        if problem:
+            st.error(problem)
+            return None
+        st.session_state.category_suggestion = {**suggestion, "file": upload.name}
+    suggestion = st.session_state.get("category_suggestion")
+    if not suggestion or suggestion["file"] != upload.name:
+        return None
+    if suggestion["suggested"]:
+        st.info(f"Suggested category: **{suggestion['category']}**. {suggestion['reason']} "
+                "Change it below if it's wrong.")
+    else:
+        st.warning(suggestion["reason"])
+    return suggestion["category"]
+
+
 def show_upload() -> None:
     st.caption("A file with the same name becomes a new version of that policy, and only the sections that "
                "changed use embedding quota. The old version is kept.")
+    # A new key empties the file box after an upload, as a form can't hold the file and a separate suggestion button
+    upload = st.file_uploader("Policy file", type=FILE_TYPES, max_upload_size=5,
+                              key=f"policy_file_{st.session_state.get('upload_round', 0)}")
+    categories = ORGANISATION.get("categories") or sorted(
+        {*ORGANISATION["document_categories"].values(), ORGANISATION["default_category"]})
+    suggested = show_category_suggestion(upload)
     with st.form("upload_form", clear_on_submit=True):
-        upload = st.file_uploader("Policy file", type=FILE_TYPES, max_upload_size=5)
         title = st.text_input("Title (optional)", placeholder="Taken from the file if left empty")
-        categories = ORGANISATION.get("categories") or sorted(
-            {*ORGANISATION["document_categories"].values(), ORGANISATION["default_category"]})
-        category = st.selectbox("Category (optional)", categories, index=None)
+        category = st.selectbox("Category (optional)", categories,
+                                index=categories.index(suggested) if suggested in categories else None)
         version_label = st.text_input("Version label (optional)", placeholder="Such as 3.0")
         effective = st.date_input("Effective date (optional)", value=None, min_value=date(2000, 1, 1))
         uploaded_by = SESSION["email"] if SESSION else st.text_input("Your name", max_chars=100)
@@ -79,6 +105,8 @@ def show_upload() -> None:
                         f"({', '.join(result['warnings'])}). The helpdesk won't follow them, but someone may "
                         "have added them on purpose.")
         st.session_state.admin_message = message
+        st.session_state.upload_round = st.session_state.get("upload_round", 0) + 1
+        st.session_state.pop("category_suggestion", None)
         st.rerun()
 
 

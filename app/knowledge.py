@@ -17,6 +17,7 @@ from langchain_core.documents import Document
 from sqlalchemy import Engine, text
 
 from app import config
+from app.category_suggestion import suggest_category
 from app.config import Tenant
 from app.guards import find_injection_signs, strip_invisible
 from app.org_settings import categories_of
@@ -129,23 +130,35 @@ class KnowledgeBase:
             ordered = sorted(chunks, key=lambda c: c.id or "")
             self.record_baseline(source_file, ordered, "\n\n".join(c.page_content for c in ordered))
 
-    def add_upload(self, data: bytes, file_name: str, details: UploadDetails) -> dict:
-        """Validate an upload and queue it for indexing. Raises UploadRejected if it can't be used."""
+    @staticmethod
+    def read_upload(data: bytes, file_name: str, title: str | None = None) -> tuple[str, list[str]]:
+        """Check an upload and return its text as Markdown, and any signs of instructions hidden in it."""
         if len(data) > config.MAX_UPLOAD_BYTES:
             raise UploadRejected(f"The file is larger than the {config.MAX_UPLOAD_BYTES // 1_000_000} MB limit.")
         stem = Path(file_name).stem
         if not re.fullmatch(SAFE_STEM, stem) or Path(file_name).name != file_name:
             raise UploadRejected("Use a file name like Leave_Policy.pdf: letters, numbers, _ and - only.")
+        # An upload is untrusted: invisible characters go, and anything that looks like an instruction is flagged
+        markdown = strip_invisible(extract_document(data, file_name, title).markdown)
+        if len(markdown) > config.MAX_UPLOAD_CHARS:
+            raise UploadRejected(f"This has more than {config.MAX_UPLOAD_CHARS:,} characters of text.")
+        return markdown, find_injection_signs(markdown)
+
+    def suggest_category(self, llm, data: bytes, file_name: str, title: str | None = None) -> dict:
+        """Ask the model which of this organisation's categories a file belongs to. Nothing is stored."""
+        markdown, warnings = self.read_upload(data, file_name, title)
+        if not markdown.strip():
+            raise UploadRejected("No text was found in this file.")
+        return {**suggest_category(llm, markdown, sorted(known_categories(self.profile)), self.profile),
+                "warnings": warnings}
+
+    def add_upload(self, data: bytes, file_name: str, details: UploadDetails) -> dict:
+        """Validate an upload and queue it for indexing. Raises UploadRejected if it can't be used."""
         categories = known_categories(self.profile)
         if details.category and details.category not in categories:
             raise UploadRejected(f"Category must be one of: {', '.join(sorted(categories))}.")
-
-        # An upload is untrusted: invisible characters go, and anything that looks like an instruction is flagged
-        markdown = strip_invisible(extract_document(data, file_name, details.title).markdown)
-        warnings = find_injection_signs(markdown)
-        if len(markdown) > config.MAX_UPLOAD_CHARS:
-            raise UploadRejected(f"This has more than {config.MAX_UPLOAD_CHARS:,} characters of text.")
-        source_file = f"{stem}.md"  # one name per policy, whatever format it arrives in
+        markdown, warnings = self.read_upload(data, file_name, details.title)
+        source_file = f"{Path(file_name).stem}.md"  # one name per policy, whatever format it arrives in
         overrides = {"policy": details.title, "category": details.category, "version": details.version_label,
                      "effective_date": details.effective_date.isoformat() if details.effective_date else None}
         chunks = chunk_text(markdown, source_file, overrides, self.tenant_id, self.profile)

@@ -83,7 +83,7 @@ class Settings(BaseSettings):
     router_model: str = ""
 
     # How far search moves a section that fits the asker up, or one only for other groups down: see D55, D56
-    audience_weight: float = Field(default=0.03, ge=0, le=1)
+    audience_weight: float = Field(default=0.06, ge=0, le=1)  # measured: see docs/DECISIONS.md, D56
 
     # Each organisation's own settings: see docs/DECISIONS.md, D52
     # Comma-separated models of LLM_PROVIDER an organisation may pick, besides the deployment's own

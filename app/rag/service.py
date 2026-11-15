@@ -68,9 +68,13 @@ def _field(partial: object, name: str, default: object = None) -> object:
 
 
 def audience_adjustment(audience, persona: Persona | None) -> float:
-    """How far to move a section: up if it fits the person, down if it's only for other groups."""
+    """Move up a section limited to some group, when the person's details say whether they're in it.
+
+    Either way it answers their question: "interns aren't eligible" is the rule an intern needs. Moving the ones
+    that exclude them down was measured worse: see docs/DECISIONS.md, D56.
+    """
     fits = audience.fits(persona) if audience is not None else None
-    return 0.0 if fits is None else (config.AUDIENCE_WEIGHT if fits else -config.AUDIENCE_WEIGHT)
+    return 0.0 if fits is None else config.AUDIENCE_WEIGHT
 
 
 def with_audience(chunk: Document, audience) -> Document:

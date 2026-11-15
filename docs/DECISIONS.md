@@ -654,6 +654,14 @@ the person needs to see it and say so. With no details, such as for an anonymous
 **Trade-offs:** Repeated questions only hit the cache for people with the same details. Corrections last for the chat
 screen's session; they aren't stored, so HR's record stays the one source.
 
+**Changed after measuring:** moving sections for other groups down was wrong. On the 62 persona questions, searched
+without the answer model, it found a labelled section for 0.548 of them, the same as no preference. The section an
+intern needs for "Can I take a salary advance?" is the one limited to confirmed staff, which says interns aren't eligible,
+and the rule pushed it down. Moving up every section limited to some group, when the person's details decide whether
+they're in it, found 0.742 at 0.06, against 0.661 at 0.03 and 0.726 at 0.1. On the golden set's first messages asked as
+`E1001` it scored 0.941, against 0.938 with no preference. So that's the rule, at 0.06. Which group a rule fits is left
+to the answer, which is told who is asking. `evaluation/persona_search.py` repeats the comparison.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

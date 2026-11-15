@@ -68,7 +68,9 @@ def test_each_employee_gets_their_own_details_and_rules_first(shared, wfh):
     asha = workflow.ask(QUESTION, user_id="E1001", save_history=False)
     asha_prompt = llm.seen[-1]
     assert "confirmed, not on probation" in asha_prompt and "Nashik" not in asha_prompt
-    assert excerpts_order(asha_prompt) == ["Eligibility", "Employees on Probation"]  # moved down, not removed
+    # It tells her the probation rule isn't hers, so it's moved up for her too, and the prompt says who it's for
+    assert excerpts_order(asha_prompt) == ["Employees on Probation", "Eligibility"]
+    assert "(applies to: employees on probation)" in asha_prompt
     assert asha.persona["on_probation"] is False
 
 

@@ -1,0 +1,73 @@
+{
+ "name": "phase11",
+ "anonymous": false,
+ "metrics": {
+  "recall_at_5": 0.548,
+  "facts_correct": 0.597,
+  "facts_checked": 62,
+  "refused_when_it_should": 0.0,
+  "refusal_checked": 0,
+  "false_refusals": 0.097,
+  "citations_valid": 1.0,
+  "citations_on_target": 0.625,
+  "citations_checked": 56,
+  "seconds_p50": 3.09,
+  "seconds_p95": 6.51,
+  "statements_cited": 0.987,
+  "steps_ms": {
+   "generate": {
+    "p50": 1298,
+    "p95": 2047,
+    "count": 62
+   },
+   "retrieve": {
+    "p50": 0,
+    "p95": 1378,
+    "count": 62
+   },
+   "rewrite_query": {
+    "p50": 965,
+    "p95": 1120,
+    "count": 2
+   },
+   "select_tool": {
+    "p50": 820,
+    "p95": 1807,
+    "count": 6
+   },
+   "understand": {
+    "p50": 1334,
+    "p95": 3508,
+    "count": 62
+   }
+  },
+  "both_right": 0.484
+ },
+ "missing_facts": [
+  "persona-001@E1001",
+  "persona-007@E1003",
+  "persona-008@E1001",
+  "persona-008@E1004",
+  "persona-010@E1003",
+  "persona-010@E1004",
+  "persona-011@E1005",
+  "persona-012@E1003",
+  "persona-012@E1001",
+  "persona-014@E1005",
+  "persona-014@E1003",
+  "persona-015@E1003",
+  "persona-017@E1004",
+  "persona-017@E1005",
+  "persona-018@E1004",
+  "persona-018@E1005",
+  "persona-019@E1003",
+  "persona-019@E1005",
+  "persona-020@E1001",
+  "persona-020@E1003",
+  "persona-026@E1005",
+  "persona-027@E1004",
+  "persona-027@E1002",
+  "persona-029@E1005",
+  "persona-031@E1003"
+ ]
+}

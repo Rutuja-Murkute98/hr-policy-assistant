@@ -201,7 +201,7 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `GET`, `PATCH` | `/me/settings` | Reads or changes whether this person's chats are saved | A known user |
 | `POST` | `/admin/users/{id}/setup-code` | Makes a one-time code for setting a password | HR admin |
 | `GET` | `/me` | Says who's calling, and their organisation | Any caller |
-| `POST` | `/ask` | Answers a question | Any caller |
+| `POST` | `/ask` | Answers a question, preferring the rules that fit the asker's band, office, employment type and probation from the HR system. Returns the details it used as `persona`, and takes the person's own corrections as `about_me` | Any caller |
 | `POST` | `/ask/stream` | Sends the answer as it's written, as server-sent events: `token`, then `done` or `error` | Any caller |
 | `GET`, `DELETE` | `/conversations` | Lists a user's chats, or deletes their whole history | A known user |
 | `GET` | `/conversations/{id}/messages` | Reads one chat | A known user |
@@ -217,6 +217,9 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `POST` | `/admin/documents/suggest-category` | Suggests one of the organisation's categories for a file. Stores nothing | HR admin |
 | `GET`, `PATCH` | `/admin/settings` | Shows or changes the organisation's own settings. `null` puts one back. Each change is audited | HR admin |
 | `GET` | `/admin/reindex` | Shows the move to a new embedding model, if there is one | HR admin |
+| `GET` | `/admin/audiences` | Shows who each section applies to, and how many aren't checked yet | HR admin |
+| `POST` | `/admin/audiences/tag` | Has the model check every unchecked section, one call per policy | HR admin |
+| `PUT` | `/admin/audiences/{chunk_id}` | Corrects who a section applies to. The model never changes it back | HR admin |
 | `POST` | `/admin/reindex/retry` | Carries on a move that stopped | HR admin |
 | `GET` | `/admin/unanswered`, `/admin/feedback` | Shows the reports | HR admin |
 | `GET`, `POST` | `/admin/users` | Lists people, or lets someone sign in | HR admin |

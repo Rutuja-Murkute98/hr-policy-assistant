@@ -1,0 +1,15 @@
+{
+ "no preference, weight 0.0": 0.548,
+ "up and down (Phase 11 part 1), weight 0.03": 0.548,
+ "up and down (Phase 11 part 1), weight 0.06": 0.556,
+ "up and down (Phase 11 part 1), weight 0.1": 0.54,
+ "fitting sections up only, weight 0.03": 0.573,
+ "fitting sections up only, weight 0.06": 0.589,
+ "fitting sections up only, weight 0.1": 0.589,
+ "any group-limited section up, weight 0.03": 0.661,
+ "any group-limited section up, weight 0.06": 0.742,
+ "any group-limited section up, weight 0.1": 0.726,
+ "golden as E1001: no preference, weight 0.0": 0.938,
+ "golden as E1001: any group-limited section up, weight 0.03": 0.95,
+ "golden as E1001: any group-limited section up, weight 0.06": 0.941
+}

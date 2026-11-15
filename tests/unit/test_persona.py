@@ -155,19 +155,26 @@ def test_the_sections_cannot_close_their_own_fence():
 
 # Search and answers
 
-def test_search_moves_fitting_sections_up_without_removing_any(monkeypatch):
+def test_search_moves_sections_for_some_groups_up_without_removing_any(monkeypatch):
     monkeypatch.setattr(config, "USE_MMR", False)
-    monkeypatch.setattr(config, "AUDIENCE_WEIGHT", 0.03)
+    monkeypatch.setattr(config, "AUDIENCE_WEIGHT", 0.06)
     general = Candidate(make_chunk("general"), 0.30)
-    interns = Candidate(make_chunk("interns"), 0.32)
-    others = Candidate(make_chunk("band 5"), 0.31)
-    tags = {"general": None, "interns": Audience(employment_types=["intern"]), "band 5": Audience(bands=[5])}
-    candidates = [general, interns, others]
+    interns = Candidate(make_chunk("interns"), 0.36)
+    confirmed = Candidate(make_chunk("confirmed only"), 0.35)
+    tags = {"general": None, "interns": Audience(employment_types=["intern"]),
+            "confirmed only": Audience(employment_types=["permanent"], probation="confirmed")}
+    candidates = [general, interns, confirmed]
     adjustments = [audience_adjustment(tags[c.chunk.metadata["section"]], KABIR) for c in candidates]
-    assert adjustments == [0.0, 0.03, -0.03]
+    # The section for confirmed staff tells an intern they're excluded, so it matters to them too
+    assert adjustments == [0.0, 0.06, 0.06]
     picked = [c.metadata["section"] for c in select_chunks(candidates, profile=None, adjustments=adjustments)]
-    assert picked == ["interns", "general", "band 5"]
-    assert [c.metadata["section"] for c in select_chunks(candidates)] == ["general", "band 5", "interns"]
+    assert picked == ["confirmed only", "general", "interns"]
+    assert [c.metadata["section"] for c in select_chunks(candidates)] == ["general", "confirmed only", "interns"]
+
+
+def test_a_section_whose_group_is_unknown_for_the_person_stays_where_it_is():
+    assert audience_adjustment(Audience(probation="on_probation"), KABIR) == 0.0  # probation doesn't apply to interns
+    assert audience_adjustment(Audience(), KABIR) == 0.0 and audience_adjustment(None, KABIR) == 0.0
 
 
 def test_a_section_for_some_employees_says_so_on_its_chunk():

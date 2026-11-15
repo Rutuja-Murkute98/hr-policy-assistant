@@ -35,6 +35,8 @@ squared with holding employees' personal data.
 | Answers to repeated first questions | `answer_cache` | Same as chats | A hash of the masked question, and the checked policy answer. No user, so deleting a person's history doesn't remove it. Never kept for self-service requests |
 | Organisation settings | `tenant_settings` | Until changed | The id of the admin who last changed them. Each change is also in `audit_events`. A refusal wording or HR email could name a person, so it's masked in the audit entry |
 | A move to a new embedding model | `reindex_runs`, `reindex_vectors` | Until the move finishes, then only its status | Vectors of policy text, by chunk id, and progress counts. No questions and no users |
+| Who each policy section is for | `section_audiences` | Until the section changes | Policy text only: bands, offices, employment types and probation a section is limited to. No person |
+| The asker's band, office, employment type and probation | Not stored | One answer | Read from the HR system for each question and sent to the model in the answer prompt. The person's own corrections stay in the chat screen's session. The answer cache keys on them, and nothing logs them |
 | Mock leave and tickets | `hr_leave_requests`, `hr_tickets` | Not removed: a real HR system would set this | Masked question. Fake data only |
 
 ## What the Act asks for, and where this stands
@@ -58,6 +60,8 @@ squared with holding employees' personal data.
 
 Questions are masked before anything else happens to them, so the model provider, stored chats, tickets and logs only
 see the masked text. It covers email, Indian phone numbers, PAN, Aadhaar, IFSC, card numbers and labelled bank accounts.
+
+The asker's band, office, employment type and probation status are sent to the model on purpose, so it can give the rule that fits them (Phase 11). They aren't masked, and they're personal data, so they count as data sent to the provider.
 
 It **doesn't** catch names, free-text addresses, health details written in words, or numbers in unusual formats, and
 it can occasionally mask something harmless. Policy text in the documents themselves isn't masked, so a policy that

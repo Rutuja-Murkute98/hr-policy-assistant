@@ -81,6 +81,8 @@ def test_details_that_could_steer_the_prompt_are_refused(changes):
     (Audience(bands=[1, 2, 3], locations=["Mumbai"]), ASHA, False),  # outside one limit is enough
     (Audience(bands=[3]), Persona(location="Pune"), None),  # band unknown
     (Audience(bands=[3]), None, None),
+    (Audience(min_band=4), Persona(band=6), True),  # "Band 4 and above"
+    (Audience(min_band=4), ASHA, False),
 ])
 def test_whether_a_section_fits_the_person(audience, persona, fits):
     assert audience.fits(persona) is fits
@@ -92,6 +94,12 @@ def test_who_a_section_is_for_in_words():
     assert Audience(bands=[1, 2], locations=["Pune"], employment_types=["intern"],
                     probation="on_probation").describe() == "Bands 1 to 2, in Pune, interns, employees on probation"
     assert Audience().describe() == ""
+    assert Audience(min_band=4).describe() == "Band 4 and above"
+
+
+def test_and_above_is_kept_as_a_lower_limit():
+    assert clean_tag(SectionTag(section=1, bands=[4], min_band=4)) == Audience(min_band=4)
+    assert clean_tag(SectionTag(section=1, min_band=99)) == Audience()
 
 
 def test_only_what_the_model_may_say_is_kept():

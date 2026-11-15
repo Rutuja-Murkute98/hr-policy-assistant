@@ -512,6 +512,8 @@ def show_audiences() -> None:
     with st.form("audience_form"):
         typed = st.text_input("Bands", ", ".join(str(band) for band in current.get("bands", [])),
                               placeholder="Such as 1, 2, 3. Empty means every band")
+        min_band = st.number_input("Or this band and above", 1, 20, value=current.get("min_band"), step=1,
+                                   placeholder="Empty")
         places = st.text_input("Offices", ", ".join(current.get("locations", [])),
                                placeholder="Such as Pune. Empty means every office")
         kinds = st.multiselect("Employment", list(AUDIENCE_TYPES), default=current.get("employment_types", []),
@@ -525,7 +527,8 @@ def show_audiences() -> None:
     except ValueError:
         st.error("Bands are numbers, separated by commas.")
         return
-    body = {"bands": bands, "locations": [place.strip() for place in places.split(",") if place.strip()],
+    body = {"bands": bands, "min_band": min_band,
+            "locations": [place.strip() for place in places.split(",") if place.strip()],
             "employment_types": kinds, "probation": probation or None}
     _, problem = call_api("PUT", f"/admin/audiences/{chosen}", json=body)
     if problem:

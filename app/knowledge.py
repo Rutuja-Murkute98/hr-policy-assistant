@@ -153,14 +153,14 @@ class KnowledgeBase:
         return {**suggest_category(llm, markdown, sorted(known_categories(self.profile)), self.profile),
                 "warnings": warnings}
 
-    def tag_audiences(self, llm, source_file: str | None = None) -> int:
+    def tag_audiences(self, llm, source_file: str | None = None, pause_seconds: float = 0.0) -> int:
         """Ask the model who each untagged current section is for, one call per document. Returns how many.
 
         After an upload, only that document's new or changed sections need it. See docs/DECISIONS.md, D55.
         """
         chunks = [chunk for chunk in self.index.stored_chunks().values()
                   if source_file is None or chunk.metadata.get("source") == source_file]
-        return AudienceStore(self.engine, self.tenant_id).tag_untagged(llm, chunks)
+        return AudienceStore(self.engine, self.tenant_id).tag_untagged(llm, chunks, pause_seconds)
 
     def set_audience(self, chunk_id: str, audience: Audience, actor: str) -> dict:
         """HR's correction of who a section is for. The model never overwrites it."""

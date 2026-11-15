@@ -293,7 +293,7 @@ def test_normal_questions_dont_search_old_versions(shared, monkeypatch):
     seen = []
     workflow = make(shared)
     original = workflow.rag.search
-    monkeypatch.setattr(workflow.rag, "search", lambda question, filters, timing=None: seen.append(filters) or original(question, filters, timing))
+    monkeypatch.setattr(workflow.rag, "search", lambda question, filters, timing=None, persona=None: seen.append(filters) or original(question, filters, timing, persona))
     workflow.ask("How many earned leave days?")
     assert seen[0].include_history is False
 
@@ -302,7 +302,7 @@ def test_past_questions_ask_for_history_in_the_search(shared, monkeypatch):
     seen = []
     workflow = make(shared, ScriptedLLM(asks_about_past=True))
     original = workflow.rag.search
-    monkeypatch.setattr(workflow.rag, "search", lambda question, filters, timing=None: seen.append(filters) or original(question, filters, timing))
+    monkeypatch.setattr(workflow.rag, "search", lambda question, filters, timing=None, persona=None: seen.append(filters) or original(question, filters, timing, persona))
     workflow.ask("What did the leave policy say before?")
     # The search started while understanding can't know yet, so it's discarded and the real one includes history
     assert seen[-1].include_history is True
@@ -733,11 +733,11 @@ def counting_searches(monkeypatch, workflow, fail_first=False):
     queries: list[str] = []
     original = workflow.rag.search
 
-    def search(question, filters, timing=None):
+    def search(question, filters, timing=None, persona=None):
         queries.append(question)
         if fail_first and len(queries) == 1:
             raise RuntimeError("database busy")
-        return original(question, filters, timing)
+        return original(question, filters, timing, persona)
 
     monkeypatch.setattr(workflow.rag, "search", search)
     return queries

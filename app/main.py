@@ -24,6 +24,7 @@ from app.identity import Principal, create_identity
 from app.knowledge import NotFound
 from app.memory import ConversationNotFound
 from app.observability import new_request_id, request_id_var, setup_logging
+from app.persona import Persona
 from app.rag.retrieval import SearchFilters
 from app.rag.store import count_chunks, run_migrations
 from app.security import audit, current_principal, get_rate_store, rate_limit, required_user, service_for
@@ -100,6 +101,13 @@ class AskRequest(BaseModel):
     # Earlier messages in this chat, oldest first. The server keeps no chat history itself.
     history: list[ChatMessage] = Field(default_factory=list, max_length=config.MAX_HISTORY_MESSAGES)
     filters: Filters = Field(default_factory=Filters)
+    # The person's own corrections to their HR details, which change which rules are preferred, never what they can do
+    about_me: Persona | None = None
+
+
+def corrections(body: AskRequest) -> dict:
+    """Pass corrections on only when there are some, so a service that takes none still works."""
+    return {"about_me": body.about_me} if body.about_me and body.about_me.is_known() else {}
 
 
 class Source(BaseModel):
@@ -120,6 +128,7 @@ class AskResponse(BaseModel):
     intent: str = ""
     pending_action: dict | None = None  # an action waiting for approval, with its id and summary
     message_id: int | None = None  # the stored answer, for feedback
+    persona: dict | None = None  # the asker's details the answer used, for them to check and correct
 
 
 @app.middleware("http")
@@ -178,7 +187,8 @@ def ask(body: AskRequest, request: Request, principal: Principal = Depends(curre
     service = service_for(request, principal)
     try:
         result = service.ask(question, history, filters, user_id=principal.user_id,
-                             conversation_id=body.conversation_id, save_history=keeps_history(service, principal))
+                             conversation_id=body.conversation_id, save_history=keeps_history(service, principal),
+                             **corrections(body))
     except ConversationNotFound:
         raise HTTPException(404, "Conversation not found") from None
     except Exception:
@@ -189,7 +199,8 @@ def ask(body: AskRequest, request: Request, principal: Principal = Depends(curre
     record_ai_result(request.app, result)
     return AskResponse(answer=result.answer, sources=result.sources, request_id=request.state.request_id,
                        conversation_id=result.conversation_id, intent=result.intent,
-                       pending_action=result.pending_action, message_id=result.message_id)
+                       pending_action=result.pending_action, message_id=result.message_id,
+                       persona=getattr(result, "persona", None))
 
 
 def server_sent_event(event: str, data: dict) -> str:
@@ -208,7 +219,7 @@ def ask_stream(body: AskRequest, request: Request, principal: Principal = Depend
         try:
             for kind, value in service.stream(question, history, filters, user_id=principal.user_id,
                                               conversation_id=body.conversation_id,
-                                              save_history=keeps_history(service, principal)):
+                                              save_history=keeps_history(service, principal), **corrections(body)):
                 if kind == "token":
                     yield server_sent_event("token", {"text": value})
                 elif kind == "status":
@@ -220,7 +231,8 @@ def ask_stream(body: AskRequest, request: Request, principal: Principal = Depend
                                                      "request_id": request_id, "intent": value.intent,
                                                      "conversation_id": value.conversation_id,
                                                      "pending_action": value.pending_action,
-                                                     "message_id": value.message_id})
+                                                     "message_id": value.message_id,
+                                                     "persona": getattr(value, "persona", None)})
         except ConversationNotFound:
             yield server_sent_event("error", {"detail": "Conversation not found"})
         except Exception:

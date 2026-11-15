@@ -23,6 +23,7 @@ from app import config
 from app.agent.graph import build_workflow
 from app.agent.hrms import MockHRMS
 from app.agent.tools import PendingActions, ToolRunner
+from app.audience import AudienceStore
 from app.db import get_engine
 from app.identity import Organisations, OrganisationUnavailable
 from app.knowledge import KnowledgeBase
@@ -30,6 +31,7 @@ from app.memory import ConversationStore, summarise_if_long
 from app.metrics import AnswerMetrics, MetricsStore
 from app.observability import Tracing, UsageCallback, estimated_cost
 from app.org_settings import Profile, SettingsStore, setting
+from app.persona import Persona
 from app.pii import mask
 from app.rag.answer_cache import AnswerCache, answer_key
 from app.rag.embedding_cache import QuestionEmbeddingCache
@@ -56,6 +58,7 @@ class WorkflowAnswer(RagAnswer):
     message_id: int | None = None  # the stored answer, which feedback refers to
     step_ms: dict = field(default_factory=dict)  # milliseconds per workflow step
     degraded: list = field(default_factory=list)  # steps whose model call failed, so a fallback was used
+    persona: dict | None = None  # the asker's details the answer used, for them to check
 
 
 class TenantSaver(PostgresSaver):
@@ -96,6 +99,8 @@ class ChatWorkflow:
         self.metrics = MetricsStore(scoped, tenant_id)
         if config.CACHE_QUESTION_EMBEDDINGS and rag.query_cache is None:
             rag.query_cache = QuestionEmbeddingCache(scoped, tenant_id)
+        if rag.audiences is None:
+            rag.audiences = AudienceStore(scoped, tenant_id)
         self.answers: AnswerCache | None = None
         if setting(rag.profile, "cache_answers"):
             collection = getattr(getattr(rag.store, "store", None), "collection_name", config.COLLECTION_NAME)
@@ -168,9 +173,21 @@ class ChatWorkflow:
         if removed:
             logger.info("Removed %s conversations past the retention period", removed)
 
+    def persona_for(self, user_id: str | None, correction: Persona | None = None) -> Persona | None:
+        """The asker's details from the HR system, with their own corrections. None if nothing is known."""
+        if not user_id:
+            return None
+        try:
+            persona = self.runner.hrms.persona(user_id, self.today()).corrected(correction)
+        except Exception:
+            # Answers work without these details, so an HR system failure shouldn't stop them
+            logger.exception("Couldn't read the asker's details, so the answer is the general one")
+            persona = Persona().corrected(correction)
+        return persona if persona.is_known() else None
+
     def stream(self, question: str, history: list[dict] | None = None, filters: SearchFilters | None = None,
                stream_tokens: bool = True, user_id: str | None = None, conversation_id: str | None = None,
-               save_history: bool = True) -> Iterator[tuple[str, object]]:
+               save_history: bool = True, about_me: Persona | None = None) -> Iterator[tuple[str, object]]:
         """Yield ("token", text) as the answer is written, then ("done", WorkflowAnswer)."""
         started = time.perf_counter()
         usage = UsageCallback()
@@ -192,7 +209,9 @@ class ChatWorkflow:
         run_config = self._config(run_id)
         given = {"policy": filters.policy, "category": filters.category,
                  "effective_on": filters.effective_on} if filters else {}
+        persona = self.persona_for(user_id, about_me)
         state_in = {"question": question, "summary": summary, "history": history, "user_id": user_id,
+                    "persona": persona.model_dump() if persona else None,
                     "conversation_id": conversation_id, "run_id": run_id, "today": self.today().isoformat(),
                     "filters": given, "stream_tokens": stream_tokens}
         try:
@@ -209,6 +228,7 @@ class ChatWorkflow:
             raise
 
         answer = self._answer(snapshot.values, conversation_id)
+        answer.persona = persona.model_dump(exclude_none=True) if persona else None
         if not snapshot.next:
             self._forget_run(run_id)
         if user_id and conversation_id:
@@ -222,9 +242,10 @@ class ChatWorkflow:
 
     def ask(self, question: str, history: list[dict] | None = None, filters: SearchFilters | None = None,
             user_id: str | None = None, conversation_id: str | None = None,
-            save_history: bool = True) -> WorkflowAnswer:
+            save_history: bool = True, about_me: Persona | None = None) -> WorkflowAnswer:
         for kind, value in self.stream(question, history, filters, stream_tokens=False, user_id=user_id,
-                                       conversation_id=conversation_id, save_history=save_history):
+                                       conversation_id=conversation_id, save_history=save_history,
+                                       about_me=about_me):
             if kind == "done":
                 assert isinstance(value, WorkflowAnswer)
                 return value

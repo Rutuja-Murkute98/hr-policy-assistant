@@ -52,3 +52,21 @@ def usable_history(messages: list[dict]) -> list[dict]:
     return [message for index, message in enumerate(messages)
             if not message.get("error")
             and not (index + 1 < len(messages) and messages[index + 1].get("error"))]
+
+
+def persona_words(persona: dict | None) -> str:
+    """The asker's details an answer used, in words, such as "Band 3, Pune, permanent, not on probation"."""
+    if not persona:
+        return ""
+    parts = []
+    if persona.get("band") is not None:
+        parts.append(f"Band {persona['band']}")
+    if persona.get("location"):
+        parts.append(persona["location"])
+    if persona.get("employment_type"):
+        parts.append(persona["employment_type"])
+    if persona.get("on_probation") is True:
+        parts.append("on probation")
+    elif persona.get("on_probation") is False:
+        parts.append("not on probation")
+    return ", ".join(parts)

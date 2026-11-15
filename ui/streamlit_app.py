@@ -14,7 +14,7 @@ from pathlib import Path
 
 import requests
 import streamlit as st
-from chat_format import error_html, link_citations, sources_html, usable_history
+from chat_format import error_html, link_citations, persona_words, sources_html, usable_history
 from photos import photo_bytes, square_photo
 from sign_in import auth_token, bearer_headers, require_sign_in, sign_out
 from ui_settings import api_url, demo_employees, setting, tenant
@@ -169,8 +169,8 @@ def change_employee() -> None:
     start_new_chat()  # one employee must never continue another's chat
     st.session_state.back_stack = []
     st.session_state.chat_view = "chat"
-    for key in ("save_history", "retention_days", "save_history_toggle", "profile"):
-        st.session_state.pop(key, None)
+    for key in ("save_history", "retention_days", "save_history_toggle", "profile", "about_me"):
+        st.session_state.pop(key, None)  # one person's corrections must never apply to another
 
 
 def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[str]:
@@ -182,7 +182,8 @@ def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[
     try:
         response = requests.post(
             f"{API_URL}/ask/stream",
-            json={"question": question, "history": history, "conversation_id": st.session_state.conversation_id},
+            json={"question": question, "history": history, "conversation_id": st.session_state.conversation_id,
+                  **({"about_me": st.session_state.about_me} if st.session_state.get("about_me") else {})},
             headers=api_headers(),
             timeout=150, stream=True,  # long enough for a free hosted API and database to wake up
         )
@@ -200,6 +201,7 @@ def stream_answer(question: str, history: list[dict], result: dict) -> Iterator[
                 result["answer"] = data.get("answer")
                 result["pending_action"] = data.get("pending_action")
                 result["message_id"] = data.get("message_id")
+                result["persona"] = data.get("persona")
                 st.session_state.conversation_id = data.get("conversation_id")
             elif event == "error":
                 result["error"] = data["detail"]
@@ -215,9 +217,41 @@ def show_message(index: int, message: dict) -> None:
         st.markdown(link_citations(message["content"], message["sources"], index))
         if message["sources"]:
             st.markdown(sources_html(message["sources"], index), unsafe_allow_html=True)
+        if message.get("persona") and message["sources"]:
+            show_persona(index, message["persona"])
         if message.get("message_id"):
             st.feedback("thumbs", key=f"rating_{message['message_id']}", on_change=send_feedback,
                         args=(message["message_id"],))
+
+
+EMPLOYMENT_TYPES = {"permanent": "Permanent", "contract": "Contract", "intern": "Intern"}
+PLACE = re.compile(r"(?=.{1,30}$)[A-Za-z][A-Za-z'-]*( [A-Za-z][A-Za-z'-]*){0,2}")  # as the API allows
+PROBATION = {"unknown": "Not sure", "yes": "On probation", "no": "Not on probation"}
+
+
+def show_persona(index: int, persona: dict) -> None:
+    """Say whose rules the answer used, and let the person correct them for their next questions."""
+    with st.popover(f"For: {persona_words(persona)}", icon=":material/badge:", type="tertiary"):
+        st.caption("The answer prefers the rules for these details, from HR's records. If something's wrong, change "
+                   "it here for your next questions. HR's records stay as they are: please tell HR too.")
+        with st.form(f"about_me_{index}", border=False):
+            band = st.number_input("Band", 1, 20, value=persona.get("band"), step=1, placeholder="Not sure")
+            location = st.text_input("Office", persona.get("location") or "", max_chars=60)
+            kinds = list(EMPLOYMENT_TYPES)
+            kind = st.selectbox("Employment", kinds, format_func=EMPLOYMENT_TYPES.get,
+                                index=kinds.index(persona["employment_type"])
+                                if persona.get("employment_type") in kinds else None)
+            probation_now = {True: "yes", False: "no"}.get(persona.get("on_probation"), "unknown")
+            probation = st.radio("Probation", list(PROBATION), format_func=PROBATION.get, horizontal=True,
+                                 index=list(PROBATION).index(probation_now))
+            if st.form_submit_button("Use these details"):
+                if location.strip() and not PLACE.fullmatch(location.strip()):
+                    st.error("Use the office's name, such as Pune or Navi Mumbai.")
+                    return
+                st.session_state.about_me = {key: value for key, value in {
+                    "band": band, "location": location.strip() or None, "employment_type": kind,
+                    "on_probation": {"yes": True, "no": False}.get(probation)}.items() if value is not None}
+                st.toast("Your next questions use these details.")
 
 
 def queue_question(question: str) -> None:
@@ -546,7 +580,8 @@ def show_chat(question: str | None) -> None:
         else:
             answer = result.get("answer") or streamed  # the API's final, checked text wins
             st.session_state.messages.append({"role": "assistant", "content": answer, "sources": result["sources"],
-                                              "message_id": result.get("message_id")})
+                                              "message_id": result.get("message_id"),
+                                              "persona": result.get("persona")})
             st.session_state.pending_action = result.get("pending_action")
         _fetch_status.clear()  # the badge should reflect how this question went
         st.rerun()  # shows the sources, links and buttons straight away

@@ -127,15 +127,18 @@ def mmr(relevance: np.ndarray, embeddings: np.ndarray, k: int, lambda_mult: floa
 
 
 def select_chunks(candidates: list[Candidate], rerank_order: list[int] | None = None,
-                  profile: Tenant | None = None) -> list[Document]:
+                  profile: Tenant | None = None, adjustments: list[float] | None = None) -> list[Document]:
     """Return the chunks to send to the LLM, with the most relevant first.
 
     rerank_order lists positions in candidates, best first. The candidates should already
-    have been through keep_usable.
+    have been through keep_usable. adjustments, one per candidate, are added to its relevance,
+    such as a small preference for sections that fit the person asking.
     """
     if not candidates:
         return []
     relevance = relevance_scores(candidates, rerank_order)
+    if adjustments:
+        relevance = relevance + np.array(adjustments, dtype=float)
     retrieve_k = setting(profile, "retrieve_k")
     if config.USE_MMR:
         embeddings = np.array([candidate.embedding for candidate in candidates], dtype=float)

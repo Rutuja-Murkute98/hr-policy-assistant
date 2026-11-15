@@ -35,6 +35,7 @@ from app.agent.prompts import (
 )
 from app.agent.tools import TOOLS, ToolContext, ToolRunner, langchain_tools
 from app.org_settings import setting
+from app.persona import Persona
 from app.rag.answer_cache import AnswerCache
 from app.rag.prompt import fallback_answer, greeting_answer
 from app.rag.retrieval import SearchFilters
@@ -58,6 +59,17 @@ def looks_like_policy_question(message: str) -> bool:
     return not NEEDS_MODEL.search(message)
 
 
+def persona_of(state: "WorkflowState") -> Persona | None:
+    return Persona.model_validate(state["persona"]) if state.get("persona") else None
+
+
+def cache_question(state: "WorkflowState") -> str:
+    """The answer cache's key: the question, and who asked it, as the answer can depend on both."""
+    persona = persona_of(state)
+    described = persona.describe() if persona is not None else ""
+    return state["question"] + (f"\nAsked by: {described}" if described else "")
+
+
 def add_step_times(old: dict | None, new: dict | None) -> dict:
     """Merge step timings. A step that runs twice, such as a search after a retry, counts both times."""
     merged = dict(old or {})
@@ -71,6 +83,7 @@ class WorkflowState(TypedDict, total=False):
     summary: str
     history: list[dict]
     user_id: str | None
+    persona: dict | None  # the asker's details from the HR system, with their own corrections: never from the model
     conversation_id: str | None
     run_id: str
     today: str
@@ -179,7 +192,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
     def timed_search(state: WorkflowState, query: str, filters: SearchFilters) -> tuple[list[Document], float, dict]:
         """Search, and add the time it took to what this answer has used so far."""
         timing: dict = {}
-        chunks, confidence = rag.search(query, filters, timing)
+        chunks, confidence = rag.search(query, filters, timing, persona_of(state))
         return chunks, confidence, {"embedding_ms": state.get("embedding_ms", 0.0) + timing["embedding_ms"],
                                     "retrieval_ms": state.get("retrieval_ms", 0.0) + timing["retrieval_ms"]}
 
@@ -191,7 +204,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         cacheable: dict = {}
         if can_cache(state):
             assert answers is not None
-            cached, documents_hash = answers.lookup(question)
+            cached, documents_hash = answers.lookup(cache_question(state))
             if cached:  # it was a policy question when it was answered, on these same documents
                 return {"intent": "policy_question", "standalone": question, "category": "", "cached": cached}
             cacheable = {"documents_hash": documents_hash}
@@ -326,7 +339,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         writer = get_stream_writer()
         final: RagAnswer | None = None
         for kind, value in rag.answer_from_chunks(state["standalone"], _to_documents(state["chunks"]),
-                                                  state.get("stream_tokens", True)):
+                                                  state.get("stream_tokens", True), persona_of(state)):
             if kind == "token":
                 writer({"token": value})
             else:
@@ -335,7 +348,7 @@ def build_workflow(rag: RagService, llm, runner: ToolRunner, tenant_id: str, che
         assert final is not None
         cacheable = state.get("documents_hash") and state["intent"] == "policy_question"
         if answers is not None and final.answered and cacheable:
-            answers.save(state["question"], state["documents_hash"],
+            answers.save(cache_question(state), state["documents_hash"],
                          {"answer": final.answer, "sources": final.sources, "chunks": state["chunks"],
                           "question_used": state["standalone"]})
         return {"answer": final.answer, "answered": final.answered, "abstain_reason": final.abstain_reason,

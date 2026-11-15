@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from langchain_core.documents import Document
 
 from app import config
+from app.persona import Persona
 from app.rag.prompt import (
     StructuredAnswer,
     build_messages,
@@ -66,11 +67,26 @@ def _field(partial: object, name: str, default: object = None) -> object:
     return partial.get(name, default) if isinstance(partial, dict) else getattr(partial, name, default)
 
 
+def audience_adjustment(audience, persona: Persona | None) -> float:
+    """How far to move a section: up if it fits the person, down if it's only for other groups."""
+    fits = audience.fits(persona) if audience is not None else None
+    return 0.0 if fits is None else (config.AUDIENCE_WEIGHT if fits else -config.AUDIENCE_WEIGHT)
+
+
+def with_audience(chunk: Document, audience) -> Document:
+    """Note who a section is for on its chunk, so the answer can say which group a rule is for."""
+    if audience is None or audience.is_everyone():
+        return chunk
+    return Document(id=chunk.id, page_content=chunk.page_content,
+                    metadata={**chunk.metadata, "applies_to": audience.describe()})
+
+
 class RagService:
     def __init__(self, store, llm, reranker=None, hybrid: bool = config.HYBRID_SEARCH, profile=None,
-                 query_cache=None):
+                 query_cache=None, audiences=None):
         self.store = store
         self.query_cache = query_cache  # reuses the vectors of questions asked before, if set
+        self.audiences = audiences  # who each section applies to, if set: see app/audience.py
         self.profile = profile or config.tenant
         self.tenant_id = getattr(store, "tenant_id", config.TENANT_ID)
         self.llm = llm
@@ -88,10 +104,12 @@ class RagService:
             return None
 
     def search(self, question: str, filters: SearchFilters | None = None,
-               timing: dict | None = None) -> tuple[list[Document], float]:
+               timing: dict | None = None, persona: Persona | None = None) -> tuple[list[Document], float]:
         """Return the chunks worth sending to the LLM, and how strongly the best chunk stood out.
 
         If timing is given, it's filled with the milliseconds spent on embedding and on the search itself.
+        With a persona, sections that fit the person asking move up and ones only for other groups move
+        down, but none are removed, and each chunk says who it's for.
         """
         started = time.perf_counter()
         if self.query_cache is not None:
@@ -103,7 +121,11 @@ class RagService:
                                       filters=filters or SearchFilters(tenant_id=self.tenant_id))
         candidates = keep_usable(found, self.profile)
         confidence = max((candidate.confidence for candidate in found), default=0.0)
-        selected = select_chunks(candidates, self._rerank(question, candidates), self.profile)
+        tags = self._audiences(candidates) if persona is not None and persona.is_known() else {}
+        adjustments = [audience_adjustment(tags.get(candidate.chunk.id or ""), persona) for candidate in candidates]
+        selected = select_chunks(candidates, self._rerank(question, candidates), self.profile,
+                                 adjustments if any(adjustments) else None)
+        selected = [with_audience(chunk, tags.get(chunk.id or "")) for chunk in selected]
         if timing is not None:
             timing["embedding_ms"] = (embedded - started) * 1000
             timing["retrieval_ms"] = (time.perf_counter() - embedded) * 1000
@@ -175,11 +197,22 @@ class RagService:
 
         yield from self.answer_from_chunks(standalone, chunks, stream_tokens)
 
-    def answer_from_chunks(self, standalone: str, chunks: list[Document],
-                           stream_tokens: bool = True) -> Iterator[tuple[str, object]]:
+    def _audiences(self, candidates: list[Candidate]) -> dict:
+        if self.audiences is None or not candidates:
+            return {}
+        try:
+            return self.audiences.for_chunks([candidate.chunk for candidate in candidates])
+        except Exception:
+            # Answers work without the tags, so a failure here shouldn't stop them
+            logger.exception("Couldn't read who the sections apply to, so they were left in their usual order")
+            return {}
+
+    def answer_from_chunks(self, standalone: str, chunks: list[Document], stream_tokens: bool = True,
+                           persona: Persona | None = None) -> Iterator[tuple[str, object]]:
         """Write the answer, check its citations, and yield tokens, then ("done", RagAnswer)."""
         result: StructuredAnswer | None = None
-        for kind, value in self._structured_stream(build_messages(standalone, chunks, self.profile), stream_tokens):
+        messages = build_messages(standalone, chunks, self.profile, persona)
+        for kind, value in self._structured_stream(messages, stream_tokens):
             if kind == "token":
                 yield "token", value
             else:

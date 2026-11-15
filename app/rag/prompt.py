@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from app.config import Tenant, tenant
 from app.guards import fence_excerpt
 from app.org_settings import setting
+from app.persona import Persona
 
 
 def own_wording(profile: Tenant) -> str:
@@ -90,6 +91,13 @@ class StructuredAnswer(BaseModel):
     cited_chunk_ids: list[str] = Field(default_factory=list, description="The numbers of the excerpts used")
 
 
+PERSONA_RULE = """
+10. The employee's details are given after the excerpts. An excerpt marked "applies to" is only for that group.
+    Where rules differ by group, give the one that fits the employee first, and say which group it's for, such as
+    "For employees on probation, ...". If no rule fits their details, give the general rule and say who it's for.
+    Never say what the employee's details are unless the question asks."""
+
+
 def version_note(chunk: Document) -> str:
     """Mark an old version, so the model can't mistake it for the current rule."""
     if chunk.metadata.get("is_current") != "false":
@@ -98,14 +106,29 @@ def version_note(chunk: Document) -> str:
             f"replaced on {chunk.metadata.get('superseded_on')}) ")
 
 
-def build_messages(question: str, chunks: list[Document], profile: Tenant = tenant) -> list[BaseMessage]:
-    """Combine the retrieved chunks and the question into the messages for the LLM."""
+def audience_note(chunk: Document) -> str:
+    """Say who a section is for, if search found it's limited to some employees."""
+    applies_to = chunk.metadata.get("applies_to")
+    return f"(applies to: {applies_to}) " if applies_to else ""
+
+
+def build_messages(question: str, chunks: list[Document], profile: Tenant = tenant,
+                   persona: Persona | None = None) -> list[BaseMessage]:
+    """Combine the retrieved chunks and the question into the messages for the LLM.
+
+    With the asker's details, the prompt says who they are and asks for the rule that fits them. Without
+    them, it's exactly as it always was.
+    """
     # Each excerpt is fenced, and can't close its own fence, so its text can't pose as instructions
-    context = "\n\n".join(f"<excerpt>\n[{number}] {version_note(chunk)}{fence_excerpt(chunk.page_content)}\n</excerpt>"
-                          for number, chunk in enumerate(chunks, start=1))
+    context = "\n\n".join(
+        f"<excerpt>\n[{number}] {version_note(chunk)}{audience_note(chunk)}{fence_excerpt(chunk.page_content)}"
+        "\n</excerpt>" for number, chunk in enumerate(chunks, start=1))
+    described = persona.describe() if persona is not None else ""
+    system = system_prompt(profile) + (PERSONA_RULE if described else "")
+    asker = f"\n\nAbout the employee asking: {described}." if described else ""
     return [
-        SystemMessage(content=system_prompt(profile)),
-        HumanMessage(content=f"Policy excerpts:\n\n{context}\n\nQuestion: {question}"),
+        SystemMessage(content=system),
+        HumanMessage(content=f"Policy excerpts:\n\n{context}{asker}\n\nQuestion: {question}"),
     ]
 
 

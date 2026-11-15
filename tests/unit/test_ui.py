@@ -85,7 +85,7 @@ def test_admin_screen_explains_an_unreachable_api():
 
 
 def test_demo_employee_is_chosen_from_fake_data(chat):
-    assert chat.selectbox[0].options == ["Asha Kulkarni", "Rohan Joshi", "Meera Patil"]
+    assert chat.selectbox[0].options == ["Asha Kulkarni", "Rohan Joshi", "Meera Patil", "Kabir Shah", "Nisha Rao"]
     assert chat.session_state.employee_id == "E1001"
 
 
@@ -225,6 +225,8 @@ def test_an_hr_admin_does_not_need_the_shared_key(signed_in, monkeypatch):
                                       "latency_ms": {"total_p50": 4100, "total_p95": None},
                                       "steps_ms": {"understand": {"p50": 1500, "p95": 2900, "count": 12},
                                                    "generate": {"p50": 2400, "p95": None, "count": 10}}})
+        if "/admin/audiences" in url:
+            return FakeResponse(body={"sections": [], "untagged": 0})
         if "/admin/settings" in url:
             return FakeResponse(body=SETTINGS)
         return FakeResponse(body={"thumbs_up": 0, "thumbs_down": 0, "recent_negative": []} if "feedback" in url else [])
@@ -263,6 +265,8 @@ def settings_screen(signed_in, monkeypatch):
         if method == "PATCH":
             sent.append(kwargs.get("json"))
             return FakeResponse(body=SETTINGS)
+        if "/admin/audiences" in url:
+            return FakeResponse(body={"sections": [], "untagged": 0})
         if "/admin/settings" in url:
             return FakeResponse(body=SETTINGS)
         if "/admin/metrics" in url:
@@ -321,6 +325,8 @@ def test_a_stopped_reindex_is_explained_with_a_retry(signed_in, monkeypatch):
             return FakeResponse(body={"requests": 0, "failures": 0, "refusals": 0, "input_tokens": 0,
                                       "output_tokens": 0, "estimated_cost_usd": 0.0, "tool_calls": 0,
                                       "tool_failures": 0, "latency_ms": {"total_p50": None, "total_p95": None}})
+        if "/admin/audiences" in url:
+            return FakeResponse(body={"sections": [], "untagged": 0})
         if "/admin/settings" in url:
             return FakeResponse(body=SETTINGS)
         return FakeResponse(body={"thumbs_up": 0, "thumbs_down": 0, "recent_negative": []} if "feedback" in url else [])

@@ -4,23 +4,122 @@
     "E1001": {
       "name": "Asha Kulkarni",
       "band": 3,
-      "leave_entitlement": {"earned": 18, "sick": 12, "casual": 6},
-      "leave_used": {"earned": 5, "sick": 2, "casual": 1},
-      "latest_payslip": {"month": "October 2026", "gross": 85000, "deductions": 11200, "net": 73800, "credited_on": "2026-10-30"}
+      "leave_entitlement": {
+        "earned": 18,
+        "sick": 12,
+        "casual": 6
+      },
+      "leave_used": {
+        "earned": 5,
+        "sick": 2,
+        "casual": 1
+      },
+      "latest_payslip": {
+        "month": "October 2026",
+        "gross": 85000,
+        "deductions": 11200,
+        "net": 73800,
+        "credited_on": "2026-10-30"
+      },
+      "location": "Pune",
+      "employment_type": "permanent",
+      "probation_until": "2026-03-01"
     },
     "E1002": {
       "name": "Rohan Joshi",
       "band": 5,
-      "leave_entitlement": {"earned": 18, "sick": 12, "casual": 6},
-      "leave_used": {"earned": 17, "sick": 0, "casual": 6},
-      "latest_payslip": {"month": "October 2026", "gross": 160000, "deductions": 27400, "net": 132600, "credited_on": "2026-10-30"}
+      "leave_entitlement": {
+        "earned": 18,
+        "sick": 12,
+        "casual": 6
+      },
+      "leave_used": {
+        "earned": 17,
+        "sick": 0,
+        "casual": 6
+      },
+      "latest_payslip": {
+        "month": "October 2026",
+        "gross": 160000,
+        "deductions": 27400,
+        "net": 132600,
+        "credited_on": "2026-10-30"
+      },
+      "location": "Mumbai",
+      "employment_type": "permanent",
+      "probation_until": "2024-07-15"
     },
     "E1003": {
       "name": "Meera Patil",
       "band": 2,
-      "leave_entitlement": {"earned": 0, "sick": 6, "casual": 3},
-      "leave_used": {"earned": 0, "sick": 1, "casual": 0},
-      "latest_payslip": {"month": "October 2026", "gross": 42000, "deductions": 5300, "net": 36700, "credited_on": "2026-10-30"}
+      "leave_entitlement": {
+        "earned": 0,
+        "sick": 6,
+        "casual": 3
+      },
+      "leave_used": {
+        "earned": 0,
+        "sick": 1,
+        "casual": 0
+      },
+      "latest_payslip": {
+        "month": "October 2026",
+        "gross": 42000,
+        "deductions": 5300,
+        "net": 36700,
+        "credited_on": "2026-10-30"
+      },
+      "location": "Nashik",
+      "employment_type": "permanent",
+      "probation_until": "2027-02-15"
+    },
+    "E1004": {
+      "name": "Kabir Shah",
+      "band": 1,
+      "location": "Pune",
+      "employment_type": "intern",
+      "probation_until": null,
+      "leave_entitlement": {
+        "earned": 0,
+        "sick": 6,
+        "casual": 3
+      },
+      "leave_used": {
+        "earned": 0,
+        "sick": 1,
+        "casual": 0
+      },
+      "latest_payslip": {
+        "month": "October 2026",
+        "gross": 25000,
+        "deductions": 0,
+        "net": 25000,
+        "credited_on": "2026-10-30"
+      }
+    },
+    "E1005": {
+      "name": "Nisha Rao",
+      "band": 4,
+      "location": "Nashik",
+      "employment_type": "contract",
+      "probation_until": null,
+      "leave_entitlement": {
+        "earned": 12,
+        "sick": 8,
+        "casual": 4
+      },
+      "leave_used": {
+        "earned": 3,
+        "sick": 0,
+        "casual": 1
+      },
+      "latest_payslip": {
+        "month": "October 2026",
+        "gross": 70000,
+        "deductions": 8400,
+        "net": 61600,
+        "credited_on": "2026-10-30"
+      }
     }
   }
 }

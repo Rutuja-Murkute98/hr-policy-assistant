@@ -10,6 +10,7 @@ from sqlalchemy import Engine, text
 
 from app import config
 from app.config import PROJECT_ROOT
+from app.persona import Persona
 from app.tenancy import TenantEngine, tenant_scoped
 
 DEFAULT_DATA_FILE = PROJECT_ROOT / "config" / "mock_hrms.json"
@@ -62,6 +63,17 @@ class MockHRMS:
 
     def latest_payslip(self, employee_id: str) -> dict:
         return dict(self._employee(employee_id)["latest_payslip"])
+
+    def persona(self, employee_id: str, today: date) -> Persona:
+        """The details that decide which rules apply to this employee. Unknown employees get an empty one."""
+        employee = self.employees.get(employee_id)
+        if not employee:
+            return Persona()
+        until = employee.get("probation_until")
+        return Persona(band=employee.get("band"), location=employee.get("location") or None,
+                       employment_type=employee.get("employment_type") or None,
+                       # No date means probation doesn't apply, as for interns and contract staff
+                       on_probation=today < date.fromisoformat(until) if until else None)
 
     def check_leave(self, employee_id: str, leave_type: str, start: date, end: date, today: date) -> int:
         """Apply the rules without changing anything, and return the working days requested."""

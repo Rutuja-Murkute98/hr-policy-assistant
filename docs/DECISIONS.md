@@ -623,6 +623,37 @@ take chunks out of the old one while it's still being searched. A staging table 
 Embedding every chunk again costs quota: 539 calls for the sample policies. Uploads during the job go to the old collection,
 and the job embeds them too before switching.
 
+## D55. Who a section applies to is tagged by the model, a document at a time, kept apart from the chunks
+
+**Decision:** For each section, the answer model records who it's limited to: bands, locations, employment types, and
+probation. Most sections are for everyone and get no tag. The model sees one whole document per call, and only its untagged
+sections. Tags live in `section_audiences`, keyed by the chunk's id and a hash of its text, so an edited section counts as
+untagged until it's tagged again. HR can correct any tag, and a correction is never overwritten by the model. Tags are used as
+soon as they exist, because they only change the order of search results, never what can be found.
+
+**Why:** Matching words was tried first and is too noisy: "intern" is inside "internal", and "all employees, contractors and
+interns" means everyone. One call per section would need 539 calls for the sample policies, more than a day's free quota; one
+per document needs 33. Keeping tags out of the chunk metadata means indexing, versions and re-embedding (D54) don't have to
+carry them, and nothing is embedded again when a tag changes.
+
+**Trade-offs:** A wrong tag can push a section down until HR fixes it, but it can't hide it. One extra query per search reads
+the tags of the 20 candidates.
+
+## D56. The asker's details come from the HR system, never from the model, and the employee can correct them
+
+**Decision:** Before a question is answered, the workflow reads the asker's band, location, employment type and probation
+status from the HR system adapter. Search moves sections that fit them up, and sections only for other groups down, by a
+fixed amount, without removing either. The answer prompt gets a line describing them, and a rule to say which group a rule
+is for. Every answer returns the details it used, and the chat screen lets the employee correct them for their next
+questions. A correction only changes what's preferred and how the answer is worded, never what the person can see or do.
+The answer cache keys on these details too, so one person's answer is never served to someone it doesn't fit.
+
+**Why:** The model guessing someone's band from the chat would be wrong and could be steered. HR data can be out of date, so
+the person needs to see it and say so. With no details, such as for an anonymous request, the prompt is exactly as before.
+
+**Trade-offs:** Repeated questions only hit the cache for people with the same details. Corrections last for the chat
+screen's session; they aren't stored, so HR's record stays the one source.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

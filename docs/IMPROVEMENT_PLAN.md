@@ -331,15 +331,15 @@ probation. This is the improvement employees would notice most.
 
 **Work**
 
-- [ ] Add "applies to" details to each section when it's indexed: locations, grades, employment types,
+- [x] Add "applies to" details to each section when it's indexed: locations, grades, employment types,
       probation. They're extracted by the model once per changed section, shown to HR to confirm, and
       stored as metadata.
-- [ ] Read the asker's attributes from their profile or the HR system adapter. Never ask the model for
+- [x] Read the asker's attributes from their profile or the HR system adapter. Never ask the model for
       them.
-- [ ] Search prefers sections that apply to the asker, without hiding the general rule. The answer says
+- [x] Search prefers sections that apply to the asker, without hiding the general rule. The answer says
       which group a rule is for ("For employees on probation…").
-- [ ] Add 30 or more golden items that need a persona, each run as two different employees.
-- [ ] Let the employee see and correct which attributes were used.
+- [x] Add 30 or more golden items that need a persona, each run as two different employees.
+- [x] Let the employee see and correct which attributes were used.
 
 **Files:** `pipeline/chunk_documents.py`, `app/knowledge.py`, `app/rag/retrieval.py`,
 `app/rag/store.py`, `app/rag/prompt.py`, `app/identity.py`, `app/agent/hrms.py`, `evaluation/data/`.
@@ -351,6 +351,11 @@ attributes are masked in logs.
 
 **Done when** the persona items score at least as well as the general ones, and the general set
 doesn't get worse.
+
+**Progress:** built and tested. The asker's details come from the HR adapter, sections are tagged by the model and
+corrected by HR, and search and answers use both. On 31 questions asked by two employees each, the right facts were in
+0.774 of answers, against 0.468 with nobody known. That's below the target of matching the general questions' 0.926. See
+[the Phase 11 report](../evaluation/reports/phase11_report.md).
 
 ---
 

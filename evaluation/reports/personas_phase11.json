@@ -1,0 +1,67 @@
+{
+ "name": "phase11",
+ "anonymous": false,
+ "metrics": {
+  "recall_at_5": 0.766,
+  "facts_correct": 0.774,
+  "facts_checked": 62,
+  "refused_when_it_should": 0.0,
+  "refusal_checked": 0,
+  "false_refusals": 0.065,
+  "citations_valid": 0.983,
+  "citations_on_target": 0.845,
+  "citations_checked": 58,
+  "seconds_p50": 2.82,
+  "seconds_p95": 16.45,
+  "statements_cited": 0.966,
+  "steps_ms": {
+   "execute_tool": {
+    "p50": 11,
+    "p95": 11,
+    "count": 1
+   },
+   "generate": {
+    "p50": 1500,
+    "p95": 8809,
+    "count": 61
+   },
+   "retrieve": {
+    "p50": 0,
+    "p95": 235,
+    "count": 61
+   },
+   "rewrite_query": {
+    "p50": 641,
+    "p95": 1114,
+    "count": 2
+   },
+   "select_tool": {
+    "p50": 1063,
+    "p95": 9606,
+    "count": 10
+   },
+   "understand": {
+    "p50": 1024,
+    "p95": 7919,
+    "count": 62
+   }
+  },
+  "both_right": 0.645
+ },
+ "missing_facts": [
+  "persona-001@E1001",
+  "persona-003@E1002",
+  "persona-007@E1003",
+  "persona-012@E1001",
+  "persona-015@E1001",
+  "persona-018@E1004",
+  "persona-018@E1005",
+  "persona-019@E1003",
+  "persona-019@E1005",
+  "persona-020@E1001",
+  "persona-020@E1003",
+  "persona-026@E1005",
+  "persona-027@E1002",
+  "persona-029@E1005"
+ ]
+}

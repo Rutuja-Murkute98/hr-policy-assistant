@@ -1,0 +1,81 @@
+{
+ "name": "phase11_anonymous",
+ "anonymous": true,
+ "metrics": {
+  "recall_at_5": 0.468,
+  "facts_correct": 0.468,
+  "facts_checked": 62,
+  "refused_when_it_should": 0.0,
+  "refusal_checked": 0,
+  "false_refusals": 0.129,
+  "citations_valid": 1.0,
+  "citations_on_target": 0.556,
+  "citations_checked": 54,
+  "seconds_p50": 3.64,
+  "seconds_p95": 10.1,
+  "statements_cited": 0.976,
+  "steps_ms": {
+   "generate": {
+    "p50": 1445,
+    "p95": 2938,
+    "count": 54
+   },
+   "needs_identity": {
+    "p50": 0,
+    "p95": 0,
+    "count": 8
+   },
+   "retrieve": {
+    "p50": 0,
+    "p95": 1,
+    "count": 54
+   },
+   "rewrite_query": {
+    "p50": 728,
+    "p95": 728,
+    "count": 2
+   },
+   "understand": {
+    "p50": 1654,
+    "p95": 4692,
+    "count": 62
+   }
+  },
+  "both_right": 0.355
+ },
+ "missing_facts": [
+  "persona-001@E1001",
+  "persona-006@E1002",
+  "persona-007@E1003",
+  "persona-007@E1001",
+  "persona-008@E1001",
+  "persona-008@E1004",
+  "persona-010@E1003",
+  "persona-010@E1004",
+  "persona-011@E1003",
+  "persona-011@E1005",
+  "persona-012@E1003",
+  "persona-012@E1001",
+  "persona-013@E1002",
+  "persona-013@E1001",
+  "persona-014@E1005",
+  "persona-014@E1003",
+  "persona-015@E1003",
+  "persona-017@E1004",
+  "persona-017@E1005",
+  "persona-018@E1004",
+  "persona-018@E1005",
+  "persona-019@E1003",
+  "persona-019@E1005",
+  "persona-020@E1001",
+  "persona-020@E1003",
+  "persona-021@E1002",
+  "persona-026@E1005",
+  "persona-027@E1004",
+  "persona-027@E1002",
+  "persona-028@E1003",
+  "persona-028@E1004",
+  "persona-029@E1005",
+  "persona-030@E1003"
+ ]
+}

@@ -1,4 +1,6 @@
 """The evaluation's scoring, the golden set's labels and the quality gate. No model is called."""
+import json
+
 import pytest
 
 from evaluation.golden import CATEGORIES, REVIEW_STATES, load_golden, review_summary, split_of
@@ -165,3 +167,44 @@ def test_progress_is_saved_whole_or_not_at_all(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         run_eval.save_json(progress, {"normal-001": {"answered": True}, "normal-002": {"answered": False}})
     assert run_eval.load_json(progress) == {"normal-001": {"answered": True}}  # the old file is untouched
+
+
+def test_the_persona_set_loads_and_every_question_is_asked_by_two_people():
+    from evaluation.personas import expand, load_personas
+
+    items = load_personas()
+    assert len(items) >= 30
+    questions = expand(items)
+    assert len(questions) == 2 * len(items) and len({question["id"] for question in questions}) == len(questions)
+    assert all(question["employee"] for question in questions)
+    assert all(question["employee"] is None for question in expand(items, anonymous=True))
+
+
+@pytest.mark.parametrize("change", [
+    lambda item: item["askers"].pop(),
+    lambda item: item["askers"][1].update(employee=item["askers"][0]["employee"]),
+    lambda item: item["askers"][0].update(employee="E9999"),
+    lambda item: item["askers"][0].update(must_contain=[]),
+    lambda item: item.update(relevant_chunks=[]),
+])
+def test_a_persona_item_with_a_mistake_is_refused(tmp_path, change):
+    from evaluation.personas import PERSONA_FILE, load_personas
+
+    data = json.loads(PERSONA_FILE.read_text(encoding="utf-8"))
+    change(data["items"][0])
+    broken = tmp_path / "personas.json"
+    broken.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValueError):
+        load_personas(broken)
+
+
+def test_both_people_must_be_right_for_an_item_to_count():
+    from evaluation.personas import both_right
+
+    questions = [{"id": "p-1@A", "item": "p-1", "must_contain": ["3 months"]},
+                 {"id": "p-1@B", "item": "p-1", "must_contain": ["2 weeks"]},
+                 {"id": "p-2@A", "item": "p-2", "must_contain": ["12"]},
+                 {"id": "p-2@B", "item": "p-2", "must_contain": ["12"]}]
+    rows = {"p-1@A": {"answer": "3 months."}, "p-1@B": {"answer": "3 months."},
+            "p-2@A": {"answer": "12 days."}, "p-2@B": {"answer": "12 days."}}
+    assert both_right(questions, rows) == 0.5

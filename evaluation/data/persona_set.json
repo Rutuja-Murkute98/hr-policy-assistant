@@ -1,0 +1,758 @@
+{
+ "status": "Drafted by the assistant from the policy text in Phase 11. Not reviewed by the owner.",
+ "items": [
+  {
+   "id": "persona-001",
+   "category": "persona",
+   "question": "Can I work from home?",
+   "relevant_chunks": [
+    "Work_From_Home_Policy > 5. Extended Remote Work > 0",
+    "Work_From_Home_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "2 days"
+     ]
+    },
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "probation"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-002",
+   "category": "persona",
+   "question": "What is my notice period if I resign?",
+   "relevant_chunks": [
+    "Resignation_and_Exit_Policy > 4. Notice Period > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "3 months"
+     ]
+    },
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "2 weeks"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-003",
+   "category": "persona",
+   "question": "How long is my probation period?",
+   "relevant_chunks": [
+    "Probation_and_Confirmation_Policy > 3. Probation Period Duration > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "3 months"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "6 months"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-004",
+   "category": "persona",
+   "question": "What hospital room rent does my health insurance cover?",
+   "relevant_chunks": [
+    "Group_Health_Insurance_and_Mediclaim_Policy > 6. Room Rent Limits > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "3,000"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "5,000"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-005",
+   "category": "persona",
+   "question": "What kind of laptop will I get?",
+   "relevant_chunks": [
+    "IT_Asset_and_Equipment_Policy > 3. Asset Allocation > 3.1. Standard Allocation by Role > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "mid-range"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "high-performance"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": "The laptop also depends on the role, which the HR data doesn't hold"
+  },
+  {
+   "id": "persona-006",
+   "category": "persona",
+   "question": "Can I join the Flexible Benefits Plan?",
+   "relevant_chunks": [
+    "Compensation_and_Benefits_Policy > 11. Flexible Benefits Plan > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "20 percent"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "Band 4"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-007",
+   "category": "persona",
+   "question": "Am I earning earned leave right now?",
+   "relevant_chunks": [
+    "Probation_and_Confirmation_Policy > 7. Entitlements During Probation > 0",
+    "Leave_Policy > 4. Types of Leave and Entitlements > 4.1. Earned Leave (EL) / Annual Leave > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "confirmation"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "18"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-008",
+   "category": "persona",
+   "question": "Can I take a salary advance?",
+   "relevant_chunks": [
+    "Salary_Advance_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "12 months"
+     ]
+    },
+    {
+     "employee": "E1004",
+     "must_contain": [
+      "intern"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-009",
+   "category": "persona",
+   "question": "Am I eligible for ESOPs?",
+   "relevant_chunks": [
+    "ESOP_Policy > 2. Scope and Eligibility > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "12 months"
+     ]
+    },
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-010",
+   "category": "persona",
+   "question": "Can I earn a referral bonus?",
+   "relevant_chunks": [
+    "Employee_Referral_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "probation"
+     ]
+    },
+    {
+     "employee": "E1004",
+     "must_contain": [
+      "intern"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-011",
+   "category": "persona",
+   "question": "Can I apply for an internal transfer?",
+   "relevant_chunks": [
+    "Internal_Transfer_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "probation"
+     ]
+    },
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-012",
+   "category": "persona",
+   "question": "Will the company pay for an external certification for me?",
+   "relevant_chunks": [
+    "Training_and_Learning_Development_Policy > 2. Scope > 0",
+    "Training_and_Learning_Development_Policy > 6. Training Budget and Financial Limits > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "confirmation"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "20,000"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-013",
+   "category": "persona",
+   "question": "How much is my yearly training budget?",
+   "relevant_chunks": [
+    "Training_and_Learning_Development_Policy > 6. Training Budget and Financial Limits > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "40,000"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "20,000"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-014",
+   "category": "persona",
+   "question": "What training costs will the company cover for me?",
+   "relevant_chunks": [
+    "Training_and_Learning_Development_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    },
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "confirmation"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-015",
+   "category": "persona",
+   "question": "Can I win monetary awards?",
+   "relevant_chunks": [
+    "Rewards_and_Recognition_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "confirmation"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "Spot"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-016",
+   "category": "persona",
+   "question": "Where is my office?",
+   "relevant_chunks": [
+    "About_Rutuja_Talent_Nexus > 4. Our Offices > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "Baner"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "Andheri"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-017",
+   "category": "persona",
+   "question": "How is my pay decided?",
+   "relevant_chunks": [
+    "Compensation_and_Benefits_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1004",
+     "must_contain": [
+      "stipend"
+     ]
+    },
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-018",
+   "category": "persona",
+   "question": "Does the leave policy cover me?",
+   "relevant_chunks": [
+    "Leave_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1004",
+     "must_contain": [
+      "intern"
+     ]
+    },
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-019",
+   "category": "persona",
+   "question": "Am I covered by the group health insurance?",
+   "relevant_chunks": [
+    "Group_Health_Insurance_and_Mediclaim_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "date of joining"
+     ]
+    },
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-020",
+   "category": "persona",
+   "question": "What do I need for my next promotion?",
+   "relevant_chunks": [
+    "Employee_Promotion_Policy > 6. Promotion Criteria by Band > 6.3. Band 3 to Band 4 > 0",
+    "Employee_Promotion_Policy > 6. Promotion Criteria by Band > 6.2. Band 2 to Band 3 > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "individual contributor"
+     ]
+    },
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "independent ownership"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-021",
+   "category": "persona",
+   "question": "Can I be considered for a promotion now?",
+   "relevant_chunks": [
+    "Employee_Promotion_Policy > 2. Scope > 0",
+    "Employee_Promotion_Policy > 6. Promotion Criteria by Band > 6.5. Band 5 and above > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "confirm"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "senior leadership"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-022",
+   "category": "persona",
+   "question": "How many sick leave days do I get?",
+   "relevant_chunks": [
+    "Leave_Policy > 4. Types of Leave and Entitlements > 4.2. Sick Leave (SL) > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "12"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "12"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": "The same for both: knowing who asks mustn't change a rule for everyone"
+  },
+  {
+   "id": "persona-023",
+   "category": "persona",
+   "question": "How many casual leave days do I get?",
+   "relevant_chunks": [
+    "Leave_Policy > 4. Types of Leave and Entitlements > 4.3. Casual Leave (CL) > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "6"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "6"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": "The same for both: knowing who asks mustn't change a rule for everyone"
+  },
+  {
+   "id": "persona-024",
+   "category": "persona",
+   "question": "How much salary advance can I get?",
+   "relevant_chunks": [
+    "Salary_Advance_Policy > 5. Advance Limits > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "1 month"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "1.5 months"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-025",
+   "category": "persona",
+   "question": "Can I raise a grievance?",
+   "relevant_chunks": [
+    "Grievance_Redressal_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "grievance"
+     ]
+    },
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "grievance"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": "The same for both: the policy covers contract and probationary staff alike"
+  },
+  {
+   "id": "persona-026",
+   "category": "persona",
+   "question": "Which hospital room can I use under the company insurance?",
+   "relevant_chunks": [
+    "Group_Health_Insurance_and_Mediclaim_Policy > 6. Room Rent Limits > 0",
+    "Group_Health_Insurance_and_Mediclaim_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "3,000"
+     ]
+    },
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-027",
+   "category": "persona",
+   "question": "Am I part of the Flexible Benefits Plan?",
+   "relevant_chunks": [
+    "Compensation_and_Benefits_Policy > 11. Flexible Benefits Plan > 0",
+    "Compensation_and_Benefits_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1004",
+     "must_contain": [
+      "intern"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "20 percent"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-028",
+   "category": "persona",
+   "question": "Which office am I based at, and where is it?",
+   "relevant_chunks": [
+    "About_Rutuja_Talent_Nexus > 4. Our Offices > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "College Road"
+     ]
+    },
+    {
+     "employee": "E1004",
+     "must_contain": [
+      "Baner"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-029",
+   "category": "persona",
+   "question": "How much notice do I have to give before leaving?",
+   "relevant_chunks": [
+    "Resignation_and_Exit_Policy > 4. Notice Period > 0",
+    "Resignation_and_Exit_Policy > 2. Scope > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1005",
+     "must_contain": [
+      "contract"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "3 months"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-030",
+   "category": "persona",
+   "question": "Am I eligible for a salary advance, and how much could I get?",
+   "relevant_chunks": [
+    "Salary_Advance_Policy > 2. Scope > 0",
+    "Salary_Advance_Policy > 5. Advance Limits > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "probation"
+     ]
+    },
+    {
+     "employee": "E1002",
+     "must_contain": [
+      "1.5 months"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  },
+  {
+   "id": "persona-031",
+   "category": "persona",
+   "question": "Can I get stock options?",
+   "relevant_chunks": [
+    "ESOP_Policy > 2. Scope and Eligibility > 0"
+   ],
+   "askers": [
+    {
+     "employee": "E1003",
+     "must_contain": [
+      "confirm"
+     ]
+    },
+    {
+     "employee": "E1001",
+     "must_contain": [
+      "12 months"
+     ]
+    }
+   ],
+   "review_status": "unreviewed",
+   "notes": ""
+  }
+ ]
+}

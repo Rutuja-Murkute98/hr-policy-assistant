@@ -5,8 +5,8 @@ organisation can now change its own branding, categories, answer model, search t
 admin screen, and the next question uses them, with no restart. Every change is checked, stored with Row-Level Security,
 and written to the audit log. With nothing changed, answers are made exactly as before. Part 2 has the model suggest a
 category for each upload from the organisation's own list, for HR to confirm, and applies a new embedding model by
-re-embedding in the background while search carries on with the old one. **The quality gate needs one more recorded run**,
-because part 2 changed two files it fingerprints.
+re-embedding in the background while search carries on with the old one. The quality gate passes on the final code, with
+the same quality as before the phase.
 
 ## Baseline
 
@@ -71,7 +71,9 @@ Answered through the full workflow on 14 November, with no organisation settings
 | Seconds per answer, p50 / p95 | 3.12 / 12.06 | 3.26 / 11.95 |
 
 - **Nothing here comes from this phase's code.** With no settings changed, the prompt is identical and the thresholds are the
-  same, and wherever the model read a question the same way, search returned exactly the same chunks as before.
+  same. Of the 185 questions the model read the same way as in the baseline, the 168 whose first search was strong enough
+  found exactly the same chunks. The 11 whose chunks changed all had a weak search that the model reworded, and its
+  rewording varies from run to run.
 - **Expected facts fell by 3 of 148 answers.** `multi_hop-001` and `exception-016` were right but worded so the keyword check
   missed a fact. `normal-050`, "Do I need an FIR?", was reworded by the model as "...for leave?" and then refused, which is
   also the one extra wrongly refused question.
@@ -112,6 +114,33 @@ Answered through the full workflow on 14 November, with no organisation settings
   lock that thread held.
 - `/health` would have failed during every re-index, as described above.
 
+## All 200 golden questions on the final Phase 10 code
+
+Answered and judged on 15 November, after part 2. It took four Gemini keys and a night: the free daily limit of 500
+requests is per Google Cloud project, so each key in an already used project stopped at once. One attempt was lost when the
+session ended while the progress file was being written, which left it as zero bytes. The evaluation now writes progress to a
+temporary file, forces it to disk and swaps it in, so that can't happen again. The PC also slept for several hours during
+judging, which only paused it.
+
+| Check | Baseline (`phase9_part2`) | Part 1 (`phase10`) | Final (`phase10_part2`) |
+|---|---:|---:|---:|
+| Recall@5 | 0.944 | 0.942 | 0.945 |
+| Expected facts in answers | 0.932 | 0.912 | 0.926 |
+| Correct refusals | 0.900 | 0.900 | 0.900 |
+| Wrongly refused | 0.037 | 0.044 | 0.044 |
+| Citations valid / on a labelled chunk | 1.000 / 0.974 | 1.000 / 0.974 | 1.000 / 0.974 |
+| Statements with an inline citation | 0.984 | 0.980 | 0.984 |
+| Judge: faithful, correct, relevant | 1.000, 0.968, 1.000 | 1.000, 0.981, 1.000 | 1.000, 0.968, 1.000 |
+| Seconds per answer, p50 / p95 | 3.12 / 12.06 | 3.26 / 11.95 | 1.96 / 4.23, at night |
+
+- **Quality is the same as before the phase.** Of the 184 questions read the same way as in part 1's run, the 166 never
+  reworded found exactly the same chunks, and the 11 whose chunks changed were all reworded by the model.
+- **`multi_hop-012` and `multi_hop-021` were refused this time,** with exactly the same chunks as when they were answered,
+  so the answer model decided differently. `unanswerable-011`, the share price, was answered again.
+- **The times aren't a speed-up.** Most of the run was between midnight and 1 am, when the model replied faster: reading a
+  message took 0.78 s at the median against 1.20 s in the daytime run, and writing an answer 1.08 s against 1.58 s. Nothing
+  in part 2 changes how a question is answered. The p95 target of 6 seconds is met on this run, but not in the daytime.
+
 ## Not done, or not checked
 
 - **Not run against the live local API.** I tried to create a local test HR admin account to drive the real server, and the
@@ -126,8 +155,7 @@ Answered through the full workflow on 14 November, with no organisation settings
   route is tested, and the screen code isn't.
 - **A re-index has only run with fake embedders.** A real one costs one embedding call per chunk, 539 for the sample policies.
   An organisation's re-index starts on its first request after the change, so one nobody uses stays on the old model.
-- **The quality gate fails until the next recorded run,** because `app/workflow.py` and `app/rag/store.py` changed. Neither
-  change touches an answer when the embedding model is unchanged.
+- **The final run's times were measured at night**, on a quieter model, so they aren't comparable with the daytime runs.
 
 ## Phase 10 status
 
@@ -143,7 +171,6 @@ Answered through the full workflow on 14 November, with no organisation settings
 
 ## What the owner must do
 
-1. Approve another 200-question run, so the quality gate passes on part 2's code.
-2. Set `ALLOWED_CHAT_MODELS` if organisations should be able to choose another model, and decide which.
-3. If you want the live check on your PC, create an HR admin account with a password yourself, sign in at `/admin` and
+1. Set `ALLOWED_CHAT_MODELS` if organisations should be able to choose another model, and decide which.
+2. If you want the live check on your PC, create an HR admin account with a password yourself, sign in at `/admin` and
    open the Settings tab. I couldn't create one.

@@ -56,7 +56,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | Settings tab, with checks and an audit entry per change | Implemented and tested | 4 screen tests. Not opened in a browser |
 | Category suggestions for uploads | Implemented and tested | 20 tests. The button wasn't clicked in a browser |
 | A new embedding model applied without a break | Implemented and tested | 10 tests on real PostgreSQL with fake embedders. Not run with a real model |
-| 200-question run on the Phase 10 code | Done for part 1 | Same as the baseline within run-to-run variation. Part 2 needs one more run for the gate |
+| 200-question run on the Phase 10 code | Done | Same as the baseline within run-to-run variation, after both parts. Quality gate passes |
 
 ## Phase 8 status
 

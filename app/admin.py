@@ -12,6 +12,7 @@ from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPE
 from pydantic import ValidationError
 
 from app import config
+from app.audience import Audience
 from app.identity import Principal
 from app.knowledge import DuplicateDocument, JobConflict, KnowledgeBase, NotFound, UploadDetails, UploadRejected
 from app.org_settings import SettingsError, effective_settings
@@ -63,8 +64,20 @@ def upload_document(
     audit(request, principal, "document_uploaded", result["file"], status=result["status"],
           version=result["version"], injection_signs=result["warnings"])
     if result["job_id"]:
-        background.add_task(base.run_job, result["job_id"])
+        llm = getattr(service_for(request, principal), "llm", None)
+        background.add_task(index_then_tag, base, llm, result["job_id"], result["file"])
     return result
+
+
+def index_then_tag(base: KnowledgeBase, llm, job_id: str, source_file: str) -> None:
+    """Index an upload, then tag who its new or changed sections are for. Search works without the tags."""
+    base.run_job(job_id)
+    if llm is None:
+        return
+    try:
+        base.tag_audiences(llm, source_file)
+    except Exception:
+        logger.exception("Couldn't tag who the sections of %s are for", source_file)
 
 
 @router.post("/documents/suggest-category")
@@ -204,3 +217,33 @@ def retry_reindex(request: Request, principal: Principal = Depends(admin_princip
         raise HTTPException(409, "There's no failed re-index to retry")
     audit(request, principal, "reindex_retried")
     return latest_run(registry_of(request).engine, principal.tenant_id)
+
+
+
+@router.get("/audiences")
+def list_audiences(file: str | None = None, base: KnowledgeBase = Depends(knowledge)):
+    """Who each section applies to, from the model or HR, and how many sections aren't tagged yet."""
+    return base.audiences(file)
+
+
+@router.post("/audiences/tag", status_code=202)
+def tag_audiences(request: Request, background: BackgroundTasks, principal: Principal = Depends(admin_principal),
+                  base: KnowledgeBase = Depends(knowledge)):
+    """Ask the model who every untagged section is for, one call per document, in the background."""
+    untagged = base.audiences()["untagged"]
+    if untagged:
+        background.add_task(base.tag_audiences, service_for(request, principal).llm)
+        audit(request, principal, "audiences_tagged", untagged=untagged)
+    return {"untagged": untagged}
+
+
+@router.put("/audiences/{chunk_id:path}")
+def set_audience(chunk_id: str, audience: Audience, request: Request, principal: Principal = Depends(admin_principal),
+                 base: KnowledgeBase = Depends(knowledge)):
+    """Correct who a section is for. An empty body means everyone. The model never changes it back."""
+    try:
+        result = base.set_audience(chunk_id, audience, principal.user_id or principal.source)
+    except NotFound:
+        raise HTTPException(404, "That section isn't in the knowledge base") from None
+    audit(request, principal, "audience_set", chunk_id, applies_to=result["applies_to"])
+    return result

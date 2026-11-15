@@ -17,6 +17,7 @@ from langchain_core.documents import Document
 from sqlalchemy import Engine, text
 
 from app import config
+from app.audience import Audience, AudienceStore
 from app.category_suggestion import suggest_category
 from app.config import Tenant
 from app.guards import find_injection_signs, strip_invisible
@@ -151,6 +152,33 @@ class KnowledgeBase:
             raise UploadRejected("No text was found in this file.")
         return {**suggest_category(llm, markdown, sorted(known_categories(self.profile)), self.profile),
                 "warnings": warnings}
+
+    def tag_audiences(self, llm, source_file: str | None = None) -> int:
+        """Ask the model who each untagged current section is for, one call per document. Returns how many.
+
+        After an upload, only that document's new or changed sections need it. See docs/DECISIONS.md, D55.
+        """
+        chunks = [chunk for chunk in self.index.stored_chunks().values()
+                  if source_file is None or chunk.metadata.get("source") == source_file]
+        return AudienceStore(self.engine, self.tenant_id).tag_untagged(llm, chunks)
+
+    def set_audience(self, chunk_id: str, audience: Audience, actor: str) -> dict:
+        """HR's correction of who a section is for. The model never overwrites it."""
+        chunk = self.index.stored_chunks().get(chunk_id)
+        if chunk is None:
+            raise NotFound(chunk_id)
+        AudienceStore(self.engine, self.tenant_id).save(chunk, audience, "hr", actor)
+        return {"chunk_id": chunk_id, "applies_to": audience.model_dump(exclude_defaults=True),
+                "description": audience.describe() or "Everyone"}
+
+    def audiences(self, source_file: str | None = None) -> dict:
+        """Each current section's tag, and how many sections have none for their current text."""
+        chunks = [chunk for chunk in self.index.stored_chunks().values()
+                  if source_file is None or chunk.metadata.get("source") == source_file]
+        store = AudienceStore(self.engine, self.tenant_id)
+        current = {chunk.id for chunk in chunks} - {chunk.id for chunk in store.untagged(chunks)}
+        return {"sections": [row for row in store.listed(source_file) if row["chunk_id"] in current],
+                "untagged": len(chunks) - len(current)}
 
     def add_upload(self, data: bytes, file_name: str, details: UploadDetails) -> dict:
         """Validate an upload and queue it for indexing. Raises UploadRejected if it can't be used."""

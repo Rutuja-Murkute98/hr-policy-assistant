@@ -471,6 +471,70 @@ def show_settings() -> None:
                 st.rerun()
 
 
+AUDIENCE_TYPES = {"permanent": "Permanent", "contract": "Contract", "intern": "Interns"}
+AUDIENCE_PROBATION = {"": "Anyone", "on_probation": "Only on probation", "confirmed": "Only confirmed"}
+
+
+def section_name(chunk_id: str) -> str:
+    """A chunk id is like "Leave_Policy > 4.1. Earned Leave > 0". The middle is the section."""
+    parts = chunk_id.split(" > ")
+    return parts[1] if len(parts) > 2 else chunk_id
+
+
+def show_audiences() -> None:
+    summary, problem = call_api("GET", "/admin/audiences")
+    if problem:
+        st.error(problem)
+        return
+    sections = summary["sections"]
+    st.caption("Answers prefer the rules that fit the person asking, such as their band or office. The model suggests "
+               "who each section is for, and you can correct it. A section is never hidden because of this.")
+    if summary["untagged"]:
+        st.info(f"{summary['untagged']} sections haven't been checked yet.")
+        if st.button("Check them now", key="tag_audiences", icon=":material/auto_awesome:",
+                     help="Uses one model call per policy"):
+            _, problem = call_api("POST", "/admin/audiences/tag")
+            if problem:
+                st.error(problem)
+            else:
+                st.session_state.admin_message = "Checking. Refresh in a minute or two to see them."
+                st.rerun()
+    limited = [row for row in sections if row["description"] != "Everyone"]
+    st.dataframe([{"Policy": row["file"], "Section": section_name(row["chunk_id"]), "Applies to": row["description"],
+                   "Checked by": "HR" if row["source"] == "hr" else "Model"} for row in limited],
+                 hide_index=True, use_container_width=True)
+    st.caption(f"{len(limited)} of {len(sections)} checked sections apply to some employees only. "
+               "The rest are for everyone.")
+    chosen = st.selectbox("Section to correct", [row["chunk_id"] for row in sections], index=None)
+    if not chosen:
+        return
+    current = next(row for row in sections if row["chunk_id"] == chosen)["applies_to"]
+    with st.form("audience_form"):
+        typed = st.text_input("Bands", ", ".join(str(band) for band in current.get("bands", [])),
+                              placeholder="Such as 1, 2, 3. Empty means every band")
+        places = st.text_input("Offices", ", ".join(current.get("locations", [])),
+                               placeholder="Such as Pune. Empty means every office")
+        kinds = st.multiselect("Employment", list(AUDIENCE_TYPES), default=current.get("employment_types", []),
+                               format_func=AUDIENCE_TYPES.get, placeholder="Everyone")
+        probation = st.selectbox("Probation", list(AUDIENCE_PROBATION), format_func=AUDIENCE_PROBATION.get,
+                                 index=list(AUDIENCE_PROBATION).index(current.get("probation") or ""))
+        if not st.form_submit_button("Save", type="primary"):
+            return
+    try:
+        bands = [int(band) for band in typed.replace(" ", "").split(",") if band]
+    except ValueError:
+        st.error("Bands are numbers, separated by commas.")
+        return
+    body = {"bands": bands, "locations": [place.strip() for place in places.split(",") if place.strip()],
+            "employment_types": kinds, "probation": probation or None}
+    _, problem = call_api("PUT", f"/admin/audiences/{chosen}", json=body)
+    if problem:
+        st.error(problem)
+    else:
+        st.session_state.admin_message = "Saved. The model won't change it."
+        st.rerun()
+
+
 st.set_page_config(page_title="HR Helpdesk admin", page_icon=":material/admin_panel_settings:")
 st.markdown("[← Back to chat](/)")
 st.title("Policy admin")
@@ -496,15 +560,18 @@ with st.container():
     if "admin_message" in st.session_state:
         st.success(st.session_state.pop("admin_message"))
 
-(documents_tab, upload_tab, jobs_tab, unanswered_tab, feedback_tab, usage_tab, users_tab, keys_tab, settings_tab,
- audit_tab) = st.tabs([f"Policies ({len(current)})", "Upload", "Indexing jobs", "Unanswered questions", "Feedback",
-                       "Usage", "People", "API keys", "Settings", "Audit log"])
+(documents_tab, upload_tab, jobs_tab, audiences_tab, unanswered_tab, feedback_tab, usage_tab, users_tab, keys_tab,
+ settings_tab, audit_tab) = st.tabs([f"Policies ({len(current)})", "Upload", "Indexing jobs", "Who rules apply to",
+                                     "Unanswered questions", "Feedback", "Usage", "People", "API keys", "Settings",
+                                     "Audit log"])
 with documents_tab:
     show_documents(current)
 with upload_tab:
     show_upload()
 with jobs_tab:
     show_jobs()
+with audiences_tab:
+    show_audiences()
 with unanswered_tab:
     show_unanswered()
 with feedback_tab:

@@ -662,6 +662,24 @@ they're in it, found 0.742 at 0.06, against 0.661 at 0.03 and 0.726 at 0.1. On t
 `E1001` it scored 0.941, against 0.938 with no preference. So that's the rule, at 0.06. Which group a rule fits is left
 to the answer, which is told who is asking. `evaluation/persona_search.py` repeats the comparison.
 
+## D57. PDFs are read with pdfplumber, for tables and for headings from the document's own fonts
+
+**Decision:** `pdfplumber` replaces `pypdf` for reading uploaded PDFs. Tables become Markdown tables, and a line is a
+heading when its font is larger than the body text, or bold and short. A PDF whose fonts show no headings falls back to the
+numbered-line guess used before. Word documents keep their heading styles, now including custom styles based on a heading
+style, and their tables become Markdown tables too. `fpdf2` is added for development only, to make test PDFs from the sample
+policies, so old and new extraction are compared on the same documents.
+
+**Why:** HR policies hold their numbers in tables, such as leave by band or room rent by band. `pypdf` returns a table as
+loose words, so "Band 4 to Band 5 ... Rs. 5,000" can come apart and be cited wrongly. `pdfplumber` finds the table's cells.
+It needs no PyTorch: it's pure Python on `pdfminer.six`, with `pypdfium2` for page images. Fonts are a better sign of a
+heading than numbering, which plenty of policies don't use.
+
+**Options not taken now:** Docling and OCR are heavier, and are part A2 of Phase 12, behind settings, off on the free API.
+
+**Trade-offs:** About 10 MB more in the API image. `pdfplumber` is slower than `pypdf` on large files, which only matters
+on upload. A table split across two pages comes out as two tables.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

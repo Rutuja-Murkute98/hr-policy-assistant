@@ -7,3 +7,5 @@ httpx==0.28.1
 ruff==0.17.3
 mypy==2.4.1
 pip-audit==2.10.1
+# Makes test PDFs from the sample policies, for evaluation/extraction_check.py. Not in the API image.
+fpdf2==2.9.0

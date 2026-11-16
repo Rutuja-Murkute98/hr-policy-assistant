@@ -170,3 +170,127 @@ def test_empty_files_are_refused():
 
 def test_control_characters_are_removed():
     assert "\x00" not in finish("# T\n\n## S\n\nText\x00 here", "x.md", None)
+
+
+# PDFs with fonts and tables, as Word or a PDF printer would make them: see docs/DECISIONS.md, D57
+
+def styled_pdf(blocks: list[tuple], encrypt: bool = False) -> bytes:
+    """A PDF of ("h1" | "h2" | "p" | "table" | "page", content) blocks, with headings in larger bold fonts."""
+    from fpdf import FPDF
+    from fpdf.fonts import FontFace
+
+    pdf = FPDF()
+    if encrypt:
+        pdf.set_encryption(owner_password="owner", user_password="user")
+    pdf.add_page()
+    for kind, content in blocks:
+        if kind == "page":
+            pdf.add_page()
+        elif kind == "table":
+            pdf.set_font("Helvetica", "", 9)
+            with pdf.table(headings_style=FontFace(emphasis="BOLD")) as table:
+                for row in content:
+                    cells = table.row()
+                    for value in row:
+                        cells.cell(value)
+        else:
+            pdf.set_font("Helvetica", "B" if kind != "p" else "", {"h1": 18, "h2": 14, "h3": 12}.get(kind, 10))
+            pdf.multi_cell(0, 6, content, new_x="LMARGIN", new_y="NEXT")
+    return bytes(pdf.output())
+
+
+def test_pdf_headings_come_from_the_fonts_even_without_numbers():
+    data = styled_pdf([("h1", "Leave Policy"), ("p", "Leave rules for everyone in the company."),
+                       ("h2", "Earned Leave"), ("p", "Staff get eighteen days of earned leave each year."),
+                       ("h2", "Sick Leave"), ("p", "Staff get twelve days of sick leave each year.")])
+    markdown = extract_document(data, "Leave.pdf").markdown
+    assert "# Leave Policy" in markdown
+    assert "## Earned Leave" in markdown and "## Sick Leave" in markdown
+    assert "Staff get eighteen days" in markdown and "## Staff" not in markdown
+
+
+def test_a_bold_short_line_in_body_size_is_a_subheading():
+    data = styled_pdf([("h1", "Travel Policy"), ("p", "How travel works here."), ("h2", "Hotels"),
+                       ("h3", "Tier one cities"), ("p", "The limit is four thousand rupees a night.")])
+    assert "### Tier one cities" in extract_document(data, "Travel.pdf").markdown
+
+
+def test_a_pdf_table_becomes_a_markdown_table():
+    rows = [["Band", "Room rent limit"], ["Band 1 to Band 3", "Rs. 3,000"], ["Band 4 to Band 5", "Rs. 5,000 | daily"]]
+    data = styled_pdf([("h1", "Insurance"), ("h2", "Room Rent"), ("p", "Limits by band."), ("table", rows)])
+    markdown = extract_document(data, "Insurance.pdf").markdown
+    assert "| Band | Room rent limit |" in markdown
+    assert "| Band 1 to Band 3 | Rs. 3,000 |" in markdown
+    assert "| Band 4 to Band 5 | Rs. 5,000 / daily |" in markdown  # a bar inside a cell can't split the row
+    assert markdown.count("Band 1 to Band 3") == 1  # the table's words aren't repeated as text
+
+
+def test_a_table_carried_onto_the_next_page_is_one_table():
+    header = ["Leave type", "Days"]
+    first = [header] + [[f"Leave {number}", str(number)] for number in range(1, 4)]
+    second = [header] + [[f"Leave {number}", str(number)] for number in range(4, 6)]
+    data = styled_pdf([("h1", "Leave"), ("h2", "Entitlements"), ("table", first), ("page", ""), ("table", second)])
+    markdown = extract_document(data, "Leave.pdf").markdown
+    assert markdown.count("| Leave type | Days |") == 1
+    assert "| Leave 5 | 5 |" in markdown
+
+
+def test_a_password_protected_pdf_is_explained():
+    data = styled_pdf([("h1", "Secret"), ("p", "Text.")], encrypt=True)
+    with pytest.raises(ExtractionError, match="password"):
+        extract_document(data, "Secret.pdf")
+
+
+def test_a_scanned_pdf_with_no_text_is_explained():
+    from fpdf import FPDF
+    from PIL import Image
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.image(Image.new("RGB", (200, 100), "white"), x=10, y=10, w=100)
+    with pytest.raises(ExtractionError, match="scanned"):
+        extract_document(bytes(pdf.output()), "Scan.pdf")
+
+
+def word_file(build) -> bytes:
+    import io
+
+    import docx
+
+    document = docx.Document()
+    build(document)
+    buffer = io.BytesIO()
+    document.save(buffer)
+    return buffer.getvalue()
+
+
+def test_a_word_heading_style_based_on_a_built_in_one_counts():
+    from docx.enum.style import WD_STYLE_TYPE
+
+    def build(document):
+        style = document.styles.add_style("Policy Section", WD_STYLE_TYPE.PARAGRAPH)
+        style.base_style = document.styles["Heading 1"]
+        document.add_paragraph("Leave Policy", style="Title")
+        document.add_paragraph("Earned Leave", style="Policy Section")
+        document.add_paragraph("Staff get eighteen days of earned leave each year.")
+
+    markdown = extract_document(word_file(build), "Leave.docx").markdown
+    assert "## Earned Leave" in markdown
+
+
+def test_word_tables_and_lists_keep_their_shape():
+    def build(document):
+        document.add_paragraph("Benefits", style="Title")
+        document.add_heading("Room Rent", level=1)
+        table = document.add_table(rows=2, cols=2)
+        for row, values in zip(table.rows, [["Band", "Limit"], ["Band 1 to 3", "Rs. 3,000"]], strict=True):
+            for cell, value in zip(row.cells, values, strict=True):
+                cell.text = value
+        box = document.add_table(rows=1, cols=1)
+        box.rows[0].cells[0].text = "A note in a box"
+        document.add_paragraph("Bring your ID card", style="List Bullet")
+
+    markdown = extract_document(word_file(build), "Benefits.docx").markdown
+    assert "| Band | Limit |\n| --- | --- |\n| Band 1 to 3 | Rs. 3,000 |" in markdown
+    assert "A note in a box" in markdown and "| A note in a box |" not in markdown
+    assert "- Bring your ID card" in markdown

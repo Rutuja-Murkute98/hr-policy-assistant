@@ -4,8 +4,10 @@ Branch `phase-12-documents`, built on `phase-11-personas`, 16 November 2026. Pha
 parts. **Part A1 is built and measured:** PDFs are read with `pdfplumber`, so headings come from the document's own fonts
 and tables come out as Markdown tables, and Word tables do too. **Part A2 is built and tested, except Docling:** scanned
 pages are read by a Tesseract worker you run, off unless set up, and HR can preview how a file is read beside its pages.
-Tesseract hasn't run on this machine, as it isn't installed, so a real scan is only read in CI. Part B (retrieval
-experiments) and part C (connectors, contradictions, change summaries and review dates) are still to do.
+Tesseract hasn't run on this machine, as it isn't installed, so a real scan is only read in CI. **Part C1 is built and
+tested:** policies sync from a watched folder, Google Drive or SharePoint, on a schedule and through the same path as an
+upload. Drive and SharePoint haven't been called for real, as there are no credentials. Part B (retrieval experiments) and
+part C2 (contradictions, change summaries and review dates) are still to do.
 
 ## Baseline
 
@@ -116,6 +118,79 @@ The owner chose local OCR only: no page is sent to a cloud service (D58).
   scan's tables come out as lines of text, as Tesseract doesn't find tables.
 - **The preview wasn't clicked in a browser.** The screen's test tool can't choose a file.
 
+## Part C1: syncing from where HR keeps policies
+
+| File | Change | Why |
+|---|---|---|
+| `app/connectors/` | One interface, `list_files` and `fetch`, and three sources behind it. A watched folder must be inside `SOURCES_ROOT/<organisation>`, and links out of it are skipped. Google Drive is read with a service account, and Google Docs come out as Word files. SharePoint is read through Microsoft Graph with an app registration. Both use `httpx` and `PyJWT`, which the API already has | D59 |
+| `migrations/versions/0014_knowledge_sources.py`, `app/sources.py` | Each organisation's sources, and each file seen at a source with its version, all with Row-Level Security. A sync fetches only new or changed files and gives each one to the upload path, so versions, jobs and only embedding changed sections work as for an upload. A file gone from the source stops being answered from, unless the source keeps it | |
+| `app/source_scheduler.py`, `app/main.py` | A thread in the API syncs the sources that are due, each claimed in the database first so two processes never run one. Organisations with no sources are skipped without building their workflow | The plan's sync on a schedule |
+| `app/admin.py`, `ui/pages/admin.py` | Routes and a Sources tab: the kinds this server can read, add, pause, sync now, stop syncing, and each source's files. Every change is audited. Removing a source keeps its policies | |
+| `app/config.py`, `.env.example` | `SOURCES_ROOT`, the Drive and SharePoint credentials, and `SOURCE_SYNC_SECONDS`. Each kind is off until its settings are filled in | The owner decides what the server can reach |
+
+### Tests for part C1
+
+| Run | Result |
+|---|---|
+| Connectors | 21 unit tests. Drive and SharePoint against stand-ins that answer as their APIs do: the signed token, paging, Google Docs exported as Word files, the token reused, and a missing folder or refused account explained. The folder: files listed with versions that change, nothing read outside it, and a folder outside the organisation's refused. A Drive folder id that could change Drive's query is refused. 1 more, a link out of the folder, is skipped here, as Windows needs extra rights to make one |
+| Syncing | 9 tests on real PostgreSQL through the API: new, changed and removed files, keeping removed ones, a broken file reported while the rest sync, a folder outside the organisation's refused, one organisation's sources hidden from another, auditing, no sync started twice, the scheduler, and a source that can't be reached marked failed |
+
+### Not done in part C1
+
+- **Google Drive and SharePoint haven't been called for real.** There are no credentials for this project, so they're
+  tested against my reading of their documented replies. The first real use should be watched.
+- **The Sources tab wasn't clicked in a browser.**
+- **The same file name in two sources is one policy,** so the later sync's copy becomes a new version of it.
+
+## Part C2: clashes, what changed, and review dates
+
+| File | Change | Why |
+|---|---|---|
+| `app/policy_checks.py`, `migrations/versions/0015_policy_checks.py` | After each upload or sync, three checks run, each on its own so one failing never fails the upload. **Clashes:** a sentence that states a figure, such as days, an amount or years, is paired with any sentence elsewhere that shares at least 3 of its main words, and half the shorter one's, but states a different figure. Those pairs of sections go to the answer model 15 at a time, and it says whether both can be true for the same employee. Every verdict is kept in `policy_pairs` against hashes of both texts. **What changed:** the model gets only the sections that changed, were added or were removed, and writes two or three sentences. **Review dates:** read from a policy's "Next Review:" line, or given on the upload form | Contradicting policies give contradicting answers, and a policy past its review date may be out of date. See D60 |
+| `app/admin.py`, `ui/pages/admin.py` | `GET` and `PATCH /admin/clashes`, `POST /admin/clashes/check`, and a Clashes tab: both sections and the model's reason, marked fixed or not a clash. The Policies tab shows the next review and warns of overdue ones, and each version shows what changed | HR decides, not the model |
+| `pipeline/chunk_documents.py`, `pipeline/embed_and_store.py`, `app/knowledge.py`, `app/rag/store.py` | The review date is read with or without bold markers, and stored with each version and policy | |
+| `evaluation/conflict_check.py` | Checks every sample policy with the real model, and counts the five known contradictions found | The measurement below |
+
+### Finding contradictions, measured
+
+The five contradictions listed in `docs/FINAL_REPORT.md` were put into the sample policies on purpose. All 539 sections
+were checked with the real answer model.
+
+| Way of choosing pairs | Pairs of sections | Known contradictions in the pairs | Found by the model |
+|---|---:|---:|---:|
+| Each section's 4 nearest by stored vector, both with a figure | 1,526 | 3 of 5. Two sat 10th and 14th nearest | Not run |
+| **Sentences sharing words, with different figures** | **352** | **5 of 5** | **5 of 5** |
+
+The model raised 12 clashes in all: the 5 known, and 7 more, which I read against the policies:
+
+| Raised | My reading |
+|---|---|
+| Maternity cover: Rs. 75,000 a delivery in the Compensation policy, Rs. 50,000 in the Health Insurance policy | **A real contradiction, not on the known list** |
+| Laptop ready 3 working days before joining for remote staff (Onboarding), 2 days for everyone (IT Assets) | Arguable. Shipping needs longer, but the two don't mention each other |
+| Employer PF contribution, rating 1 and the bonus range, probation letter timing, review outcome timing (two) | Not clashes: different things that share words |
+
+So every known contradiction was found, plus one real one nobody had listed, and 5 of the 12 were false alarms that HR
+dismisses with one click, after which they're never raised again unless a text changes. It took about 24 answer-model
+calls. The first attempt stopped at its 8th call when Gemini returned 503, "high demand". A failed batch is now skipped and
+asked about next time, and as verdicts are kept, the second attempt only asked about the 245 pairs left.
+
+### Tests for part C2
+
+| Run | Result |
+|---|---|
+| Unit | 8 tests: only sentences with a figure, an amount in rupees isn't a sentence break, alike and not alike sentences, word endings, the model sees headings and matched sentences fenced, only changed sections sent for a summary, spacing alone needs none, review dates with and without bold |
+| Through the API | 6 tests on real PostgreSQL with a stand-in model: two contradicting policies flagged, a dismissed clash not asked about again until a text changes and then reopened, a new version's summary, review dates from the document or the form and the overdue flag, one organisation's clashes hidden from another and from employees, and a model failure never failing the upload |
+| Admin screen | A clash shows both sections, and Fixed sends the decision |
+| Isolation | `policy_pairs` added to the table lists: it has Row-Level Security like the others |
+
+### Not done in part C2
+
+- **The Clashes tab wasn't clicked in a browser.**
+- **The 7 other clashes are my reading, not HR's.** The maternity amounts should be fixed in the sample policies, or added
+  to the known list.
+- **Only figures are compared.** A clash in words alone, such as "allowed" against "not allowed", isn't looked for.
+- **A change summary is the model's.** It's shown as written, beside the version, and not checked.
+
 ## Phase 12 status
 
 | Item from the plan | Status | Evidence or gap |
@@ -126,10 +201,16 @@ The owner chose local OCR only: no page is sent to a cloud service (D58).
 | Docling as an optional local extractor, compared with the default | Not started | Waits for the owner: over a gigabyte to download |
 | Side-by-side view of the original and the extracted sections | Implemented and tested | Not clicked in a browser |
 | Small-to-big, contextual headers, query decomposition, each measured | Planned | Part B. Needs reviewed labels and quota |
-| Connectors, scheduled sync, contradictions, change summaries, review dates | Planned | Part C |
+| A `Connector` interface, a watched folder and Google Drive, SharePoint behind a setting, with a fake | Implemented and tested | Drive and SharePoint against stand-ins only |
+| Sync on a schedule through the job table, embedding only changed sections | Implemented and tested | Through the upload path and its indexing jobs |
+| Contradictions, change summaries, review dates | Implemented, tested and measured | 5 of 5 known contradictions found with the real model, and 1 more. Not clicked in a browser |
 
 ## What the owner must do
 
 1. Check the GitHub Actions run for this branch: the real Tesseract test and the OCR worker's image only run there.
 2. Decide whether to try Docling: it needs PyTorch and over a gigabyte of downloads, for a comparison only.
 3. To read scans yourself, install Docker, then: `OCR_URL=http://ocr:8080 docker compose --profile ocr up --build`.
+4. Decide what to do about the maternity amounts, Rs. 75,000 against Rs. 50,000: fix a sample policy, or add it to the
+   known contradictions.
+5. Phase 12 changed `app/config.py` and `app/rag/store.py`, which the quality gate fingerprints, so it needs a new
+   200-question run, about 400 answer calls, before the phase is complete.

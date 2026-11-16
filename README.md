@@ -217,6 +217,13 @@ The project is ready to run for free on three services. [DEPLOY.md](DEPLOY.md) h
 | `POST` | `/admin/documents/suggest-category` | Suggests one of the organisation's categories for a file. Stores nothing | HR admin |
 | `GET`, `PATCH` | `/admin/settings` | Shows or changes the organisation's own settings. `null` puts one back. Each change is audited | HR admin |
 | `GET` | `/admin/reindex` | Shows the move to a new embedding model, if there is one | HR admin |
+| `GET`, `POST` | `/admin/sources` | Lists or adds sources policies sync from: a watched folder, Google Drive or SharePoint | HR admin |
+| `PATCH`, `DELETE` | `/admin/sources/{id}` | Changes a source, or stops syncing it. Its policies stay | HR admin |
+| `POST` | `/admin/sources/{id}/sync` | Syncs a source now. Only new or changed files are read | HR admin |
+| `GET` | `/admin/sources/{id}/files` | The files synced from a source, and the policies they became | HR admin |
+| `POST` | `/admin/documents/preview` | Shows how a file would be read, section by section, beside its first pages. Stores nothing | HR admin |
+| `GET`, `PATCH` | `/admin/clashes` | Lists places where policies give different figures for the same thing, or marks one fixed or not a clash | HR admin |
+| `POST` | `/admin/clashes/check` | Checks every policy for clashes. Only pairs not yet checked, or whose text changed, go to the model | HR admin |
 | `GET` | `/admin/audiences` | Shows who each section applies to, and how many aren't checked yet | HR admin |
 | `POST` | `/admin/audiences/tag` | Has the model check every unchecked section, one call per policy | HR admin |
 | `PUT` | `/admin/audiences/{chunk_id}` | Corrects who a section applies to. The model never changes it back | HR admin |

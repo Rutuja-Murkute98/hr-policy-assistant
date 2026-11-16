@@ -37,6 +37,9 @@ squared with holding employees' personal data.
 | A move to a new embedding model | `reindex_runs`, `reindex_vectors` | Until the move finishes, then only its status | Vectors of policy text, by chunk id, and progress counts. No questions and no users |
 | Who each policy section is for | `section_audiences` | Until the section changes | Policy text only: bands, offices, employment types and probation a section is limited to. No person |
 | The asker's band, office, employment type and probation | Not stored | One answer | Read from the HR system for each question and sent to the model in the answer prompt. The person's own corrections stay in the chat screen's session. The answer cache keys on them, and nothing logs them |
+| Sources policies sync from | `knowledge_sources`, `source_files` | Until a source is removed | Where each source is, and the names of the files synced from it. A file name could name a person. Drive and SharePoint are read with credentials only the deployment's owner holds |
+| Scanned pages | Not stored | While being read | Sent only to an OCR worker the organisation runs, never a cloud service (D58) |
+| Clash verdicts | `policy_pairs` | Kept with the organisation. Hidden once either section is replaced or removed | Section ids, policy file names, the model's reason and who marked it. Policy text only, no personal data |
 | Mock leave and tickets | `hr_leave_requests`, `hr_tickets` | Not removed: a real HR system would set this | Masked question. Fake data only |
 
 ## What the Act asks for, and where this stands

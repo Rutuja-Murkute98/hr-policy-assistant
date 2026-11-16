@@ -696,6 +696,31 @@ scanned table becomes lines of text. Each scanned page takes a few seconds. The 
 with Docker Compose on a machine of your own, with `--profile ocr`. Tesseract isn't installed on the development machine, so
 its real output is tested where it is installed, such as GitHub's runners.
 
+## D59. Policies can sync from a folder, Google Drive or SharePoint, through the same path as an upload
+
+**Decision:** An organisation's HR admin can add sources: a watched folder, a Google Drive folder, or a SharePoint folder
+through Microsoft Graph. Each source is a `Connector` with three calls: list the files, fetch one, and say what changed
+since the last sync. A sync fetches only new or changed files and passes each one to the same code as an upload, so
+extraction, content hashes, versions, indexing jobs and category checks all work as for an upload, and only changed
+sections are embedded. A file gone from the source stops being answered from, as a removal from the admin screen would,
+unless the source is set to keep it. Sources sync on their own schedule, from a thread in the API, and on demand.
+
+**Where each one is allowed:**
+- A watched folder must be inside `SOURCES_ROOT`, in a folder named after the organisation, so no admin can point the API
+  at another organisation's files or at the server's own.
+- Google Drive and SharePoint use credentials the deployment owner sets: a service account for Drive, and an app
+  registration for Graph. Each is off until those are set. An organisation only names the folder, and the owner shares it
+  with the service account.
+
+**Why:** HR keeps policies in shared folders, and a copy uploaded by hand goes out of date. Sending synced files through
+the upload path means one set of checks, tested once. Drive and Graph are called with `httpx` and `PyJWT`, which the API
+already has, rather than Google's and Microsoft's client libraries, which are large.
+
+**Trade-offs:** A file's name has to become a policy name, so "Leave Policy 2026.pdf" becomes `Leave_Policy_2026`, and the
+same name in two sources is the same policy. The sync thread only runs while the API is awake, and the free host sleeps
+when idle. Neither Drive nor Graph has been called for real: no credentials exist for this project, so both are tested
+against recorded shapes of their replies.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

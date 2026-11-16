@@ -20,7 +20,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 8 | Evaluation you can trust: label review screen, real questions as candidates, judges from any vendor, nightly run, coverage | Built and tested. The label review itself waits for the owner. See [the Phase 8 report](../evaluation/reports/phase8_report.md) |
 | 9 | Speed and quota: step timings, early search, question vector cache, answer cache, skipping the model on clear first messages | Built and measured: median 4.69 s to 3.12 s on all 200 questions. p95 target not met. See [the Phase 9 report](../evaluation/reports/phase9_report.md) |
 | 10 | Settings per organisation, changed while running | Built and tested: settings, category suggestions, and a new embedding model applied without a break. See [the Phase 10 report](../evaluation/reports/phase10_report.md) |
-| 11 | Answers for the person asking | Built and tested. Below target: persona facts 0.774 against 0.926 for general questions, and 0.468 with nobody known. See [the Phase 11 report](../evaluation/reports/phase11_report.md) |
+| 11 | Answers for the person asking | Built and tested. Below target: persona facts 0.790 against 0.912 for general questions, and 0.468 with nobody known. The general set holds, and the gate passes. See [the Phase 11 report](../evaluation/reports/phase11_report.md) |
 | 12 to 19 | Documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
 
 ## Phase 7 status
@@ -54,7 +54,7 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 |---|---|---|
 | The asker's band, office, employment type and probation from the HR system | Implemented and tested | Never from the model. Returned with each answer |
 | Who each section applies to, tagged by the model, corrected by HR | Implemented and tested | 25 of 539 sample sections tagged, 2 wrong. Corrections tested, not made |
-| Search and answers that use both | Implemented and tested | Persona facts 0.774, against 0.468 with nobody known. Target 0.926 not met |
+| Search and answers that use both | Implemented and tested | Persona facts 0.790, against 0.468 with nobody known. Target not met |
 | The employee sees and corrects their details | Implemented and tested | Not clicked in a browser |
 | 31 persona questions, each asked by two employees | Implemented and run | Unreviewed |
 

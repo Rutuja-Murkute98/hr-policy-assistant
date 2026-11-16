@@ -354,7 +354,8 @@ doesn't get worse.
 
 **Progress:** built and tested. The asker's details come from the HR adapter, sections are tagged by the model and
 corrected by HR, and search and answers use both. On 31 questions asked by two employees each, the right facts were in
-0.774 of answers, against 0.468 with nobody known. That's below the target of matching the general questions' 0.926. See
+0.790 of answers, against 0.468 with nobody known. That's below the target of matching the general questions' 0.912.
+The general set held, after a fix so answers give every group's rule. See
 [the Phase 11 report](../evaluation/reports/phase11_report.md).
 
 ---

@@ -3,9 +3,10 @@
 Branch `phase-11-personas`, built on `phase-10-settings`, 15 November 2026. **Built and tested, but the plan's target isn't
 met.** Answers now use the asker's band, office, employment type and probation status from the HR system, prefer the policy
 sections that decide their case, and say which group a rule is for. The employee sees the details used and can correct
-them. On 31 questions asked by two employees each, the facts that fit the asker were in 0.774 of answers, against 0.468
-when nobody is known. The plan asks for these to score as well as the general questions, 0.926, and they don't yet. The
-200-question run found the general set got worse, partly because answers gave only the asker's rule. That's fixed in the prompt, and both sets need running again on the fix.
+them. On 31 questions asked by two employees each, the facts that fit the asker were in 0.790 of answers, against 0.468
+when nobody is known. The plan asks for these to score as well as the general questions, 0.912, and they don't yet. The
+first 200-question run found the general set got worse, as answers gave only the asker's rule. With that fixed, the
+general set is back within its usual run-to-run variation, and the quality gate passes.
 
 ## Baseline
 
@@ -81,7 +82,7 @@ model wasn't judged on them, to save quota.
 
 | Check | Nobody known | First design | Measured rule |
 |---|---:|---:|---:|
-| Expected facts in answers | 0.468 | 0.597 | **0.774** |
+| Expected facts in answers | 0.468 | 0.597 | **0.774** (0.790 after the prompt fix below) |
 | Both employees got their facts | 0.355 | 0.484 | **0.645** |
 | Recall@5 | 0.468 | 0.548 | 0.766 |
 | Wrongly refused | 0.129 | 0.097 | 0.065 |
@@ -119,8 +120,24 @@ Band 1 to 3's limit. The prompt's rule told the model to give the rule that fits
 general rule, which the plan rules out. The other five look like the usual variation: the same facts worded differently,
 an answer cut shorter, and two refusals of the same chunks that were answered before.
 
-The rule now says to give the rules for the other groups too, briefly. This run wasn't recorded for the quality gate,
-as it measured the earlier prompt. The golden and persona questions have to be run again on the fixed prompt.
+The rule now says to give the rules for the other groups too, briefly. The first run wasn't recorded for the quality
+gate, as it measured the earlier prompt. Both sets were run again on the fix, on 16 November:
+
+| Check | Before Phase 11 | First prompt | **Fixed prompt, recorded** |
+|---|---:|---:|---:|
+| Recall@5 | 0.945 | 0.938 | 0.943 |
+| Expected facts in answers | 0.926 | 0.892 | **0.912** |
+| Correct refusals | 0.900 | 0.900 | 0.925 |
+| Wrongly refused | 0.044 | 0.037 | 0.050 |
+| Citations valid / on a labelled chunk | 1.000 / 0.974 | 1.000 / 0.961 | 1.000 / 0.980 |
+| Judge: correct | 0.968 | 0.956 | 0.974 |
+| Seconds per answer, p50 / p95 | 1.96 / 4.23 | 2.06 / 4.56 | 2.19 / 4.17 |
+
+- **Expected facts are 2 answers short of before, 135 of 148 against 137.** The Phase 10 run, on code that answers the
+  same way, also scored 0.912, so this is within the variation between runs. The notice period and room rent questions
+  now give every group's rule.
+- **On the persona questions, the fix cost nothing:** expected facts 0.790 against 0.774, and both employees right on
+  0.710 against 0.645. Giving the other groups' rules didn't drop the asker's own.
 
 ## Phase 11 status
 
@@ -131,8 +148,8 @@ as it measured the earlier prompt. The golden and persona questions have to be r
 | Search prefers sections that apply to the asker, without hiding the general rule; the answer says which group | Implemented and tested | Measured above |
 | 30 or more golden items that need a persona, each run as two employees | Implemented and run | 31, unreviewed |
 | The employee can see and correct the details used | Implemented and tested | Corrections last for the chat screen's session. Not clicked in a browser |
-| Persona items score at least as well as the general ones | **Not met** | 0.774 against 0.926 |
-| The general set doesn't get worse | **Not met with the first prompt**, fixed, not yet re-measured | Expected facts 0.926 to 0.892. Two misses came from answers giving only the asker's rule |
+| Persona items score at least as well as the general ones | **Not met** | 0.790 against 0.912 on the same day's general run |
+| The general set doesn't get worse | Met after the fix | 0.912, within run-to-run variation of 0.926, and the quality gate passes. The first prompt fell to 0.892 |
 
 ## What the owner must do
 

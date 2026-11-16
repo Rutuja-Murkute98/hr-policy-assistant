@@ -368,8 +368,8 @@ The general set held, after a fix so answers give every group's rule. See
 
 **Work, part A: reading documents**
 
-- [ ] Use DOCX heading styles for sections instead of guessing.
-- [ ] Extract PDF tables as Markdown tables with `pdfplumber` (no PyTorch). Measure it on sample
+- [x] Use DOCX heading styles for sections instead of guessing.
+- [x] Extract PDF tables as Markdown tables with `pdfplumber` (no PyTorch). Measure it on sample
       policies with tables.
 - [ ] OCR for scanned PDFs as an optional worker, either Tesseract in its own container or Google
       Document AI behind a setting. It stays off on the free API.
@@ -406,6 +406,11 @@ each with a decision entry.
 **Done when** a scanned PDF and a PDF with tables can be uploaded and answered from correctly, a Drive
 folder stays in sync, the five known contradictions are flagged, and each retrieval experiment has a
 recorded result.
+
+**Progress:** part A1 is built and measured. On PDF and Word versions of the 34 test documents, PDF headings without
+section numbers went from none found to all, and every table row now comes out in a Markdown table. Questions answered
+from a PDF of tables were right with the old and new readers alike. Parts A2, B and C are next. See
+[the Phase 12 report](../evaluation/reports/phase12_report.md).
 
 ---
 

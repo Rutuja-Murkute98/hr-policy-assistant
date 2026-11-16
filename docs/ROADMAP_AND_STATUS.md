@@ -21,7 +21,8 @@ For the overall picture, see [the final report](FINAL_REPORT.md).
 | 9 | Speed and quota: step timings, early search, question vector cache, answer cache, skipping the model on clear first messages | Built and measured: median 4.69 s to 3.12 s on all 200 questions. p95 target not met. See [the Phase 9 report](../evaluation/reports/phase9_report.md) |
 | 10 | Settings per organisation, changed while running | Built and tested: settings, category suggestions, and a new embedding model applied without a break. See [the Phase 10 report](../evaluation/reports/phase10_report.md) |
 | 11 | Answers for the person asking | Built and tested. Below target: persona facts 0.790 against 0.912 for general questions, and 0.468 with nobody known. The general set holds, and the gate passes. See [the Phase 11 report](../evaluation/reports/phase11_report.md) |
-| 12 to 19 | Documents and sources, real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
+| 12 | Better documents and more sources | Part A1 built and measured: PDF headings from fonts, and PDF and Word tables as Markdown tables. Parts A2, B and C planned. See [the Phase 12 report](../evaluation/reports/phase12_report.md) |
+| 13 to 19 | Real self-service, domain packs, Hindi and Marathi, channels, security and DPDP, operations, final audit | Planned: see [the improvement plan](IMPROVEMENT_PLAN.md) |
 
 ## Phase 7 status
 

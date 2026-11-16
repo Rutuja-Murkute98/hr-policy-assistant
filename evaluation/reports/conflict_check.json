@@ -1,0 +1,160 @@
+{
+ "sections": 539,
+ "pairs_checked": 245,
+ "pairs_failed": 0,
+ "clashes": 8,
+ "known_found": 5,
+ "known": [
+  {
+   "about": "Sick leave on probation",
+   "found": true,
+   "sections": [
+    [
+     "Leave_Policy > 4. Types of Leave and Entitlements > 4.2. Sick Leave (SL) > 0"
+    ],
+    [
+     "Probation_and_Confirmation_Policy > 7. Entitlements During Probation > 0"
+    ]
+   ]
+  },
+  {
+   "about": "Casual leave on probation",
+   "found": true,
+   "sections": [
+    [
+     "Employee_FAQ > 1. Leave and Holidays > 0",
+     "Leave_Policy > 4. Types of Leave and Entitlements > 4.3. Casual Leave (CL) > 0"
+    ],
+    [
+     "Probation_and_Confirmation_Policy > 7. Entitlements During Probation > 0"
+    ]
+   ]
+  },
+  {
+   "about": "Referral bonus, non-technical Band 2",
+   "found": true,
+   "sections": [
+    [
+     "Employee_Referral_Policy > 4. Referral Bonus Structure > 0"
+    ],
+    [
+     "Compensation_and_Benefits_Policy > 13. Referral Bonus > 0"
+    ]
+   ]
+  },
+  {
+   "about": "Time to raise a salary query",
+   "found": true,
+   "sections": [
+    [
+     "Employee_FAQ > 2. Salary and Payroll > 0",
+     "Payroll_and_Salary_Processing_Policy > 13. Salary Discrepancy Resolution > 0",
+     "Payroll_and_Salary_Processing_Policy > 18. Roles and Responsibilities > 0",
+     "Payroll_and_Salary_Processing_Policy > At a Glance > 0"
+    ],
+    [
+     "Compensation_and_Benefits_Policy > 5. Salary Disbursement > 0"
+    ]
+   ]
+  },
+  {
+   "about": "ESOP vesting",
+   "found": true,
+   "sections": [
+    [
+     "ESOP_Policy > At a Glance > 0"
+    ],
+    [
+     "ESOP_Policy > 6. Vesting Schedule > 0"
+    ]
+   ]
+  }
+ ],
+ "clashes_raised": 12,
+ "other_clashes": [
+  {
+   "chunk_a": "Compensation_and_Benefits_Policy > 6. Provident Fund > 0",
+   "chunk_b": "Payroll_and_Salary_Processing_Policy > 5. Salary Components > 0",
+   "file_a": "Compensation_and_Benefits_Policy.md",
+   "file_b": "Payroll_and_Salary_Processing_Policy.md",
+   "section_a": "6. Provident Fund",
+   "section_b": "5. Salary Components",
+   "explanation": "One section states the employer contribution goes to EPS and EPF while the other states it is 5 percent of the gross CTC.",
+   "status": "open",
+   "decided_by": "",
+   "checked_at": "2026-11-16T16:00:18.155119+05:30"
+  },
+  {
+   "chunk_a": "Compensation_and_Benefits_Policy > 8. Health Insurance > 0",
+   "chunk_b": "Group_Health_Insurance_and_Mediclaim_Policy > 5. What Is Covered > 0",
+   "file_a": "Compensation_and_Benefits_Policy.md",
+   "file_b": "Group_Health_Insurance_and_Mediclaim_Policy.md",
+   "section_a": "8. Health Insurance",
+   "section_b": "5. What Is Covered",
+   "explanation": "One section covers maternity expenses up to Rs. 75,000 while the other limits them to Rs. 50,000.",
+   "status": "open",
+   "decided_by": "",
+   "checked_at": "2026-11-16T16:00:18.176781+05:30"
+  },
+  {
+   "chunk_a": "Employee_Onboarding_Guide > 7. Days 61 to 90 — Performance and Independence > 0",
+   "chunk_b": "Probation_and_Confirmation_Policy > 11. Communication of Outcome > 0",
+   "file_a": "Employee_Onboarding_Guide.md",
+   "file_b": "Probation_and_Confirmation_Policy.md",
+   "section_a": "7. Days 61 to 90 — Performance and Independence",
+   "section_b": "11. Communication of Outcome",
+   "explanation": "One section states communication within 10 working days of the review meeting while the other requires communication at least 5 working days before the probation end date.",
+   "status": "open",
+   "decided_by": "",
+   "checked_at": "2026-11-16T16:04:09.007905+05:30"
+  },
+  {
+   "chunk_a": "Employee_Onboarding_Guide > 7. Days 61 to 90 — Performance and Independence > 0",
+   "chunk_b": "Performance_Improvement_Plan_Process > 7. PIP Outcomes > 1",
+   "file_a": "Employee_Onboarding_Guide.md",
+   "file_b": "Performance_Improvement_Plan_Process.md",
+   "section_a": "7. Days 61 to 90 — Performance and Independence",
+   "section_b": "7. PIP Outcomes",
+   "explanation": "One section specifies communicating outcomes within 10 working days while the other requires at least 7 working days notice.",
+   "status": "open",
+   "decided_by": "",
+   "checked_at": "2026-11-16T16:04:08.994995+05:30"
+  },
+  {
+   "chunk_a": "Employee_Onboarding_Guide > 8. Remote Employee Onboarding > 0",
+   "chunk_b": "IT_Asset_and_Equipment_Policy > 4. Asset Onboarding Process > 0",
+   "file_a": "Employee_Onboarding_Guide.md",
+   "file_b": "IT_Asset_and_Equipment_Policy.md",
+   "section_a": "8. Remote Employee Onboarding",
+   "section_b": "4. Asset Onboarding Process",
+   "explanation": "One section requires assets at least 3 working days before joining, while the other requires them at least 2 working days before.",
+   "status": "open",
+   "decided_by": "",
+   "checked_at": "2026-11-16T16:04:15.890042+05:30"
+  },
+  {
+   "chunk_a": "Performance_Review_Policy > 7. Performance Bonus > 0",
+   "chunk_b": "Performance_Review_Policy > At a Glance > 0",
+   "file_a": "Performance_Review_Policy.md",
+   "file_b": "Performance_Review_Policy.md",
+   "section_a": "7. Performance Bonus",
+   "section_b": "At a Glance",
+   "explanation": "Rating 1 receives no bonus conflicts with the annual bonus range of 10 to 20 percent.",
+   "status": "open",
+   "decided_by": "",
+   "checked_at": "2026-11-16T16:05:10.900918+05:30"
+  },
+  {
+   "chunk_a": "Probation_and_Confirmation_Policy > 11. Communication of Outcome > 0",
+   "chunk_b": "Probation_and_Confirmation_Policy > At a Glance > 0",
+   "file_a": "Probation_and_Confirmation_Policy.md",
+   "file_b": "Probation_and_Confirmation_Policy.md",
+   "section_a": "11. Communication of Outcome",
+   "section_b": "At a Glance",
+   "explanation": "Communication at least 5 working days before the probation end date conflicts with issuance within 5 working days of the probation end date.",
+   "status": "open",
+   "decided_by": "",
+   "checked_at": "2026-11-16T16:05:10.918102+05:30"
+  }
+ ]
+}

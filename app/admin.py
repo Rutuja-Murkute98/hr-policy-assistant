@@ -6,18 +6,21 @@ restarting, unlike the copy saved in the policy folder.
 """
 import logging
 from datetime import date
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, HTTPException, Request, UploadFile
-from pydantic import ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from app import config
 from app.audience import Audience
+from app.connectors.base import ConnectorError
 from app.identity import Principal
 from app.knowledge import DuplicateDocument, JobConflict, KnowledgeBase, NotFound, UploadDetails, UploadRejected
 from app.org_settings import SettingsError, effective_settings
+from app.policy_checks import PolicyChecks, after_indexing
 from app.reindex import latest_run
 from app.security import admin_principal, audit, service_for
+from app.sources import NewSource, SourceChange, SourceStore, available_kinds, sync_source
 from pipeline.extract import ExtractionError
 
 logger = logging.getLogger("hr_helpdesk")
@@ -46,13 +49,14 @@ def upload_document(
     version_label: str | None = Form(default=None, max_length=50),
     effective_date: date | None = Form(default=None),
     uploaded_by: str = Form(default="unknown", min_length=1, max_length=100),
+    review_date: date | None = Form(default=None),
 ):
     """Add a policy or a new version of one. PDF, DOCX, TXT, HTML and Markdown are accepted."""
     # Read one byte past the limit, so a huge upload isn't held in memory to find out it's too big
     data = file.file.read(config.MAX_UPLOAD_BYTES + 1)
     # A signed-in admin is who their sign-in says. The form's name is only for demo mode's shared key.
     details = UploadDetails(title or None, category or None, version_label or None, effective_date,
-                            principal.email or uploaded_by)
+                            principal.email or uploaded_by, review_date)
     try:
         result = base.add_upload(data, file.filename or "", details)
     except DuplicateDocument as duplicate:
@@ -70,14 +74,10 @@ def upload_document(
 
 
 def index_then_tag(base: KnowledgeBase, llm, job_id: str, source_file: str) -> None:
-    """Index an upload, then tag who its new or changed sections are for. Search works without the tags."""
+    """Index an upload, then run the checks that follow: who sections are for, what changed, and clashes (D60)."""
     base.run_job(job_id)
-    if llm is None:
-        return
-    try:
-        base.tag_audiences(llm, source_file)
-    except Exception:
-        logger.exception("Couldn't tag who the sections of %s are for", source_file)
+    if llm is not None:
+        after_indexing(base, llm, source_file)
 
 
 @router.post("/documents/preview")
@@ -258,3 +258,111 @@ def set_audience(chunk_id: str, audience: Audience, request: Request, principal:
         raise HTTPException(404, "That section isn't in the knowledge base") from None
     audit(request, principal, "audience_set", chunk_id, applies_to=result["applies_to"])
     return result
+
+
+def sources_of(base: KnowledgeBase) -> SourceStore:
+    return SourceStore(base.engine, base.tenant_id)
+
+
+@router.get("/sources")
+def list_sources(base: KnowledgeBase = Depends(knowledge)):
+    """This organisation's sources, and which kinds this server can read."""
+    return {"sources": sources_of(base).all(), "available_kinds": available_kinds()}
+
+
+@router.post("/sources", status_code=201)
+def add_source(new: NewSource, request: Request, principal: Principal = Depends(admin_principal),
+               base: KnowledgeBase = Depends(knowledge)):
+    """Add a folder, Google Drive or SharePoint source. It syncs at its first scheduled time, or when asked."""
+    try:
+        source = sources_of(base).add(new, principal.user_id or principal.source)
+    except ConnectorError as error:
+        raise HTTPException(422, str(error)) from None
+    audit(request, principal, "source_added", source["name"], kind=new.kind)
+    return source
+
+
+@router.patch("/sources/{source_id}")
+def change_source(source_id: str, change: SourceChange, request: Request,
+                  principal: Principal = Depends(admin_principal), base: KnowledgeBase = Depends(knowledge)):
+    try:
+        source = sources_of(base).change(source_id, change)
+    except NotFound:
+        raise HTTPException(404, "Source not found") from None
+    audit(request, principal, "source_changed", source["name"], **change.model_dump(exclude_none=True))
+    return source
+
+
+@router.delete("/sources/{source_id}")
+def remove_source(source_id: str, request: Request, principal: Principal = Depends(admin_principal),
+                  base: KnowledgeBase = Depends(knowledge)):
+    """Stop syncing a source. Its policies stay, and can be removed one by one."""
+    try:
+        sources_of(base).remove(source_id)
+    except NotFound:
+        raise HTTPException(404, "Source not found") from None
+    audit(request, principal, "source_removed", source_id)
+    return {"removed": source_id}
+
+
+@router.post("/sources/{source_id}/sync", status_code=202)
+def sync_now(source_id: str, request: Request, background: BackgroundTasks,
+             principal: Principal = Depends(admin_principal), base: KnowledgeBase = Depends(knowledge)):
+    """Sync a source now, in the background, unless it's syncing already."""
+    store = sources_of(base)
+    try:
+        source = store.get(source_id)
+    except NotFound:
+        raise HTTPException(404, "Source not found") from None
+    if not store.claim(source_id):
+        raise HTTPException(409, "This source is syncing already")
+    audit(request, principal, "source_synced", source["name"])
+    background.add_task(sync_source, store, base, source, llm=getattr(service_for(request, principal), "llm", None))
+    return {"id": source_id, "status": "running"}
+
+
+@router.get("/sources/{source_id}/files")
+def source_files(source_id: str, base: KnowledgeBase = Depends(knowledge)):
+    try:
+        sources_of(base).get(source_id)
+    except NotFound:
+        raise HTTPException(404, "Source not found") from None
+    return sources_of(base).files(source_id)
+
+
+class ClashDecision(BaseModel):
+    chunk_a: str = Field(min_length=1, max_length=400)
+    chunk_b: str = Field(min_length=1, max_length=400)
+    status: Literal["open", "resolved", "dismissed"]
+
+
+@router.get("/clashes")
+def list_clashes(status: Literal["open", "resolved", "dismissed"] = "open",
+                 base: KnowledgeBase = Depends(knowledge)):
+    """Sections that seem to contradict each other, for HR to settle. See docs/DECISIONS.md, D60."""
+    return PolicyChecks(base).clashes(status)
+
+
+@router.patch("/clashes")
+def decide_clash(decision: ClashDecision, request: Request, principal: Principal = Depends(admin_principal),
+                 base: KnowledgeBase = Depends(knowledge)):
+    """Mark a clash resolved, as a policy was fixed, or dismissed. It's raised again if either text changes."""
+    try:
+        PolicyChecks(base).decide(decision.chunk_a, decision.chunk_b, decision.status,
+                                  principal.user_id or principal.source)
+    except NotFound:
+        raise HTTPException(404, "Clash not found") from None
+    audit(request, principal, "clash_decided", f"{decision.chunk_a} | {decision.chunk_b}", status=decision.status)
+    return {"status": decision.status}
+
+
+@router.post("/clashes/check", status_code=202)
+def check_all_clashes(request: Request, background: BackgroundTasks, principal: Principal = Depends(admin_principal),
+                      base: KnowledgeBase = Depends(knowledge)):
+    """Check every policy for clashes, in the background. Pairs already checked, with the same text, are skipped."""
+    llm = getattr(service_for(request, principal), "llm", None)
+    if llm is None:
+        raise HTTPException(503, "The model isn't available to check for clashes")
+    background.add_task(PolicyChecks(base).check_clashes, llm, None, 5.0)
+    audit(request, principal, "clashes_checked")
+    return {"status": "checking"}

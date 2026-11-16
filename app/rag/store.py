@@ -86,11 +86,12 @@ DOCUMENT_HASHES = text(
 )
 SAVE_DOCUMENT = text(
     "INSERT INTO policy_documents (tenant_id, collection_name, source_file, title, category, version, "
-    "effective_date, content_hash, chunk_count) VALUES (:tenant_id, :collection, :source_file, :title, :category, "
-    ":version, CAST(:effective_date AS date), :content_hash, :chunk_count) "
+    "effective_date, content_hash, chunk_count, review_date) VALUES (:tenant_id, :collection, :source_file, :title, "
+    ":category, :version, CAST(:effective_date AS date), :content_hash, :chunk_count, CAST(:review_date AS date)) "
     "ON CONFLICT (tenant_id, collection_name, source_file) DO UPDATE SET title = EXCLUDED.title, "
     "category = EXCLUDED.category, version = EXCLUDED.version, effective_date = EXCLUDED.effective_date, "
-    "content_hash = EXCLUDED.content_hash, chunk_count = EXCLUDED.chunk_count, updated_at = now()"
+    "content_hash = EXCLUDED.content_hash, chunk_count = EXCLUDED.chunk_count, review_date = EXCLUDED.review_date, "
+    "updated_at = now()"
 )
 DELETE_DOCUMENT = text(
     "DELETE FROM policy_documents WHERE tenant_id = :tenant_id AND collection_name = :collection "
@@ -111,6 +112,7 @@ class DocumentRecord:
     effective_date: str | None
     content_hash: str
     chunk_count: int
+    review_date: str | None = None  # when the policy is due its next review: see docs/DECISIONS.md, D60
 
 
 MODEL_FOR_COLLECTION = text(

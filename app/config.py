@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     ocr_token: str = ""
     ocr_timeout_seconds: float = Field(default=180.0, gt=0)
 
+    # Sources policies sync from: see docs/DECISIONS.md, D59. Each kind is off until its setting is filled in.
+    sources_root: str = ""  # watched folders live in <this>/<organisation id>/
+    google_drive_credentials_file: str = ""  # a service account's JSON key
+    sharepoint_tenant_id: str = ""
+    sharepoint_client_id: str = ""
+    sharepoint_client_secret: str = ""
+    source_sync_seconds: int = Field(default=60, ge=0)  # how often the API looks for sources due a sync. 0 = never
+
     # Each organisation's own settings: see docs/DECISIONS.md, D52
     # Comma-separated models of LLM_PROVIDER an organisation may pick, besides the deployment's own
     allowed_chat_models: str = ""
@@ -240,6 +248,12 @@ ALLOWED_CHAT_MODELS = list(dict.fromkeys(
 SETTINGS_CACHE_SECONDS = settings.settings_cache_seconds
 AUDIENCE_WEIGHT = settings.audience_weight
 OCR_URL = settings.ocr_url.rstrip("/")
+SOURCES_ROOT = settings.sources_root
+GOOGLE_DRIVE_CREDENTIALS_FILE = settings.google_drive_credentials_file
+SHAREPOINT_TENANT_ID = settings.sharepoint_tenant_id
+SHAREPOINT_CLIENT_ID = settings.sharepoint_client_id
+SHAREPOINT_CLIENT_SECRET = settings.sharepoint_client_secret
+SOURCE_SYNC_SECONDS = settings.source_sync_seconds
 OCR_TOKEN = settings.ocr_token
 OCR_TIMEOUT_SECONDS = settings.ocr_timeout_seconds
 CONVERSATION_RETENTION_DAYS = settings.conversation_retention_days

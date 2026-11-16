@@ -95,12 +95,14 @@ class DocumentChange:
 
     def record(self):
         from app.rag.store import DocumentRecord
+        from pipeline.chunk_documents import review_date_of
 
         details = self.chunks[0].metadata
         return DocumentRecord(
             source_file=self.source_file, title=details["policy"], category=details["category"],
             version=details["version"], effective_date=details["effective_date"],
             content_hash=content_hash(self.text, details["category"]), chunk_count=len(self.chunks),
+            review_date=review_date_of(self.text),
         )
 
 

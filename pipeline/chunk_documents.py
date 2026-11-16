@@ -22,8 +22,13 @@ MAX_SECTION_CHARS = 1200  # a longer section is cut into smaller pieces
 
 HEADING = re.compile(r"^(#{1,3}) +(.+?) *$", re.MULTILINE)
 AT_A_GLANCE = re.compile(r"^\*\*At a Glance:\*\* *(.+)$", re.MULTILINE)
-VERSION = re.compile(r"\*\*Version:\*\* *([^|\n]+?) *(?:\||$)", re.MULTILINE)
-EFFECTIVE_DATE = re.compile(r"\*\*Effective Date:\*\* *([^|\n]+?) *(?:\||$)", re.MULTILINE)
+# A header line such as "**Version:** 2.0 | **Effective Date:** 1 April 2026". A PDF or Word upload loses the **, so
+# they aren't required. Only the start of the document is read, where the header is.
+HEADER_FIELD = r"(?:\*\*)?{name}:(?:\*\*)? *([^|\n*]+?) *(?:\||$)"
+HEADER_CHARS = 1500
+VERSION = re.compile(HEADER_FIELD.format(name="Version"), re.MULTILINE)
+EFFECTIVE_DATE = re.compile(HEADER_FIELD.format(name="Effective Date"), re.MULTILINE)
+NEXT_REVIEW = re.compile(HEADER_FIELD.format(name="Next Review"), re.MULTILINE)
 
 long_section_splitter = RecursiveCharacterTextSplitter(
     chunk_size=1000,
@@ -48,19 +53,29 @@ def document_details(text: str, file_name: str, tenant_id: str | None = None,
                      profile: config.Tenant | None = None) -> dict[str, str | None]:
     """Read the details that apply to every chunk of a document."""
     profile = profile or config.tenant
-    version, effective = VERSION.search(text), EFFECTIVE_DATE.search(text)
-    effective_date = None
-    if effective:
-        try:
-            effective_date = datetime.strptime(effective[1], "%d %B %Y").date().isoformat()
-        except ValueError:
-            pass  # a date in another format is left out, not guessed
+    version = VERSION.search(text[:HEADER_CHARS])
     return {
         "tenant_id": tenant_id or config.TENANT_ID,
         "category": profile.document_categories.get(file_name, profile.default_category),
         "version": version[1] if version else None,
-        "effective_date": effective_date,
+        "effective_date": header_date(EFFECTIVE_DATE, text),
     }
+
+
+def header_date(pattern: re.Pattern, text: str) -> str | None:
+    """A date such as "1 April 2026" from the header, as 2026-04-01. Another format is left out, not guessed."""
+    found = pattern.search(text[:HEADER_CHARS])
+    if not found:
+        return None
+    try:
+        return datetime.strptime(found[1].strip(), "%d %B %Y").date().isoformat()
+    except ValueError:
+        return None
+
+
+def review_date_of(text: str) -> str | None:
+    """When the policy is due its next review, from its "Next Review:" line. See docs/DECISIONS.md, D60."""
+    return header_date(NEXT_REVIEW, text)
 
 
 def chunk_document(file: Path) -> list[Document]:

@@ -114,6 +114,8 @@ def show_upload() -> None:
                                 index=categories.index(suggested) if suggested in categories else None)
         version_label = st.text_input("Version label (optional)", placeholder="Such as 3.0")
         effective = st.date_input("Effective date (optional)", value=None, min_value=date(2000, 1, 1))
+        review = st.date_input("Next review (optional)", value=None, min_value=date(2000, 1, 1),
+                               help="Read from the policy's \"Next Review:\" line if left empty")
         uploaded_by = SESSION["email"] if SESSION else st.text_input("Your name", max_chars=100)
         if not st.form_submit_button("Upload", type="primary"):
             return
@@ -124,6 +126,8 @@ def show_upload() -> None:
               "uploaded_by": uploaded_by.strip()}
     if effective:
         fields["effective_date"] = effective.isoformat()
+    if review:
+        fields["review_date"] = review.isoformat()
     result, problem = call_api("POST", "/admin/documents", files={"file": (upload.name, upload.getvalue())},
                                data=fields)
     if problem:
@@ -145,9 +149,14 @@ def show_upload() -> None:
 
 
 def show_documents(documents: list[dict]) -> None:
+    overdue = [document["policy"] for document in documents if document.get("review_overdue")]
+    if overdue:
+        st.warning(f"{len(overdue)} {'policy is' if len(overdue) == 1 else 'policies are'} past their review date: "
+                   + ", ".join(overdue) + ".")
     st.dataframe(documents, hide_index=True, use_container_width=True, column_config={
         "file": "File", "policy": "Policy", "chunks": "Sections", "version": "Version", "category": "Category",
-        "version_label": "Label", "effective_date": "Effective", "uploaded_by": "Uploaded by"})
+        "version_label": "Label", "effective_date": "Effective", "uploaded_by": "Uploaded by",
+        "review_date": "Next review", "review_overdue": st.column_config.CheckboxColumn("Overdue")})
     if not documents:
         return
     chosen = st.selectbox("Policy", [document["file"] for document in documents], index=None,
@@ -158,7 +167,8 @@ def show_documents(documents: list[dict]) -> None:
     if problem:
         st.caption("No version history is recorded for this policy yet.")
     else:
-        st.dataframe(versions, hide_index=True, use_container_width=True)
+        st.dataframe(versions, hide_index=True, use_container_width=True,
+                     column_config={"what_changed": st.column_config.TextColumn("What changed", width="large")})
     confirmed = st.checkbox("The bot should stop answering from this policy")
     if st.button("Remove", disabled=not confirmed):
         result, problem = call_api("DELETE", f"/admin/documents/{chosen}")
@@ -572,6 +582,136 @@ def show_audiences() -> None:
         st.rerun()
 
 
+SOURCE_KINDS = {"folder": "A folder on the server", "google_drive": "Google Drive", "sharepoint": "SharePoint"}
+SOURCE_STATUS = {"never": "Not synced yet", "running": "Syncing", "ok": "Up to date", "failed": "Failed"}
+
+
+def source_summary(summary: dict | None) -> str:
+    if not summary:
+        return ""
+    parts = [f"{summary[key]} {label}" for key, label in (("added", "added"), ("updated", "updated"),
+                                                          ("removed", "removed")) if summary.get(key)]
+    if summary.get("failed"):
+        parts.append(f"{len(summary['failed'])} couldn't be read")
+    return ", ".join(parts) or "No changes"
+
+
+def show_sources() -> None:
+    listing, problem = call_api("GET", "/admin/sources")
+    if problem:
+        st.error(problem)
+        return
+    sources, kinds = listing["sources"], listing["available_kinds"]
+    st.caption("Policies can sync from where HR keeps them. Only new or changed files are read, and a file removed "
+               "there stops being answered from, unless you choose to keep it.")
+    if sources:
+        st.dataframe([{"Name": source["name"], "Kind": SOURCE_KINDS.get(source["kind"], source["kind"]),
+                       "Every": f"{source['every_minutes']} min", "On": source["enabled"],
+                       "Status": SOURCE_STATUS.get(source["status"], source["status"]),
+                       "Last sync": source["last_synced_at"] or "", "Result": source_summary(source["last_summary"]),
+                       "Problem": source["last_error"] or ""} for source in sources],
+                     hide_index=True, use_container_width=True)
+        chosen = st.selectbox("Source", sources, format_func=lambda source: source["name"], index=None)
+        if chosen:
+            show_source(chosen)
+    if not kinds:
+        st.info("This server can't read any sources yet. Its owner sets SOURCES_ROOT for folders, or the Google Drive "
+                "or SharePoint settings.")
+        return
+    with st.form("add_source", clear_on_submit=True):
+        st.subheader("Add a source")
+        kind = st.selectbox("Kind", kinds, format_func=lambda value: SOURCE_KINDS.get(value, value))
+        name = st.text_input("Name", placeholder="Such as HR shared drive", max_chars=100)
+        location = st.text_input("Where", help="A folder: its path inside your organisation's sources folder. "
+                                               "Google Drive: the folder's id, after /folders/ in its address. "
+                                               "SharePoint: site id, library id and folder, separated by |.")
+        every = st.number_input("Sync every (minutes)", 15, 10080, value=60, step=15)
+        keep = st.toggle("Keep policies whose file is removed there")
+        if not st.form_submit_button("Add", type="primary"):
+            return
+    parts = [part.strip() for part in location.split("|")]
+    settings = ({"path": location.strip()} if kind == "folder" else {"folder_id": location.strip()}
+                if kind == "google_drive" else {"site_id": parts[0], "drive_id": parts[1] if len(parts) > 1 else "",
+                                                "folder": parts[2] if len(parts) > 2 else ""})
+    _, problem = call_api("POST", "/admin/sources", json={"kind": kind, "name": name, "settings": settings,
+                                                          "every_minutes": every, "keep_removed": keep})
+    if problem:
+        st.error(problem)
+    else:
+        st.session_state.admin_message = f"{name} was added. It syncs at its first time, or press Sync now."
+        st.rerun()
+
+
+def show_source(source: dict) -> None:
+    for failure in (source["last_summary"] or {}).get("failed", []):
+        st.warning(f"{failure['file']}: {failure['reason']}")
+    sync, pause, remove = st.columns(3)
+    if sync.button("Sync now", key=f"sync_{source['id']}", disabled=source["status"] == "running"):
+        _, problem = call_api("POST", f"/admin/sources/{source['id']}/sync")
+        if problem:
+            st.error(problem)
+        else:
+            st.session_state.admin_message = f"Syncing {source['name']}. Refresh in a minute to see the result."
+            st.rerun()
+    if pause.button("Pause" if source["enabled"] else "Resume", key=f"pause_{source['id']}"):
+        _, problem = call_api("PATCH", f"/admin/sources/{source['id']}", json={"enabled": not source["enabled"]})
+        if problem:
+            st.error(problem)
+        else:
+            st.rerun()
+    if remove.button("Stop syncing", key=f"remove_{source['id']}", help="Its policies stay"):
+        _, problem = call_api("DELETE", f"/admin/sources/{source['id']}")
+        if problem:
+            st.error(problem)
+        else:
+            st.session_state.admin_message = f"{source['name']} won't sync any more. Its policies are still there."
+            st.rerun()
+    files, problem = call_api("GET", f"/admin/sources/{source['id']}/files")
+    if not problem and files:
+        st.dataframe(files, hide_index=True, use_container_width=True)
+
+
+CLASH_VIEWS = {"open": "To look at", "resolved": "Resolved", "dismissed": "Not a clash"}
+
+
+def show_clashes() -> None:
+    st.caption("Places where two policies, or two parts of one, give a different figure for the same thing, such "
+               "as days of leave or an amount. Each upload is checked. Fix the policy that's wrong and upload it "
+               "again, or mark the pair as not a clash. A pair is checked again only when one of its texts changes.")
+    view = st.segmented_control("Show", list(CLASH_VIEWS), format_func=CLASH_VIEWS.get, default="open",
+                                key="clash_view") or "open"
+    clashes, problem = call_api("GET", f"/admin/clashes?status={view}")
+    if problem:
+        st.error(problem)
+        return
+    if not clashes:
+        st.info("Nothing to look at." if view == "open" else "None yet.")
+    for number, clash in enumerate(clashes):
+        with st.container(border=True):
+            st.markdown(f"**{clash['file_a']}** · {clash['section_a']}")
+            st.markdown(f"**{clash['file_b']}** · {clash['section_b']}")
+            st.write(clash["explanation"])
+            if view != "open":
+                st.caption(f"Marked by {clash['decided_by'] or 'someone'}")
+                continue
+            resolved, dismissed = st.columns(2)
+            for column, status, label in ((resolved, "resolved", "Fixed"), (dismissed, "dismissed", "Not a clash")):
+                if column.button(label, key=f"clash_{status}_{number}"):
+                    _, problem = call_api("PATCH", "/admin/clashes", json={
+                        "chunk_a": clash["chunk_a"], "chunk_b": clash["chunk_b"], "status": status})
+                    if problem:
+                        st.error(problem)
+                    else:
+                        st.rerun()
+    if st.button("Check every policy again", help="Only pairs not yet checked, or whose text changed, go to the model"):
+        _, problem = call_api("POST", "/admin/clashes/check")
+        if problem:
+            st.error(problem)
+        else:
+            st.session_state.admin_message = "Checking every policy. Refresh in a few minutes to see what it found."
+            st.rerun()
+
+
 st.set_page_config(page_title="HR Helpdesk admin", page_icon=":material/admin_panel_settings:")
 st.markdown("[← Back to chat](/)")
 st.title("Policy admin")
@@ -597,16 +737,21 @@ with st.container():
     if "admin_message" in st.session_state:
         st.success(st.session_state.pop("admin_message"))
 
-(documents_tab, upload_tab, jobs_tab, audiences_tab, unanswered_tab, feedback_tab, usage_tab, users_tab, keys_tab,
- settings_tab, audit_tab) = st.tabs([f"Policies ({len(current)})", "Upload", "Indexing jobs", "Who rules apply to",
-                                     "Unanswered questions", "Feedback", "Usage", "People", "API keys", "Settings",
-                                     "Audit log"])
+(documents_tab, upload_tab, sources_tab, jobs_tab, clashes_tab, audiences_tab, unanswered_tab, feedback_tab, usage_tab,
+ users_tab, keys_tab, settings_tab, audit_tab) = st.tabs([f"Policies ({len(current)})", "Upload", "Sources",
+                                                          "Indexing jobs", "Clashes", "Who rules apply to",
+                                                          "Unanswered questions", "Feedback", "Usage", "People",
+                                                          "API keys", "Settings", "Audit log"])
 with documents_tab:
     show_documents(current)
 with upload_tab:
     show_upload()
+with sources_tab:
+    show_sources()
 with jobs_tab:
     show_jobs()
+with clashes_tab:
+    show_clashes()
 with audiences_tab:
     show_audiences()
 with unanswered_tab:

@@ -28,6 +28,7 @@ from app.persona import Persona
 from app.rag.retrieval import SearchFilters
 from app.rag.store import count_chunks, run_migrations
 from app.security import audit, current_principal, get_rate_store, rate_limit, required_user, service_for
+from app.source_scheduler import SourceScheduler
 from app.workflow import create_registry
 
 setup_logging()
@@ -68,7 +69,13 @@ async def lifespan(app: FastAPI):
         if app.state.identity.passwords:
             app.state.identity.passwords.purge_expired()
         rate_limit.store = get_rate_store(registry.engine)
+        if config.SOURCE_SYNC_SECONDS:
+            app.state.source_scheduler = SourceScheduler(registry, config.SOURCE_SYNC_SECONDS)
+            app.state.source_scheduler.start()
     yield
+    scheduler = getattr(app.state, "source_scheduler", None)
+    if scheduler:
+        scheduler.stop()
     close = getattr(app.state.service, "close", None)
     if close:
         close()

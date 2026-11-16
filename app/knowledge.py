@@ -26,7 +26,7 @@ from app.org_settings import categories_of
 from app.pii import mask
 from app.rag.retrieval import body_of
 from app.tenancy import TenantEngine, tenant_scoped
-from pipeline.chunk_documents import chunk_text
+from pipeline.chunk_documents import chunk_text, review_date_of
 from pipeline.embed_and_store import SyncPlan, content_hash, plan_sync, run_sync
 from pipeline.extract import extract_document, page_images
 
@@ -59,6 +59,7 @@ class UploadDetails:
     version_label: str | None = None
     effective_date: date | None = None
     uploaded_by: str = "unknown"
+    review_date: date | None = None  # set by HR, or read from the document's "Next Review:" line
 
 
 def text_hash(content: str) -> str:
@@ -106,13 +107,15 @@ class KnowledgeBase:
         ), {**self._scope, "file": source_file}).scalar() or 0) + 1
         version_id = connection.execute(text(
             "INSERT INTO document_versions (tenant_id, collection_name, source_file, version_number, title, category, "
-            "version_label, effective_date, original_name, text_hash, content_hash, content, status, uploaded_by) "
-            "VALUES (:tenant_id, :collection, :file, :number, :title, :category, :label, CAST(:effective AS date), "
-            ":original, :text_hash, :content_hash, :content, :status, :by) RETURNING id"
+            "version_label, effective_date, original_name, text_hash, content_hash, content, status, uploaded_by, "
+            "review_date) VALUES (:tenant_id, :collection, :file, :number, :title, :category, :label, "
+            "CAST(:effective AS date), :original, :text_hash, :content_hash, :content, :status, :by, "
+            "CAST(:review AS date)) RETURNING id"
         ), {**self._scope, "file": source_file, "number": number, "title": details["policy"],
             "category": details["category"], "label": details.get("version"), "effective": details.get("effective_date"),
             "original": original_name, "text_hash": text_hash(content), "content_hash": details["content_hash"],
-            "content": content, "status": status, "by": uploaded_by}).scalar_one()
+            "content": content, "status": status, "by": uploaded_by,
+            "review": details.get("review_date") or review_date_of(content)}).scalar_one()
         return version_id, number
 
     def record_baseline(self, source_file: str, chunks: list[Document], content: str, uploaded_by: str = "indexing") -> int:
@@ -220,6 +223,7 @@ class KnowledgeBase:
             raise JobConflict("This policy is already being indexed. Please wait for that to finish.")
 
         metadata = dict(chunks[0].metadata)
+        metadata["review_date"] = details.review_date.isoformat() if details.review_date else review_date_of(markdown)
         metadata["content_hash"] = self._version_hash(markdown, metadata)
         self._ensure_baseline(source_file)
         with self.engine.connect() as connection:
@@ -251,6 +255,8 @@ class KnowledgeBase:
     @staticmethod
     def _version_hash(content: str, metadata: dict) -> str:
         details = {key: metadata.get(key) for key in ("policy", "category", "version", "effective_date")}
+        if metadata.get("review_date"):  # only when set, so earlier versions' hashes stay the same
+            details["review_date"] = metadata["review_date"]
         return hashlib.sha256(f"{json.dumps(details, sort_keys=True)}\n{content}".encode()).hexdigest()
 
     def archive_before_change(self, plan: SyncPlan, stored: dict[str, Document]) -> None:
@@ -310,6 +316,7 @@ class KnowledgeBase:
             source_file=version.source_file, title=details["policy"], category=details["category"],
             version=details["version"], effective_date=details["effective_date"],
             content_hash=content_hash(version.content, details["category"]), chunk_count=len(chunks),
+            review_date=version.review_date.isoformat() if version.review_date else None,
         ))
         with self.engine.begin() as connection:
             connection.execute(text(
@@ -385,11 +392,17 @@ class KnowledgeBase:
             titles[chunk.metadata["source"]] = chunk.metadata["policy"]
         with self.engine.connect() as connection:
             rows = connection.execute(text(
-                "SELECT source_file, version_number, category, version_label, effective_date, uploaded_by "
-                "FROM document_versions WHERE tenant_id = :tenant_id AND collection_name = :collection "
+                "SELECT source_file, version_number, category, version_label, effective_date, uploaded_by, "
+                "review_date FROM document_versions WHERE tenant_id = :tenant_id AND collection_name = :collection "
                 "AND status = 'current'"
             ), self._scope).all()
+            # Policies indexed by the script, with no version history yet, have their date on their own record
+            records: dict[str, date | None] = dict(connection.execute(text(
+                "SELECT source_file, review_date FROM policy_documents WHERE tenant_id = :tenant_id "
+                "AND collection_name = :collection"
+            ), self._scope).all())
         versions = {row.source_file: row for row in rows}
+        today = date.today()
         result = []
         for file, chunks in sorted(counts.items()):
             row = versions.get(file)
@@ -399,6 +412,9 @@ class KnowledgeBase:
                 "version_label": row.version_label if row else None,
                 "effective_date": row.effective_date.isoformat() if row and row.effective_date else None,
                 "uploaded_by": row.uploaded_by if row else None,
+                "review_date": review.isoformat() if (review := row.review_date if row and row.review_date
+                                                      else records.get(file)) else None,
+                "review_overdue": bool(review and review < today),
             })
         return result
 
@@ -406,8 +422,9 @@ class KnowledgeBase:
         with self.engine.connect() as connection:
             rows = connection.execute(text(
                 "SELECT version_number, title, category, version_label, effective_date, original_name, status, "
-                "uploaded_by, created_at, superseded_at FROM document_versions WHERE tenant_id = :tenant_id "
-                "AND collection_name = :collection AND source_file = :file ORDER BY version_number DESC"
+                "uploaded_by, created_at, superseded_at, review_date, change_summary FROM document_versions "
+                "WHERE tenant_id = :tenant_id AND collection_name = :collection AND source_file = :file "
+                "ORDER BY version_number DESC"
             ), {**self._scope, "file": source_file}).all()
         if not rows:
             raise NotFound(source_file)
@@ -416,7 +433,9 @@ class KnowledgeBase:
                  "effective_date": row.effective_date.isoformat() if row.effective_date else None,
                  "original_name": row.original_name, "status": row.status, "uploaded_by": row.uploaded_by,
                  "created_at": row.created_at.isoformat(),
-                 "superseded_at": row.superseded_at.isoformat() if row.superseded_at else None} for row in rows]
+                 "superseded_at": row.superseded_at.isoformat() if row.superseded_at else None,
+                 "review_date": row.review_date.isoformat() if row.review_date else None,
+                 "what_changed": row.change_summary} for row in rows]
 
     def jobs(self, limit: int = 50) -> list[dict]:
         with self.engine.connect() as connection:

@@ -387,15 +387,15 @@ The general set held, after a fix so answers give every group's rule. See
 
 **Work, part C: sources and changes**
 
-- [ ] A `Connector` interface with list, fetch and "changed since". First connectors: a watched folder
+- [x] A `Connector` interface with list, fetch and "changed since". First connectors: a watched folder
       and Google Drive. SharePoint through Microsoft Graph behind a setting, with a fake.
-- [ ] Sync on a schedule through the existing job table, using the existing content hashes so only
+- [x] Sync on a schedule through the existing job table, using the existing content hashes so only
       changed sections are embedded.
-- [ ] Find contradictions between policies at upload time: compare new sections with similar existing
+- [x] Find contradictions between policies at upload time: compare new sections with similar existing
       ones and flag clashes for HR. The five known contradictions are the test cases.
-- [ ] Write a plain summary of what changed when a policy gets a new version, and show it in the admin
+- [x] Write a plain summary of what changed when a policy gets a new version, and show it in the admin
       page and, optionally, to employees who asked about that policy before.
-- [ ] Policy review dates, with a reminder in the admin page when one has passed.
+- [x] Policy review dates, with a reminder in the admin page when one has passed.
 
 **Files:** `pipeline/extract.py`, `pipeline/chunk_documents.py`, `app/knowledge.py`, a new
 `app/connectors/` package, `app/rag/`, `ui/pages/admin.py`, migrations.
@@ -409,7 +409,12 @@ recorded result.
 
 **Progress:** part A1 is built and measured. On PDF and Word versions of the 34 test documents, PDF headings without
 section numbers went from none found to all, and every table row now comes out in a Markdown table. Questions answered
-from a PDF of tables were right with the old and new readers alike. Part A2 adds scanned pages, read by a Tesseract worker you run, and a preview for HR. Docling waits for the owner, and parts B and C are next. See
+from a PDF of tables were right with the old and new readers alike. Part A2 adds scanned pages, read by a Tesseract worker you run, and a preview for HR. Part C syncs policies from a
+folder, Google Drive or SharePoint, and checks each upload: all five known contradictions were flagged with the real
+model, and one more that nobody had listed. A new version gets a summary of what changed, and overdue reviews are shown.
+Telling employees who asked about a changed policy isn't built. The 200-question run on the Phase 12 code meets every
+floor, though facts correct fell from 0.912 to 0.885 with the answer path unchanged. Docling waits for the owner, and
+part B is next. See
 [the Phase 12 report](../evaluation/reports/phase12_report.md).
 
 ---

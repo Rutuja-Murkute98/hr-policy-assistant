@@ -54,7 +54,7 @@ def main() -> None:
                 for question in questions:
                     chunks, _ = rag.search(question["question"], SearchFilters(tenant_id=config.TENANT_ID),
                                            persona=personas[question["employee"]])
-                    recalls.append(recall_at_k([chunk.id for chunk in chunks], set(question["relevant_chunks"]),
+                    recalls.append(recall_at_k([str(chunk.id) for chunk in chunks], set(question["relevant_chunks"]),
                                                config.RETRIEVE_K))
                 results[f"{way}, weight {weight}"] = round(sum(recalls) / len(recalls), 3)
                 print(f"{way:34} weight {weight:<5} recall@5 {results[f'{way}, weight {weight}']}", flush=True)
@@ -67,7 +67,7 @@ def main() -> None:
             recalls = []
             for item in golden:
                 chunks, _ = rag.search(item["question"], SearchFilters(tenant_id=config.TENANT_ID), persona=asha)
-                recalls.append(recall_at_k([chunk.id for chunk in chunks], set(item["relevant_chunks"]),
+                recalls.append(recall_at_k([str(chunk.id) for chunk in chunks], set(item["relevant_chunks"]),
                                            config.RETRIEVE_K))
             results[f"golden as {EVAL_USER}: {way}, weight {weight}"] = round(sum(recalls) / len(recalls), 3)
             print(f"golden ({len(golden)} first messages) {way:30} weight {weight:<5} recall@5 "

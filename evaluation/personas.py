@@ -63,7 +63,7 @@ def ask_as(service, question: dict):
 
 def both_right(items: list[dict], rows: dict[str, dict]) -> float:
     """The share of items where both employees got the facts that fit them, the measure that matters here."""
-    pairs = {}
+    pairs: dict[str, list[bool]] = {}
     for question in items:
         pairs.setdefault(question["item"], []).append(
             facts_present(rows[question["id"]]["answer"], question["must_contain"]))

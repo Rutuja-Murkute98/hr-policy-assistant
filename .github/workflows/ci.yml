@@ -28,6 +28,8 @@ jobs:
         with:
           python-version-file: .python-version
           cache: pip
+      - name: Install Tesseract, so the OCR test reads a real scan (D58)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng
       - name: Install
         run: pip install -r requirements-api.txt -r ui/requirements.txt -r requirements-dev.txt
       - name: Lint
@@ -55,6 +57,14 @@ jobs:
         run: docker compose config --quiet
       - name: Build the images
         run: docker compose build
+      - name: Build the OCR worker and check Tesseract answers in it (D58)
+        run: |
+          docker compose --profile ocr up -d --build ocr
+          for i in $(seq 1 30); do
+            docker compose --profile ocr exec -T ocr python -c               "import urllib.request; print(urllib.request.urlopen('http://localhost:8080/health').read().decode())"               && exit 0
+            sleep 2
+          done
+          exit 1
       - name: Start the stack
         run: docker compose up -d
       - name: Wait for the API and the chat screen
@@ -79,4 +89,4 @@ jobs:
         run: docker compose logs --no-color --tail 200
       - name: Stop the stack
         if: always()
-        run: docker compose down -v
+        run: docker compose --profile ocr down -v

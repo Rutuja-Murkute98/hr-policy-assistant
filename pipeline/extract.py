@@ -2,8 +2,9 @@
 
 A PDF's headings come from its fonts: a line larger than the body text, or bold and short, is a heading. Its tables
 become Markdown tables. A PDF whose fonts show nothing, and plain text, fall back to treating numbered lines such as
-"4.1 Earned Leave" and short lines in capitals as headings. Word documents use their heading styles. Scanned PDFs have
-no text to read, and OCR isn't included because of memory limits. See docs/DECISIONS.md, D57.
+"4.1 Earned Leave" and short lines in capitals as headings. Word documents use their heading styles. A scanned page has
+no text of its own, so it's read by the OCR worker, if one is set up, and refused if not. See docs/DECISIONS.md, D57
+and D58.
 """
 import io
 import re
@@ -174,8 +175,38 @@ def pdf_markdown(blocks: list[tuple], body: float) -> tuple[str, bool]:
     return "\n".join(out), found
 
 
+def size_bands(sizes: list[float]) -> dict[float, float]:
+    """Group sizes within 10% of each other, as OCR measures the same font a little differently on each line."""
+    bands: dict[float, float] = {}
+    top = None
+    for size in sorted(set(sizes), reverse=True):
+        if top is None or size < top * 0.9:
+            top = size
+        bands[size] = top
+    return bands
+
+
+def with_ocr(blocks: list[tuple], body: float, found: dict[int, list[dict]]) -> tuple[list[tuple], float]:
+    """Add the lines the OCR worker read. Their sizes are scaled so its body text matches the PDF's own."""
+    lines = [(page, line) for page, page_lines in found.items() for line in page_lines if line.get("text", "").strip()]
+    if not lines:
+        return blocks, body
+    bands = size_bands([float(line["size"]) for _, line in lines])
+    # The body is the size with the most characters, as for a PDF's own text: headings are many lines but short
+    characters: Counter = Counter()
+    for _, line in lines:
+        characters[bands[float(line["size"])]] += len(line["text"])
+    ocr_body = characters.most_common(1)[0][0]
+    scale = body / ocr_body if body and ocr_body else 1.0
+    added = [(page, float(line["top"]), "line", line["text"].strip(), round(bands[float(line["size"])] * scale, 1),
+              False, float(line["bottom"])) for page, line in lines]
+    return sorted(blocks + added, key=lambda block: (block[0], block[1])), body or ocr_body
+
+
 def from_pdf(data: bytes) -> str:
     import pdfplumber
+
+    from pipeline.ocr import OcrUnavailable, ocr_enabled, read_scanned_pages
 
     if not data.startswith(b"%PDF-"):
         raise ExtractionError("This file doesn't look like a real PDF.")
@@ -184,6 +215,7 @@ def from_pdf(data: bytes) -> str:
             if len(pdf.pages) > MAX_PDF_PAGES:
                 raise ExtractionError(f"This PDF has more than {MAX_PDF_PAGES} pages.")
             blocks, body = pdf_blocks(pdf)
+            page_count = len(pdf.pages)
     except ExtractionError:
         raise
     except Exception as error:
@@ -191,7 +223,17 @@ def from_pdf(data: bytes) -> str:
         if "password" in f"{type(error).__name__} {error!r} {error.__cause__!r}".lower():
             raise ExtractionError("This PDF is password protected. Please upload an unprotected copy.") from error
         raise ExtractionError("This PDF couldn't be read.") from error
+    # Pages with no text of their own are scans, which the OCR worker can read if it's switched on (D58)
+    with_text = {block[0] for block in blocks if block[2] == "table" or block[3]}
+    scanned = [number for number in range(page_count) if number not in with_text]
+    if scanned and ocr_enabled():
+        try:
+            blocks, body = with_ocr(blocks, body, read_scanned_pages(data, scanned))
+        except OcrUnavailable as error:
+            raise ExtractionError(str(error)) from error
     if not any(block[2] == "table" or block[3] for block in blocks):
+        if ocr_enabled():
+            raise ExtractionError("No text could be read from this PDF, even with OCR. Is the scan very faint?")
         raise ExtractionError("This PDF has no readable text. It may be scanned, and OCR isn't switched on.")
     markdown, found = pdf_markdown(blocks, body)
     # With no headings in the fonts, numbered and capitalised lines are the best guess, as before

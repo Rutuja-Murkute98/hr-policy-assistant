@@ -9,3 +9,7 @@ mypy==2.4.1
 pip-audit==2.10.1
 # Makes test PDFs from the sample policies, for evaluation/extraction_check.py. Not in the API image.
 fpdf2==2.9.0
+# The PDF reader before Phase 12, kept to compare with, and to join test PDFs. Not in the API image.
+pypdf==6.21.4
+# The OCR worker's Tesseract client, so CI can test it. The worker has its own image: ops/ocr. See D58.
+pytesseract==0.3.13

@@ -1,6 +1,8 @@
 # Local development: API, chat screen and PostgreSQL with pgvector.
 #   docker compose up --build
 #   docker compose run --rm api python -m pipeline.embed_and_store
+# To read scanned PDFs too, start the OCR worker with Tesseract, and point the API at it (D58):
+#   OCR_URL=http://ocr:8080 docker compose --profile ocr up --build
 # Keys come from your .env file. The database password here is only for this local container.
 services:
   db:
@@ -25,6 +27,8 @@ services:
       HELPDESK_API_KEY: ${HELPDESK_API_KEY:-}
       HELPDESK_ADMIN_KEY: ${HELPDESK_ADMIN_KEY:-}
       AUTH_MODE: ${AUTH_MODE:-demo}
+      OCR_URL: ${OCR_URL:-}
+      OCR_TOKEN: ${OCR_TOKEN:-}
     ports:
       - "8000:8000"
     depends_on:
@@ -43,6 +47,15 @@ services:
       - "8501:8501"
     depends_on:
       - api
+
+  ocr:
+    profiles: ["ocr"]
+    build:
+      context: .
+      dockerfile: ops/ocr/Dockerfile
+    environment:
+      OCR_TOKEN: ${OCR_TOKEN:-}
+    # No ports: only the API reaches it, on Compose's own network
 
 volumes:
   pgdata:

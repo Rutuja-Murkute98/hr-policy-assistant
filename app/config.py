@@ -85,6 +85,11 @@ class Settings(BaseSettings):
     # How far search moves a section that fits the asker up, or one only for other groups down: see D55, D56
     audience_weight: float = Field(default=0.06, ge=0, le=1)  # measured: see docs/DECISIONS.md, D56
 
+    # Reading scanned PDFs with a Tesseract worker you run: see docs/DECISIONS.md, D58. Empty = scans are refused
+    ocr_url: str = ""
+    ocr_token: str = ""
+    ocr_timeout_seconds: float = Field(default=180.0, gt=0)
+
     # Each organisation's own settings: see docs/DECISIONS.md, D52
     # Comma-separated models of LLM_PROVIDER an organisation may pick, besides the deployment's own
     allowed_chat_models: str = ""
@@ -234,6 +239,9 @@ ALLOWED_CHAT_MODELS = list(dict.fromkeys(
     [CHAT_MODEL, *(model.strip() for model in settings.allowed_chat_models.split(",") if model.strip())]))
 SETTINGS_CACHE_SECONDS = settings.settings_cache_seconds
 AUDIENCE_WEIGHT = settings.audience_weight
+OCR_URL = settings.ocr_url.rstrip("/")
+OCR_TOKEN = settings.ocr_token
+OCR_TIMEOUT_SECONDS = settings.ocr_timeout_seconds
 CONVERSATION_RETENTION_DAYS = settings.conversation_retention_days
 AUDIT_RETENTION_DAYS = settings.audit_retention_days
 SUMMARISE_AFTER_MESSAGES = settings.summarise_after_messages

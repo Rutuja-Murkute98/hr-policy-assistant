@@ -132,3 +132,19 @@ def to_docx(markdown: str) -> bytes:
     buffer = io.BytesIO()
     document.save(buffer)
     return buffer.getvalue()
+
+
+def to_scanned_pdf(markdown: str, dpi: int = 200) -> bytes:
+    """The PDF as a scan would arrive: each page an image, with no text in it at all."""
+    import pypdfium2
+    from fpdf import FPDF
+
+    document = pypdfium2.PdfDocument(io.BytesIO(to_pdf(markdown)))
+    try:
+        scan = FPDF(format="A4")
+        for page in document:
+            scan.add_page()
+            scan.image(page.render(scale=dpi / 72).to_pil(), x=0, y=0, w=scan.w, h=scan.h)
+        return bytes(scan.output())
+    finally:
+        document.close()

@@ -1,0 +1,6 @@
+# The OCR worker's own packages. It isn't part of the API image. See docs/DECISIONS.md, D58.
+fastapi==0.162.0
+uvicorn==0.54.0
+pytesseract==0.3.13
+pypdfium2==5.15.2
+pillow==13.0.0

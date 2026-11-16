@@ -721,6 +721,31 @@ same name in two sources is the same policy. The sync thread only runs while the
 when idle. Neither Drive nor Graph has been called for real: no credentials exist for this project, so both are tested
 against recorded shapes of their replies.
 
+## D60. After a policy is indexed: its review date, a summary of what changed, and any clash with other policies
+
+**Decision:** Three checks run after a document is indexed, from an upload or a sync, each on its own so one failing
+doesn't stop the others.
+- **Review date:** read from the document's "Next Review:" line, as most policies have one, or set by HR on upload. The
+  admin screen shows which policies are past it. No model.
+- **What changed:** for a new version, the sections added, removed or reworded are sent to the answer model, which writes
+  two to four plain sentences for HR. One call per new version.
+- **Clashes:** sentences that state a figure, such as days, an amount or a number of years, are paired with sentences
+  elsewhere, in any policy including their own, that share most of their words but state a different figure. The model
+  sees each pair of sections with those sentences and their headings, and says whether they can't both be true for the
+  same employee. Pairs are sent in batches, and every verdict is kept against a hash of both texts, so no pair is asked
+  about twice. HR sees each clash and marks it resolved or not a clash. No embedding is made.
+
+**Why:** The five known contradictions in the sample policies are all about figures: days of leave, an amount, a number of
+days and a number of years. Comparing every section with every other would be 145,000 pairs. Comparing whole sections by
+their stored vectors was tried first: two of the five sat 10th and 14th nearest, as a section on probation covers many
+things, and every section "had a figure" from its heading's number, which left 1,526 pairs. Sentences that share at least
+3 main words, and half the shorter one's, found all five in 352 pairs of sections. One of the five is inside one policy,
+its summary against its schedule, so a section's own policy is searched too.
+
+**Trade-offs:** A clash between sections that don't look alike, or that don't state a figure, isn't found. The model can
+call two compatible rules a clash, so HR can dismiss one, and a dismissed pair isn't raised again until either text
+changes. The summaries are the model's reading, not a legal diff: HR should check them.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

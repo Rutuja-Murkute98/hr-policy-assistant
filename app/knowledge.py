@@ -4,6 +4,7 @@ Each upload becomes a new version and a job. A job can fail and be retried, and 
 embeds what isn't stored yet, a retry carries on where it stopped. When text changes, the old
 chunks are kept as superseded copies, with their embeddings, so old versions stay searchable.
 """
+import base64
 import hashlib
 import json
 import logging
@@ -27,7 +28,7 @@ from app.rag.retrieval import body_of
 from app.tenancy import TenantEngine, tenant_scoped
 from pipeline.chunk_documents import chunk_text
 from pipeline.embed_and_store import SyncPlan, content_hash, plan_sync, run_sync
-from pipeline.extract import extract_document
+from pipeline.extract import extract_document, page_images
 
 logger = logging.getLogger("hr_helpdesk")
 
@@ -144,6 +145,17 @@ class KnowledgeBase:
         if len(markdown) > config.MAX_UPLOAD_CHARS:
             raise UploadRejected(f"This has more than {config.MAX_UPLOAD_CHARS:,} characters of text.")
         return markdown, find_injection_signs(markdown)
+
+    def preview_upload(self, data: bytes, file_name: str, title: str | None = None) -> dict:
+        """How a file would be read and split into sections, with a PDF's first pages. Nothing is stored."""
+        markdown, warnings = self.read_upload(data, file_name, title)
+        source_file = f"{Path(file_name).stem}.md"
+        chunks = chunk_text(markdown, source_file, {"policy": title}, self.tenant_id, self.profile)
+        sections = [{"section": chunk.metadata["section"], "text": body_of(chunk),
+                     "too_short": len(body_of(chunk)) < config.MIN_BODY_CHARS} for chunk in chunks]
+        pages = page_images(data) if file_name.lower().endswith(".pdf") else []
+        return {"file": source_file, "title": chunks[0].metadata["policy"] if chunks else title, "sections": sections,
+                "pages": [base64.b64encode(page).decode() for page in pages], "warnings": warnings}
 
     def suggest_category(self, llm, data: bytes, file_name: str, title: str | None = None) -> dict:
         """Ask the model which of this organisation's categories a file belongs to. Nothing is stored."""

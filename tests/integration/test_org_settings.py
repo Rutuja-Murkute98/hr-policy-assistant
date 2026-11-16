@@ -14,6 +14,7 @@ from app.category_suggestion import CategorySuggestion
 from app.org_settings import SettingsStore
 from app.rag.prompt import StructuredAnswer
 from app.tenancy import TenantEngine
+from evaluation.test_documents import to_docx, to_pdf
 from tests.integration import test_tenant_isolation as isolation
 from tests.integration.test_tenant_isolation import alice, ask, bob, gina, harriet, owner_rows
 from tests.integration.test_workflow import ScriptedLLM
@@ -346,3 +347,51 @@ def test_a_tag_with_values_outside_the_rules_is_refused(world, settings_client):
     for body in ({"bands": [0]}, {"employment_types": ["director"]}, {"locations": ["Pune; DROP"]},
                  {"probation": "maybe"}, {"everyone": True}):
         assert settings_client.put(f"/admin/audiences/{chunk_id}", headers=harriet(world), json=body).status_code == 422
+
+
+# Previewing how an upload will be read
+
+PREVIEW_POLICY = """# Room Rent Policy
+
+## 1. Limits
+
+| Band | Limit per day |
+|---|---|
+| Band 1 to Band 3 | Rs. 3,000 |
+| Band 4 to Band 5 | Rs. 5,000 |
+
+## 2. Claims
+
+Claims must be submitted within thirty days of discharge, with the original bills and the discharge summary.
+"""
+
+
+def preview(client, headers, name, body):
+    return client.post("/admin/documents/preview", headers=headers, files={"file": (name, body)})
+
+
+def test_hr_sees_how_a_pdf_is_read_beside_its_pages_and_nothing_is_stored(world, settings_client):
+    import base64
+
+    before = owner_rows(world, "SELECT count(*) AS n FROM document_versions")[0].n
+    response = preview(settings_client, harriet(world), "Room_Rent.pdf", to_pdf(PREVIEW_POLICY))
+    assert response.status_code == 200, response.text
+    shown = response.json()
+    assert shown["file"] == "Room_Rent.md" and shown["title"] == "Room Rent Policy"
+    assert [section["section"] for section in shown["sections"]] == ["1. Limits", "2. Claims"]
+    assert "| Band 4 to Band 5 | Rs. 5,000 |" in shown["sections"][0]["text"]
+    assert len(shown["pages"]) == 1 and base64.b64decode(shown["pages"][0]).startswith(b"\xff\xd8")  # a JPEG
+    assert owner_rows(world, "SELECT count(*) AS n FROM document_versions")[0].n == before
+    assert owner_rows(world, "SELECT count(*) AS n FROM indexing_jobs")[0].n == 0
+
+
+def test_a_word_file_preview_has_sections_but_no_page_images(world, settings_client):
+    shown = preview(settings_client, harriet(world), "Room_Rent.docx", to_docx(PREVIEW_POLICY)).json()
+    assert len(shown["sections"]) == 2 and shown["pages"] == []
+
+
+def test_only_an_hr_admin_can_preview_and_a_bad_file_is_explained(world, settings_client):
+    assert preview(settings_client, alice(world), "Room_Rent.pdf", to_pdf(PREVIEW_POLICY)).status_code == 403
+    refused = preview(settings_client, harriet(world), "Room_Rent.pdf", b"not a pdf")
+    assert refused.status_code == 422 and "real PDF" in refused.json()["detail"]
+    assert preview(settings_client, harriet(world), "../Room.pdf", to_pdf(PREVIEW_POLICY)).status_code == 422

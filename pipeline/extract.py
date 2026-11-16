@@ -175,6 +175,29 @@ def pdf_markdown(blocks: list[tuple], body: float) -> tuple[str, bool]:
     return "\n".join(out), found
 
 
+PREVIEW_PAGES = 8  # enough to check how a document was read, without a large response
+PREVIEW_DPI = 60
+
+
+def page_images(data: bytes, pages: int = PREVIEW_PAGES) -> list[bytes]:
+    """Small JPEG images of a PDF's first pages, so HR can compare them with what was read. Empty if it can't."""
+    import pypdfium2
+
+    try:
+        document = pypdfium2.PdfDocument(io.BytesIO(data))
+    except Exception:
+        return []
+    try:
+        images = []
+        for number in range(min(len(document), pages)):
+            buffer = io.BytesIO()
+            document[number].render(scale=PREVIEW_DPI / 72).to_pil().convert("RGB").save(buffer, "JPEG", quality=70)
+            images.append(buffer.getvalue())
+        return images
+    finally:
+        document.close()
+
+
 def size_bands(sizes: list[float]) -> dict[float, float]:
     """Group sizes within 10% of each other, as OCR measures the same font a little differently on each line."""
     bands: dict[float, float] = {}

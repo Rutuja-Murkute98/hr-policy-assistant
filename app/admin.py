@@ -80,6 +80,17 @@ def index_then_tag(base: KnowledgeBase, llm, job_id: str, source_file: str) -> N
         logger.exception("Couldn't tag who the sections of %s are for", source_file)
 
 
+@router.post("/documents/preview")
+def preview_document(principal: Principal = Depends(admin_principal), base: KnowledgeBase = Depends(knowledge),
+                     file: UploadFile = File(...), title: str | None = Form(default=None, max_length=200)):
+    """Show how a file would be read, section by section, next to its first pages. Nothing is stored."""
+    data = file.file.read(config.MAX_UPLOAD_BYTES + 1)
+    try:
+        return base.preview_upload(data, file.filename or "", title or None)
+    except (ExtractionError, UploadRejected) as rejected:
+        raise HTTPException(422, str(rejected)) from None
+
+
 @router.post("/documents/suggest-category")
 def suggest_document_category(request: Request, principal: Principal = Depends(admin_principal),
                               file: UploadFile = File(...), title: str | None = Form(default=None, max_length=200)):

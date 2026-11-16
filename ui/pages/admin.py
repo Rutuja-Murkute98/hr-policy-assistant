@@ -4,6 +4,7 @@ It isn't linked from the chat screen. Open it by adding /admin to the chat scree
 With sign-in, it needs an HR admin account. In demo mode, the shared admin key is typed in each
 session and is never stored by this app.
 """
+import base64
 import json
 from datetime import date
 
@@ -43,6 +44,38 @@ def call_api(method: str, path: str, **kwargs) -> tuple[object | None, str]:
         return None, f"Something went wrong (error {response.status_code}). Please try again."
 
 
+def show_preview(upload) -> None:
+    """How the file will be read, section by section, beside its first pages, so HR can check before uploading."""
+    if upload is None:
+        return
+    if st.button("Preview how it's read", key="preview_upload", icon=":material/preview:"):
+        preview, problem = call_api("POST", "/admin/documents/preview",
+                                    files={"file": (upload.name, upload.getvalue())})
+        if problem:
+            st.error(problem)
+            return
+        st.session_state.upload_preview = {**preview, "upload": upload.name}
+    preview = st.session_state.get("upload_preview")
+    if not preview or preview["upload"] != upload.name:
+        return
+    short = sum(section["too_short"] for section in preview["sections"])
+    st.caption(f"Read as {len(preview['sections'])} sections" + (f", {short} too short to be searched" if short else "")
+               + ". Check the headings and tables match the file before uploading. Nothing is saved yet.")
+    if preview["warnings"]:
+        st.warning("Some of this text looks like instructions to an AI: " + ", ".join(preview["warnings"]) + ".")
+    pages, sections = st.columns(2) if preview["pages"] else (None, st.container())
+    if pages is not None:
+        with pages:
+            for number, page in enumerate(preview["pages"], start=1):
+                st.image(base64.b64decode(page), caption=f"Page {number}")
+    with sections:
+        for section in preview["sections"]:
+            with st.container(border=True):
+                # The file's own words, shown as plain text: an upload can't add links or images to this page
+                st.text(section["section"] + (" (too short to be searched)" if section["too_short"] else ""))
+                st.text(section["text"][:1500])
+
+
 def show_category_suggestion(upload) -> str | None:
     """Offer the model's suggestion for the chosen file, and return it so the form can start on it."""
     if upload is None:
@@ -74,6 +107,7 @@ def show_upload() -> None:
     categories = ORGANISATION.get("categories") or sorted(
         {*ORGANISATION["document_categories"].values(), ORGANISATION["default_category"]})
     suggested = show_category_suggestion(upload)
+    show_preview(upload)
     with st.form("upload_form", clear_on_submit=True):
         title = st.text_input("Title (optional)", placeholder="Taken from the file if left empty")
         category = st.selectbox("Category (optional)", categories,

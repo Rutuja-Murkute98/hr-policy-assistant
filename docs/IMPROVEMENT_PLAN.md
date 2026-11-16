@@ -371,10 +371,10 @@ The general set held, after a fix so answers give every group's rule. See
 - [x] Use DOCX heading styles for sections instead of guessing.
 - [x] Extract PDF tables as Markdown tables with `pdfplumber` (no PyTorch). Measure it on sample
       policies with tables.
-- [ ] OCR for scanned PDFs as an optional worker, either Tesseract in its own container or Google
+- [x] OCR for scanned PDFs as an optional worker, either Tesseract in its own container or Google
       Document AI behind a setting. It stays off on the free API.
 - [ ] Docling as an optional, local-only extractor, compared with the default on the same documents.
-- [ ] A side-by-side view in the admin page of the original page and the extracted sections, so HR can
+- [x] A side-by-side view in the admin page of the original page and the extracted sections, so HR can
       check them before publishing.
 
 **Work, part B: retrieval experiments (keep only what wins)**
@@ -409,7 +409,7 @@ recorded result.
 
 **Progress:** part A1 is built and measured. On PDF and Word versions of the 34 test documents, PDF headings without
 section numbers went from none found to all, and every table row now comes out in a Markdown table. Questions answered
-from a PDF of tables were right with the old and new readers alike. Parts A2, B and C are next. See
+from a PDF of tables were right with the old and new readers alike. Part A2 adds scanned pages, read by a Tesseract worker you run, and a preview for HR. Docling waits for the owner, and parts B and C are next. See
 [the Phase 12 report](../evaluation/reports/phase12_report.md).
 
 ---

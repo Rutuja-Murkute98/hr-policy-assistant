@@ -191,6 +191,44 @@ asked about next time, and as verdicts are kept, the second attempt only asked a
 - **Only figures are compared.** A clash in words alone, such as "allowed" against "not allowed", isn't looked for.
 - **A change summary is the model's.** It's shown as written, beside the version, and not checked.
 
+## The 200-question run on the Phase 12 code
+
+Phase 12 changed `app/config.py` and `app/rag/store.py`, which the quality gate fingerprints, so the 200 questions were
+asked again through the full workflow, with the same settings as Phase 11, and judged by `gemini-3.1-flash-lite`. It
+meets every floor and is recorded in `latest_metrics.json`. The only change on the answer path is the review date stored
+with each policy record, which retrieval and answering don't read.
+
+| Measure | Phase 11 | Phase 12 |
+|---|---:|---:|
+| Retrieval recall at 5 | 0.943 | 0.938 |
+| Facts correct | 0.912 | **0.885** |
+| Refused when it should | 0.925 | **0.900** |
+| False refusals | 0.050 | 0.056 |
+| Citations valid | 1.000 | 0.993 |
+| Statements cited | 0.977 | 0.980 |
+| Judge: correct | 0.974 | 0.981 |
+| Judge: relevant | 0.987 | 0.994 |
+| Seconds, median | 2.19 | 2.66 |
+| Seconds, 95th percentile | 4.17 | **7.35** |
+
+**Facts correct and refusals fell,** and I read every question that changed:
+
+- 182 of 200 questions retrieved exactly the same sections as in Phase 11. The other 18 differ because the model
+  rewrites some questions differently each time.
+- Three questions newly refused, adversarial-015, exception-022 and multi_hop-021, were the model's own choice
+  (`model_abstained`). Two of them had the same sections as in Phase 11, when they were answered correctly.
+- Of the 7 questions newly missing a fact, two are the model's wording: "half-ay" for "half-day", and "one per employee"
+  for "one off-cycle promotion per employee". normal-055 was sent to the payslip tool instead of answered from policy.
+- adversarial-004, a question meant to be refused as off-topic, was answered from the leave policy.
+- Three questions fixed themselves the same way: ambiguous-009, normal-050 and normal-051.
+
+So this is the model answering differently from run to run, not a change in what's retrieved. It's still a measured
+drop, and any later work on refusals should start from these questions.
+
+**The slower 95th percentile is mostly the network.** The internet connection dropped during questions 184 and 185, and
+the run retried, and Gemini returned "high demand" errors at times. The run also restarted once on a new API key, at
+question 64, which keeps every answer already saved.
+
 ## Phase 12 status
 
 | Item from the plan | Status | Evidence or gap |
@@ -212,5 +250,4 @@ asked about next time, and as verdicts are kept, the second attempt only asked a
 3. To read scans yourself, install Docker, then: `OCR_URL=http://ocr:8080 docker compose --profile ocr up --build`.
 4. Decide what to do about the maternity amounts, Rs. 75,000 against Rs. 50,000: fix a sample policy, or add it to the
    known contradictions.
-5. Phase 12 changed `app/config.py` and `app/rag/store.py`, which the quality gate fingerprints, so it needs a new
-   200-question run, about 400 answer calls, before the phase is complete.
+5. Look at the questions that newly failed in the 200-question run, above, and decide whether any belong in Phase 13.

@@ -680,6 +680,22 @@ heading than numbering, which plenty of policies don't use.
 **Trade-offs:** About 10 MB more in the API image. `pdfplumber` is slower than `pypdf` on large files, which only matters
 on upload. A table split across two pages comes out as two tables.
 
+## D58. Scanned pages are read by Tesseract in a worker of your own, never by a cloud service
+
+**Decision:** OCR runs in a separate container, `ops/ocr`, with Tesseract. The API sends a PDF to it only when `OCR_URL`
+is set, and only for pages with no text of their own, such as a scan inside an otherwise normal PDF. The worker renders those
+pages, reads them, and returns each line with its height, so headings are found from size, as for a normal PDF. With
+`OCR_URL` empty, the default, a scanned PDF is refused as before. Google Document AI isn't offered.
+
+**Why:** The owner chose local OCR only: a scanned HR document can hold personal data, such as a signed offer letter, and
+the worker keeps it on a machine the organisation runs. Tesseract and page rendering need about 100 MB and a lot of memory
+while reading, which the free API host doesn't have, so it can't run inside the API.
+
+**Trade-offs:** Tesseract is less accurate than cloud OCR on poor scans and handwriting, and it doesn't find tables, so a
+scanned table becomes lines of text. Each scanned page takes a few seconds. The worker isn't on the free hosting: it runs
+with Docker Compose on a machine of your own, with `--profile ocr`. Tesseract isn't installed on the development machine, so
+its real output is tested where it is installed, such as GitHub's runners.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

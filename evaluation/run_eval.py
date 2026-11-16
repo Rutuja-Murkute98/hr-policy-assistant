@@ -120,8 +120,11 @@ def use_settings(**values: Any) -> None:
         setattr(config, name, value)
 
 
-def run_retrieval_variant(index, items, questions, vectors, name, reranker=None, hybrid=True) -> dict:
-    """Score one group of search settings. Latency is search and selection only, not embedding."""
+def run_retrieval_variant(index, items, questions, vectors, name, reranker=None, hybrid=True, search=None) -> dict:
+    """Score one group of search settings. Latency is search and selection only, not embedding.
+
+    search, if given, finds a question's section ids from the question and its vector, in place of the index.
+    """
     filters = SearchFilters(tenant_id=config.TENANT_ID)
     scores: dict[str, list[float]] = {"recall": [], "hit": [], "precision": [], "mrr": [], "ndcg": []}
     latencies, misses, must_refuse_reached, answerable_blocked = [], [], [], []
@@ -130,10 +133,13 @@ def run_retrieval_variant(index, items, questions, vectors, name, reranker=None,
         question = questions[item["id"]]
         relevant = set(item["relevant_chunks"])
         started = time.perf_counter()
-        found = keep_usable(index.candidates(vectors[question], question, config.FETCH_K,
-                                             use_keywords=hybrid, filters=filters))
-        order = reranker.rank(question, [c.chunk.page_content for c in found]) if reranker and found else None
-        retrieved = [str(chunk.id) for chunk in select_chunks(found, order)]
+        if search:
+            retrieved = search(question, vectors[question])
+        else:
+            found = keep_usable(index.candidates(vectors[question], question, config.FETCH_K,
+                                                 use_keywords=hybrid, filters=filters))
+            order = reranker.rank(question, [c.chunk.page_content for c in found]) if reranker and found else None
+            retrieved = [str(chunk.id) for chunk in select_chunks(found, order)]
         latencies.append((time.perf_counter() - started) * 1000)
 
         if item["must_refuse"]:

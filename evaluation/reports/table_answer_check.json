@@ -1,0 +1,282 @@
+{
+ "old reader (pypdf)": {
+  "chunks": 6,
+  "sections": 6,
+  "right": 6,
+  "cited_the_table_document": 6,
+  "asked": 6,
+  "rows": [
+   {
+    "question": "What is the room rent limit per day for Band 4 to Band 5 employees?",
+    "facts": [
+     "5,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "The room rent limit per day for Band 4 to Band 5 employees is Rs. 5,000, and they are entitled to a single standard room [1, 2]. If an employee opts for a room above this eligible category, all associated charges including surgery, doctor fees, and diagnostic costs are proportionately reduced in line with the insurance policy terms [2]."
+   },
+   {
+    "question": "How much is the yearly training budget for Band 6 and above?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees in Band 6 and above are eligible for up to Rs. 75,000 per year for sponsored external training and certification costs [1, 2]."
+   },
+   {
+    "question": "What referral bonus is paid for a Band 7 role?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "For a role at Band 7 and above, the referral bonus is Rs. 75,000 [1, 2]."
+   },
+   {
+    "question": "What is the maximum salary advance for Band 4 to Band 5?",
+    "facts": [
+     "1.5"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees at Band 4 to Band 5 are eligible for an advance of up to 1.5 months' gross salary [1, 2]. In all cases, the advance amount shall not exceed Rs. 2,50,000 [1, 2]. To qualify, employees must be confirmed and have at least 12 months of service since confirmation [2]."
+   },
+   {
+    "question": "How many days of paternity leave are there?",
+    "facts": [
+     "15"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Paternity leave is 15 days of paid leave, which is applicable for up to 2 children and must be availed within 3 months of the birth or adoption of a child [1, 2, 3]."
+   },
+   {
+    "question": "How long is maternity leave, and how long must someone have worked to get it?",
+    "facts": [
+     "26 weeks",
+     "80 days"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Maternity leave is 26 weeks of paid leave for the first two children, and 12 weeks for the third child onwards [1, 2, 3]. To be eligible, female employees must have worked for at least 80 days in the 12 months preceding their expected delivery date [1, 3]."
+   }
+  ]
+ },
+ "new reader (pdfplumber)": {
+  "chunks": 6,
+  "sections": 6,
+  "right": 6,
+  "cited_the_table_document": 6,
+  "asked": 6,
+  "rows": [
+   {
+    "question": "What is the room rent limit per day for Band 4 to Band 5 employees?",
+    "facts": [
+     "5,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees at Band 4 to Band 5 are entitled to a single standard room with a room rent limit of Rs. 5,000 per day [1, 2]."
+   },
+   {
+    "question": "How much is the yearly training budget for Band 6 and above?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees in Band 6 and above are eligible for a yearly budget of up to Rs. 75,000 for sponsored external training and certification [1, 2]."
+   },
+   {
+    "question": "What referral bonus is paid for a Band 7 role?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "The referral bonus for roles at Band 7 and above is Rs. 75,000 [1, 2]."
+   },
+   {
+    "question": "What is the maximum salary advance for Band 4 to Band 5?",
+    "facts": [
+     "1.5"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees at Band 4 to Band 5 are eligible for an advance of up to 1.5 months' gross salary [1, 2]. In all cases, the advance amount shall not exceed Rs. 2,50,000 [1, 2]."
+   },
+   {
+    "question": "How many days of paternity leave are there?",
+    "facts": [
+     "15"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Paternity leave is 15 days, which is to be availed within 3 months of the birth or adoption of a child [1, 2, 3]. It is applicable for up to 2 children [1, 3]."
+   },
+   {
+    "question": "How long is maternity leave, and how long must someone have worked to get it?",
+    "facts": [
+     "26 weeks",
+     "80 days"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Maternity leave is 26 weeks of paid leave for the first two children, and 12 weeks for the third child onwards [1, 2, 3]. Female employees qualify for this leave if they have worked for at least 80 days in the 12 months preceding their expected delivery date [1, 3]."
+   }
+  ]
+ },
+ "old reader, unnumbered headings": {
+  "chunks": 3,
+  "sections": 1,
+  "right": 6,
+  "cited_the_table_document": 6,
+  "asked": 6,
+  "rows": [
+   {
+    "question": "What is the room rent limit per day for Band 4 to Band 5 employees?",
+    "facts": [
+     "5,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "The room rent limit per day for Band 4 to Band 5 employees is Rs. 5,000 for a single standard room [1, 2]."
+   },
+   {
+    "question": "How much is the yearly training budget for Band 6 and above?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Band 6 and above employees are eligible for up to Rs. 75,000 per year for sponsored external training and certification costs [1, 2]."
+   },
+   {
+    "question": "What referral bonus is paid for a Band 7 role?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "The referral bonus for Band 7 and above is Rs. 75,000 [1, 4]."
+   },
+   {
+    "question": "What is the maximum salary advance for Band 4 to Band 5?",
+    "facts": [
+     "1.5"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees at Band 4 to Band 5 are eligible for an interest-free salary advance of up to 1.5 months' gross salary [1, 2, 3, 4], provided they are confirmed employees with at least 12 months of service since confirmation [2, 3, 4]. In all cases, the advance amount cannot exceed Rs. 2,50,000 [1, 3], unless explicit approval from the HR Director and Chief Financial Officer is obtained for exceptional documented circumstances [1]."
+   },
+   {
+    "question": "How many days of paternity leave are there?",
+    "facts": [
+     "15"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Male employees and same-sex partners are entitled to 15 days of paid Paternity Leave for up to 2 children, to be taken within 3 months of the birth or adoption of a child [1, 2, 3]."
+   },
+   {
+    "question": "How long is maternity leave, and how long must someone have worked to get it?",
+    "facts": [
+     "26 weeks",
+     "80 days"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Female employees who have worked for at least 80 days in the 12 months preceding their expected delivery date are entitled to 26 weeks of paid Maternity Leave for the first two children [1], [2]. For the third child onwards, the entitlement is 12 weeks [1], [3]. In case of miscarriage or medical termination of pregnancy, 6 weeks of paid leave is granted, and for a tubectomy operation, 2 weeks of paid leave is granted [1]. A commissioning mother adopting a child below 3 months of age is entitled to 12 weeks of Maternity Leave [1]."
+   }
+  ]
+ },
+ "new reader, unnumbered headings": {
+  "chunks": 6,
+  "sections": 6,
+  "right": 6,
+  "cited_the_table_document": 6,
+  "asked": 6,
+  "rows": [
+   {
+    "question": "What is the room rent limit per day for Band 4 to Band 5 employees?",
+    "facts": [
+     "5,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees at Band 4 to Band 5 are entitled to a single standard room with a room rent limit of Rs. 5,000 per day [1, 2]."
+   },
+   {
+    "question": "How much is the yearly training budget for Band 6 and above?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Band 6 and above employees are eligible for up to Rs. 75,000 per year for sponsored external training and certification costs [1, 2]."
+   },
+   {
+    "question": "What referral bonus is paid for a Band 7 role?",
+    "facts": [
+     "75,000"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "For roles at Band 7 and above, the referral bonus is Rs. 75,000 [1, 2]."
+   },
+   {
+    "question": "What is the maximum salary advance for Band 4 to Band 5?",
+    "facts": [
+     "1.5"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Employees at Band 4 to Band 5 are eligible for a salary advance of up to 1.5 months' gross salary [1, 2]. In all cases, the advance amount shall not exceed Rs. 2,50,000 [1, 2]. To be eligible, employees must be confirmed and have at least 12 months of service since confirmation [2]. Requests for amounts higher than these limits require explicit approval from the HR Director and the Chief Financial Officer and are considered only in exceptional documented circumstances such as major medical emergencies or natural disasters [1]."
+   },
+   {
+    "question": "How many days of paternity leave are there?",
+    "facts": [
+     "15"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Paternity leave is 15 days, which is available for up to 2 children and must be taken within 3 months of the birth or adoption of a child [1, 2, 3]."
+   },
+   {
+    "question": "How long is maternity leave, and how long must someone have worked to get it?",
+    "facts": [
+     "26 weeks",
+     "80 days"
+    ],
+    "right": true,
+    "answered": true,
+    "cited_the_table_document": true,
+    "answer": "Maternity leave is 26 weeks of paid leave for the first two children, and 12 weeks for the third child onwards [1, 2, 3]. To be eligible, female employees must have worked for at least 80 days in the 12 months preceding their expected delivery date [1, 3]."
+   }
+  ]
+ }
+}

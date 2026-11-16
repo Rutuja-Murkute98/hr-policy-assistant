@@ -1,0 +1,105 @@
+{
+ "documents": 34,
+ "numbered headings": {
+  "pdf old": {
+   "headings_found": 1.0,
+   "table_rows_intact": 0.926,
+   "table_rows_as_markdown_tables": 0.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  },
+  "pdf new": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 1.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  },
+  "docx old": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 0.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  },
+  "docx new": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 1.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  }
+ },
+ "unnumbered headings": {
+  "pdf old": {
+   "headings_found": 0.0,
+   "table_rows_intact": 0.926,
+   "table_rows_as_markdown_tables": 0.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  },
+  "pdf new": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 1.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  },
+  "docx old": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 0.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  },
+  "docx new": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 1.0,
+   "words_found": 1.0,
+   "headings": 500,
+   "table_rows": 27
+  }
+ },
+ "table document": {
+  "pdf old": {
+   "headings_found": 1.0,
+   "table_rows_intact": 0.926,
+   "table_rows_as_markdown_tables": 0.0,
+   "words_found": 0.987,
+   "headings": 6,
+   "table_rows": 27
+  },
+  "pdf new": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 1.0,
+   "words_found": 1.0,
+   "headings": 6,
+   "table_rows": 27
+  },
+  "docx old": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 0.0,
+   "words_found": 1.0,
+   "headings": 6,
+   "table_rows": 27
+  },
+  "docx new": {
+   "headings_found": 1.0,
+   "table_rows_intact": 1.0,
+   "table_rows_as_markdown_tables": 1.0,
+   "words_found": 1.0,
+   "headings": 6,
+   "table_rows": 27
+  }
+ }
+}

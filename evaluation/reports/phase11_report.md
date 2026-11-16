@@ -5,7 +5,7 @@ met.** Answers now use the asker's band, office, employment type and probation s
 sections that decide their case, and say which group a rule is for. The employee sees the details used and can correct
 them. On 31 questions asked by two employees each, the facts that fit the asker were in 0.774 of answers, against 0.468
 when nobody is known. The plan asks for these to score as well as the general questions, 0.926, and they don't yet. The
-200-question run, to check the general set hasn't got worse, is running.
+200-question run found the general set got worse, partly because answers gave only the asker's rule. That's fixed in the prompt, and both sets need running again on the fix.
 
 ## Baseline
 
@@ -98,6 +98,30 @@ Of the 14 answers still missing a fact:
   without the word I chose. I haven't changed any label after seeing the answers.
 - **1: a refusal,** of "How long is my probation period?" from a Band 5 employee who is already confirmed.
 
+## All 200 golden questions, and a fix
+
+Answered on 15 November as `E1001` (Band 3, Pune, permanent, confirmed), as every golden run is, and judged on
+16 November. Kept as `answers_phase11_first_prompt.json`.
+
+| Check | Before Phase 11 (`phase10_part2`) | Phase 11, first prompt |
+|---|---:|---:|
+| Recall@5 | 0.945 | 0.938 |
+| Expected facts in answers | 0.926 | **0.892** |
+| Correct refusals | 0.900 | 0.900 |
+| Wrongly refused | 0.044 | 0.037 |
+| Citations valid / on a labelled chunk | 1.000 / 0.974 | 1.000 / 0.961 |
+| Judge: faithful, correct, relevant | 1.000, 0.968, 1.000 | 1.000, 0.956, 1.000 |
+| Seconds per answer, p50 / p95 | 1.96 / 4.23 | 2.06 / 4.56 |
+
+**The general set got worse, and two of the seven new misses come from this phase.** "What is the notice period?" gave
+only the confirmed employee's 3 months and left out probation's 2 weeks, and "What is the limit on room rent?" gave only
+Band 1 to 3's limit. The prompt's rule told the model to give the rule that fits first, and it gave only that, hiding the
+general rule, which the plan rules out. The other five look like the usual variation: the same facts worded differently,
+an answer cut shorter, and two refusals of the same chunks that were answered before.
+
+The rule now says to give the rules for the other groups too, briefly. This run wasn't recorded for the quality gate,
+as it measured the earlier prompt. The golden and persona questions have to be run again on the fixed prompt.
+
 ## Phase 11 status
 
 | Item from the plan | Status | Evidence or gap |
@@ -108,7 +132,7 @@ Of the 14 answers still missing a fact:
 | 30 or more golden items that need a persona, each run as two employees | Implemented and run | 31, unreviewed |
 | The employee can see and correct the details used | Implemented and tested | Corrections last for the chat screen's session. Not clicked in a browser |
 | Persona items score at least as well as the general ones | **Not met** | 0.774 against 0.926 |
-| The general set doesn't get worse | Running | The 200-question run on this code |
+| The general set doesn't get worse | **Not met with the first prompt**, fixed, not yet re-measured | Expected facts 0.926 to 0.892. Two misses came from answers giving only the asker's rule |
 
 ## What the owner must do
 

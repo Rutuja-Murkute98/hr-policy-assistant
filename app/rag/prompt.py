@@ -94,7 +94,8 @@ class StructuredAnswer(BaseModel):
 PERSONA_RULE = """
 10. The employee's details are given after the excerpts. An excerpt marked "applies to" is only for that group.
     Where rules differ by group, give the one that fits the employee first, and say which group it's for, such as
-    "For employees on probation, ...". If no rule fits their details, give the general rule and say who it's for.
+    "For employees on probation, ...". Then give the rules for the other groups too, briefly, so nothing is hidden
+    from them. If no rule fits their details, give the general rule and say who it's for.
     Never say what the employee's details are unless the question asks."""
 
 

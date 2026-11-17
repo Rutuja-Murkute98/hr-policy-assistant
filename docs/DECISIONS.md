@@ -746,6 +746,40 @@ its summary against its schedule, so a section's own policy is searched too.
 call two compatible rules a clash, so HR can dismiss one, and a dismissed pair isn't raised again until either text
 changes. The summaries are the model's reading, not a legal diff: HR should check them.
 
+## D61. Small-to-big, contextual headers and splitting questions were measured, and all three stay off
+
+**Context:** Phase 12 part B tried three ways to find better sections, each kept only if it beat the current search.
+`evaluation/retrieval_experiments.py` scored each against the current search on the same 200 questions, as
+`run_eval retrieval` does, with the same question vectors. The labels aren't reviewed yet.
+
+| | Current | Splitting questions | Contextual headers | Small-to-big |
+|---|---:|---:|---:|---:|
+| A relevant section in the top 5, of 160 | 0.975 | 0.981 | 0.988 | 0.969 |
+| The same, held-out check questions | 0.988 | 0.988 | **0.976** | **0.951** |
+| Recall at 5 | 0.940 | 0.941 | 0.938 | 0.922 |
+| Questions to refuse that still reach the model, of 40 | 36 | 36 | 34 | **40** |
+| Search time, 95th percentile | 0.27 s | 0.64 s, plus a model call | 0.27 s | 1.84 s |
+
+**Decision:** all three stay off, and none is built into the app.
+- **Small-to-big** (pieces of two or three sentences searched, the whole section sent) lost 3 questions and found 2, lost
+  more on the held-out questions, let every question that should be refused through to the model, and searched 4 times
+  slower. The sample policies' sections are already short, a median of 565 characters, so there's little to gain.
+- **Contextual headers** (a one-sentence summary of the policy before each section) found 3 more questions and lost 1,
+  "Can I work from home while I am on probation?", which is on the held-out side. It ranks the first relevant section
+  higher and keeps two more off-topic questions from the model. It's the most promising, but a net 2 of 160 on labels no
+  one has reviewed, with a loss where it was checked, isn't a clear win. It would also re-embed every section and add a
+  model call to every upload.
+- **Splitting questions** found 1 more question, "Can someone on a PIP work from home and also apply for a salary
+  advance?", and lost none. It costs a model call for every question that may ask two things, 32 of the 200, on a free
+  tier of 500 calls a day, and slows those questions by a second or more.
+
+**Why:** a change to search is kept only when it wins, and each of these either lost somewhere or won by a single
+question at a cost. The numbers are in `evaluation/reports/retrieval_experiments.json`.
+
+**Trade-offs:** the gains are small enough that reviewed labels could change the verdict. Contextual headers should be
+measured again, with an answer run, once the labels are reviewed. Splitting could be free if the step that already reads
+each question also gave its parts, which would be worth trying when that step's prompt next changes.
+
 ## D12. CI quality gate reads a committed report
 
 - **Problem:** CI has no model key, and the real corpus embeddings are too large to keep in the repository.

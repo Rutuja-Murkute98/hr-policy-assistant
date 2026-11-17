@@ -229,6 +229,40 @@ drop, and any later work on refusals should start from these questions.
 the run retried, and Gemini returned "high demand" errors at times. The run also restarted once on a new API key, at
 question 64, which keeps every answer already saved.
 
+## Part B: three ways to find better sections, measured
+
+`evaluation/retrieval_experiments.py` scores each experiment as `run_eval retrieval` scores the current search, on the
+same 200 questions and question vectors. Each experiment's sections were stored under a throwaway organisation, deleted
+afterwards, so the live index was never touched. The labels aren't reviewed yet.
+
+| | Current | Splitting questions | Contextual headers | Small-to-big |
+|---|---:|---:|---:|---:|
+| A relevant section in the top 5, of 160 | 0.975 | 0.981 | 0.988 | 0.969 |
+| The same, tuning questions | 0.962 | 0.974 | 1.000 | 0.987 |
+| The same, held-out check questions | 0.988 | 0.988 | **0.976** | **0.951** |
+| Recall at 5 | 0.940 | 0.941 | 0.938 | 0.922 |
+| First relevant section's rank (MRR) | 0.872 | 0.878 | 0.891 | 0.887 |
+| Questions to refuse that still reach the model, of 40 | 36 | 36 | 34 | **40** |
+| Search time, 95th percentile | 0.27 s | 0.64 s, plus a model call | 0.27 s | 1.84 s |
+
+| Experiment | Found that the current search missed | Missed that the current search found |
+|---|---|---|
+| Splitting questions, 23 of 32 multi-part-looking questions split | multi_hop-002 | None |
+| Contextual headers, a one-sentence summary of each of 34 policies | exception-008, multi_hop-002, normal-054 | exception-001, held out |
+| Small-to-big, 973 pieces of 513 sections | multi_hop-002, normal-054 | ambiguous-013, exception-001, multi_hop-005 |
+
+**All three stay off (D61).** Small-to-big lost on every count. Contextual headers is the most promising, and it found
+normal-054, "When do I sign the NDA?", which the bot refused in the 200-question run, but it lost a held-out question
+and gains a net 2 of 160 on unreviewed labels. Splitting found one question for a model call on every question that
+may ask two things.
+
+**Cost:** about 1,750 embeddings, 34 answer calls for the summaries and 32 for the splits. The first key's embedding
+limit, 1,000 a day, ran out partway, and the run finished on a new key. Every vector is kept in `.cache`, so a re-run is
+free.
+
+**Not done:** none of the three was measured on answers, only on which sections were found. Contextual headers should be
+measured again with an answer run once the labels are reviewed.
+
 ## Phase 12 status
 
 | Item from the plan | Status | Evidence or gap |
@@ -238,7 +272,7 @@ question 64, which keeps every answer already saved.
 | OCR for scanned PDFs as an optional worker | Implemented and tested | Tesseract only, by the owner's choice. Real scans only read in CI |
 | Docling as an optional local extractor, compared with the default | Not started | Waits for the owner: over a gigabyte to download |
 | Side-by-side view of the original and the extracted sections | Implemented and tested | Not clicked in a browser |
-| Small-to-big, contextual headers, query decomposition, each measured | Planned | Part B. Needs reviewed labels and quota |
+| Small-to-big, contextual headers, query decomposition, each measured | Measured, all kept off | On unreviewed labels, and on sections found, not answers. D61 |
 | A `Connector` interface, a watched folder and Google Drive, SharePoint behind a setting, with a fake | Implemented and tested | Drive and SharePoint against stand-ins only |
 | Sync on a schedule through the job table, embedding only changed sections | Implemented and tested | Through the upload path and its indexing jobs |
 | Contradictions, change summaries, review dates | Implemented, tested and measured | 5 of 5 known contradictions found with the real model, and 1 more. Not clicked in a browser |

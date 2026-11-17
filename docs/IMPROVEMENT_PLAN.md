@@ -379,9 +379,9 @@ The general set held, after a fix so answers give every group's rule. See
 
 **Work, part B: retrieval experiments (keep only what wins)**
 
-- [ ] Small-to-big retrieval: search small pieces, send the whole section.
-- [ ] Contextual headers: a one-line summary of the document added to each chunk before embedding.
-- [ ] Query decomposition for multi-part questions.
+- [x] Small-to-big retrieval: search small pieces, send the whole section.
+- [x] Contextual headers: a one-line summary of the document added to each chunk before embedding.
+- [x] Query decomposition for multi-part questions.
 - [ ] Each one is measured on approved labels against the current setup and recorded in
       `DECISIONS.md`, kept on or off by the result.
 
@@ -413,8 +413,9 @@ from a PDF of tables were right with the old and new readers alike. Part A2 adds
 folder, Google Drive or SharePoint, and checks each upload: all five known contradictions were flagged with the real
 model, and one more that nobody had listed. A new version gets a summary of what changed, and overdue reviews are shown.
 Telling employees who asked about a changed policy isn't built. The 200-question run on the Phase 12 code meets every
-floor, though facts correct fell from 0.912 to 0.885 with the answer path unchanged. Docling waits for the owner, and
-part B is next. See
+floor, though facts correct fell from 0.912 to 0.885 with the answer path unchanged. Part B measured small-to-big, contextual headers and
+splitting questions, and kept all three off: none won clearly, and labels aren't reviewed yet (D61). Docling
+waits for the owner. See
 [the Phase 12 report](../evaluation/reports/phase12_report.md).
 
 ---
